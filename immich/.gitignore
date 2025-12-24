@@ -1,0 +1,22 @@
+# Immich Daten und Backups
+library/
+postgres/
+backups/
+
+# Logs
+*.log
+
+# Umgebungsvariablen (enthält Passwörter)
+.env
+
+# Editor und IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# System Files
+.DS_Store
+Thumbs.db
+
