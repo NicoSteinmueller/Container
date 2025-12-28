@@ -28,7 +28,7 @@ services:
       DB_DATABASE_NAME: immich
       TZ: Europe/Berlin
     ports:
-      - '2283:2283'
+      - '34517:2283'
     depends_on:
       - redis
       - database
