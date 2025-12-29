@@ -169,43 +169,6 @@ cat keycloak_backup_XXXXXXXX_XXXXXX.sql | docker exec -i keycloak-db psql -U key
 docker start keycloak
 ```
 
-### Option 2: Realm-Export (für Konfiguration)
-
-Exportiert nur die Realm-Konfiguration (Clients, Rollen, etc.), **keine Benutzer-Passwörter**:
-
-```bash
-docker exec keycloak /opt/keycloak/bin/kc.sh export \
-  --dir /opt/keycloak/data/export \
-  --realm mein-realm
-```
-
-Danach die Dateien aus dem Container kopieren:
-```bash
-docker cp keycloak:/opt/keycloak/data/export ./keycloak-export
-```
-
-### Option 3: Docker Volume Backup
-
-**Backup des PostgreSQL-Volumes:**
-```bash
-# Volume-Name herausfinden
-docker volume ls | grep keycloak
-
-# Backup erstellen
-docker run --rm \
-  -v keycloak_keycloak-db-data:/data \
-  -v $(pwd):/backup \
-  alpine tar czf /backup/keycloak-db-volume_$(date +%Y%m%d).tar.gz -C /data .
-```
-
-**Volume wiederherstellen:**
-```bash
-docker run --rm \
-  -v keycloak_keycloak-db-data:/data \
-  -v $(pwd):/backup \
-  alpine sh -c "rm -rf /data/* && tar xzf /backup/keycloak-db-volume_XXXXXXXX.tar.gz -C /data"
-```
-
 ### Automatisches Backup (Cron)
 
 Erstelle ein Backup-Skript `/opt/scripts/keycloak-backup.sh`:
@@ -213,7 +176,7 @@ Erstelle ein Backup-Skript `/opt/scripts/keycloak-backup.sh`:
 ```bash
 #!/bin/bash
 BACKUP_DIR="/opt/backups/keycloak"
-RETENTION_DAYS=7
+RETENTION_DAYS=60
 
 mkdir -p $BACKUP_DIR
 docker exec keycloak-db pg_dump -U keycloak keycloak | gzip > "$BACKUP_DIR/keycloak_$(date +%Y%m%d_%H%M%S).sql.gz"
