@@ -1,163 +1,104 @@
 {
-  // Schema für Auto-Completion und Validierung in IDEs
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-
-  // Basis-Konfiguration: Renovate's empfohlene Standard-Einstellungen
-  "extends": [
-    "config:recommended"
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
   ],
-
-  // Zeitzone für die Schedule-Angaben
-  "timezone": "Europe/Berlin",
-
-  // Zeitplan: Täglich zwischen 2:00 und 6:00 Uhr
-  "schedule": [
-    "after 2am and before 6am every day"
+  timezone: 'Europe/Berlin',
+  schedule: [
+    'after 2am and before 6am',
   ],
-
-  // Docker-spezifische Einstellungen
-  "docker": {
-    "enabled": true,
-    // Digest-Hashes (SHA256) für bessere Reproduzierbarkeit
-    "pinDigests": true
+  'docker-compose': {
+    enabled: true,
+    managerFilePatterns: [
+      '/(^|/)docker-compose\\.ya?ml$/',
+    ],
   },
-
-  // Docker-Compose Datei-Erkennung
-  "docker-compose": {
-    "enabled": true,
-    // Regex-Pattern für docker-compose.yml und docker-compose.yaml
-    "fileMatch": [
-      "(^|/)docker-compose\\.ya?ml$"
-    ]
-  },
-
-  // Regeln für verschiedene Update-Typen und Services
-  "packageRules": [
-    // ============================================
-    // Patch-Updates (z.B. 1.2.3 → 1.2.4)
-    // ============================================
+  packageRules: [
     {
-      "description": "Patch-Updates: Automerge aktiviert",
-      "matchUpdateTypes": ["patch"],
-      "enabled": true,
-      // TODO: Automatisches Mergen nach erfolgreichen CI-Tests
-      "automerge": false,
-      // Als PR mergen (nicht direkt in Branch)
-      "automergeType": "pr",
-      // GitHub's native Auto-Merge Feature verwenden
-      "platformAutomerge": true
-    },
-
-    // ============================================
-    // Digest-Updates (SHA-Hash Änderungen)
-    // ============================================
-    {
-      "description": "Digest-Updates: Automerge aktiviert",
-      "matchUpdateTypes": ["digest"],
-      "enabled": true,
-      // TODO: Automatisches Mergen nach erfolgreichen CI-Tests
-      "automerge": false,
-      "automergeType": "pr",
-      "platformAutomerge": true
-    },
-
-    // ============================================
-    // Minor-Updates (z.B. 1.2.0 → 1.3.0)
-    // ============================================
-    {
-      "description": "Minor-Updates: Manuelle Review erforderlich",
-      "matchUpdateTypes": ["minor"],
-      "enabled": true,
-      // Kein Auto-Merge, manuelle Prüfung nötig
-      "automerge": false,
-      // Keine Gruppierung - jedes Update einzeln
-      "groupName": null
-    },
-
-    // ============================================
-    // Major-Updates (z.B. 1.x → 2.x)
-    // ============================================
-    {
-      "description": "Major-Updates: Manuelle Review erforderlich",
-      "matchUpdateTypes": ["major"],
-      "enabled": true,
-      // Kein Auto-Merge, manuelle Prüfung nötig
-      "automerge": false,
-      // Keine Gruppierung - jedes Update einzeln
-      "groupName": null
-    },
-
-    // ============================================
-    // Service-spezifische Branch-Prefixe
-    // Ein separater PR pro docker-compose.yml
-    // ============================================
-    {
-      "description": "Backrest Updates - ein PR pro Datei",
-      "matchFileNames": ["backrest/docker-compose.yml"],
-      "groupName": null,
-      // Branch-Namen: renovate/backrest-postgres-16.x
-      "additionalBranchPrefix": "backrest-"
+      matchCategories: [
+        'docker',
+      ],
+      enabled: true,
+      pinDigests: true,
     },
     {
-      "description": "Immich Updates - ein PR pro Datei",
-      "matchFileNames": ["immich/docker-compose.yml"],
-      "groupName": null,
-      // Branch-Namen: renovate/immich-ghcr.io-immich-app-immich-server-1.x
-      "additionalBranchPrefix": "immich-"
+      description: 'Patch-Updates: Automerge aktiviert',
+      matchUpdateTypes: [
+        'patch',
+      ],
+      enabled: true,
+      automerge: false,
+      automergeType: 'pr',
+      platformAutomerge: true,
     },
     {
-      "description": "Keycloak Updates - ein PR pro Datei",
-      "matchFileNames": ["keycloak/docker-compose.yml"],
-      "groupName": null,
-      // Branch-Namen: renovate/keycloak-quay.io-keycloak-keycloak-25.x
-      "additionalBranchPrefix": "keycloak-"
+      description: 'Digest-Updates: Automerge aktiviert',
+      matchUpdateTypes: [
+        'digest',
+      ],
+      enabled: true,
+      automerge: false,
+      automergeType: 'pr',
+      platformAutomerge: true,
     },
     {
-      "description": "Kopia Updates - ein PR pro Datei",
-      "matchFileNames": ["kopia/docker-compose.yml"],
-      "groupName": null,
-      // Branch-Namen: renovate/kopia-kopia-kopia-0.x
-      "additionalBranchPrefix": "kopia-"
-    }
+      description: 'Minor-Updates: Manuelle Review erforderlich',
+      matchUpdateTypes: [
+        'minor',
+      ],
+      enabled: true,
+      automerge: false,
+      groupName: null,
+    },
+    {
+      description: 'Major-Updates: Manuelle Review erforderlich',
+      matchUpdateTypes: [
+        'major',
+      ],
+      enabled: true,
+      automerge: false,
+      groupName: null,
+    },
+    {
+      description: 'Backrest Updates - ein PR pro Datei',
+      matchFileNames: [
+        'backrest/docker-compose.yml',
+      ],
+      groupName: null,
+      additionalBranchPrefix: 'backrest-',
+    },
+    {
+      description: 'Immich Updates - ein PR pro Datei',
+      matchFileNames: [
+        'immich/docker-compose.yml',
+      ],
+      groupName: null,
+      additionalBranchPrefix: 'immich-',
+    },
+    {
+      description: 'Keycloak Updates - ein PR pro Datei',
+      matchFileNames: [
+        'keycloak/docker-compose.yml',
+      ],
+      groupName: null,
+      additionalBranchPrefix: 'keycloak-',
+    },
+    {
+      description: 'Kopia Updates - ein PR pro Datei',
+      matchFileNames: [
+        'kopia/docker-compose.yml',
+      ],
+      groupName: null,
+      additionalBranchPrefix: 'kopia-',
+    },
   ],
-
-  // ============================================
-  // Rate Limiting und Automerge
-  // ============================================
-
-  // Maximal 10 PRs gleichzeitig offen
-  "prConcurrentLimit": 10,
-
-  // Keine stündliche Begrenzung (0 = unbegrenzt)
-  "prHourlyLimit": 0,
-
-  // Global deaktiviert (wird per packageRule gesteuert)
-  "automerge": false,
-
-  // GitHub's native Auto-Merge Feature nutzen
-  "platformAutomerge": true,
-
-  // ============================================
-  // Commit & Dashboard
-  // ============================================
-
-  // Semantic Commit Messages (z.B. "chore(deps): update postgres to v16.2")
-  "semanticCommits": "enabled",
-
-  // Dependency Dashboard als GitHub Issue erstellen
-  "dependencyDashboard": true,
-
-  // Titel des Dashboard-Issues
-  "dependencyDashboardTitle": "🔄 Renovate Dashboard - Docker Updates",
-
-  // ============================================
-  // Code Review
-  // ============================================
-
-  // Reviewers automatisch zuweisen
-  "reviewersFromCodeOwners": true,
-
-  // Code Owners für Review-Anfragen verwenden
-  "assigneesFromCodeOwners": true
+  prConcurrentLimit: 10,
+  prHourlyLimit: 0,
+  automerge: false,
+  platformAutomerge: true,
+  semanticCommits: 'enabled',
+  dependencyDashboard: true,
+  dependencyDashboardTitle: '🔄 Renovate Dashboard - Docker Updates',
+  reviewersFromCodeOwners: true,
+  assigneesFromCodeOwners: true,
 }
-
