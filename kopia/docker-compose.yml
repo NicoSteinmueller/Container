@@ -1,0 +1,37 @@
+services:
+  kopia:
+    image: kopia/kopia:latest
+    container_name: kopia
+    hostname: kopia
+    restart: unless-stopped
+    ports:
+      - "51515:51515"
+    command:
+      - server
+      - start
+      - --insecure
+      - --address=0.0.0.0:51515
+      - --server-username=admin
+      - --server-password=kopia123
+    volumes:
+      # Kopia Konfiguration und Cache
+      - ./config:/app/config
+      - ./cache:/app/cache
+      - ./logs:/app/logs
+
+      # Quellordner - hier die Daten die gesichert werden sollen
+      # Passen Sie den Pfad links vom Doppelpunkt an Ihren Hauptordner an
+      - ./daten:/source:ro
+
+      # Backup-Zielordner (Repository) - hier werden die Backups gespeichert
+      # Passen Sie den Pfad links vom Doppelpunkt an Ihren Backup-Ordner an
+      - .backup:/backup
+    environment:
+      - TZ=Europe/Berlin
+      - KOPIA_CONFIG_PATH=/app/config/repository.config
+      - KOPIA_LOG_DIR=/app/logs
+      - KOPIA_CACHE_DIRECTORY=/app/cache
+      - KOPIA_PERSIST_CREDENTIALS_ON_CONNECT=true
+      - KOPIA_CHECK_FOR_UPDATES=false
+      - USER=root
+
