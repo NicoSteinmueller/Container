@@ -1,0 +1,23 @@
+# Code Owners
+# Diese Datei definiert, wer für welche Teile des Repositories verantwortlich ist
+# Renovate wird automatisch Code Owners als Reviewer hinzufügen
+
+# Default Owner für alles
+* nico.steinmueller@gmx.net
+
+# Renovate Konfiguration
+/renovate.json5 nico.steinmueller@gmx.net
+
+# CI/CD Workflows
+/.github/ nico.steinmueller@gmx.net
+/.gitlab-ci.yml nico.steinmueller@gmx.net
+
+# Service-spezifische Owners (optional anpassen)
+/backrest/ nico.steinmueller@gmx.net
+/immich/ nico.steinmueller@gmx.net
+/keycloak/ nico.steinmueller@gmx.net
+/kopia/ nico.steinmueller@gmx.net
+
+# Dokumentation
+*.md nico.steinmueller@gmx.net
+
