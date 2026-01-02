@@ -17,7 +17,7 @@ name: immich
 services:
   immich-server:
     container_name: immich_server
-    image: ghcr.io/immich-app/immich-server:v2.4.1
+    image: ghcr.io/immich-app/immich-server:v2.4.1@sha256:e6a6298e67ae077808fdb7d8d5565955f60b0708191576143fc02d30ab1389d1
     volumes:
       - ${UPLOAD_LOCATION:-./immich-data}:/data
       - /etc/localtime:/etc/localtime:ro
