@@ -1,6 +1,6 @@
 services:
   backrest:
-    image: garethgeorge/backrest:latest
+    image: garethgeorge/backrest:latest@sha256:1308397161321b3c5aeca8acc6bf26eccb990df385f2532d3ce0eaa8b483dedf
     container_name: backrest
     hostname: backrest
     restart: unless-stopped
