@@ -1,0 +1,43 @@
+# Hinweise:
+# - DATA_DIR: Speicherort für Server-Daten, Konfigurationen, Mods
+# - WORLDS_DIR: Speicherort für importiertende Welte
+# - WORLD_NAME: Pfad zur Welt-Datei (ZIP)
+# - FORCE_WORLD_COPY: true = Welt bei jedem Start neu kopieren, false = nur beim ersten Start
+
+services:
+  ftb-skies-2:
+    image: itzg/minecraft-server:latest
+    container_name: ftb-skies-2
+    hostname: ftb-skies-2
+    pull_policy: daily
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    ports:
+      - "55485:25565"
+    volumes:
+      - ${DATA_DIR:-./data}:/data
+      - ${WORLDS_DIR:-./worlds}:/worlds
+    environment:
+      EULA: "TRUE"
+      TYPE: "FTBA"
+      FTB_MODPACK_ID: "129"
+#      https://www.feed-the-beast.com/modpacks/129-ftb-skies-2/versions
+      FTB_MODPACK_VERSION_ID: "100162"
+      INIT_MEMORY: "6G"
+      MAX_MEMORY: "8G"
+      MAX_PLAYERS: "1"
+      TZ: "Europe/Berlin"
+      ONLINE_MODE: "true"
+      FORCE_WORLD_COPY: ${FORCE_WORLD_COPY:-false}
+      WORLD: ${WORLD_NAME:-/worlds/world.zip}
+      OPS: |-
+        44b03ad5-bdea-4578-b500-7ea9916c611d
+      ENABLE_WHITELIST: "true"
+      WHITELIST: |-
+        44b03ad5-bdea-4578-b500-7ea9916c611d
+    healthcheck:
+      test: mc-health
+      start_period: 1m
+      interval: 5s
+      retries: 20
