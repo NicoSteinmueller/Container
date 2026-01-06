@@ -6,7 +6,7 @@
 
 services:
   ftb-skies-2:
-    image: itzg/minecraft-server:latest
+    image: itzg/minecraft-server:latest@sha256:eeb4ee598d260d74dc9e736f0e2c81658b6d194e43958f57328499881c5221fb
     container_name: ftb-skies-2
     hostname: ftb-skies-2
     pull_policy: daily
