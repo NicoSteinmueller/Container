@@ -23,7 +23,7 @@ services:
       TYPE: "FTBA"
       FTB_MODPACK_ID: "129"
 #      https://www.feed-the-beast.com/modpacks/129-ftb-skies-2/versions
-      FTB_MODPACK_VERSION_ID: "100162"
+      FTB_MODPACK_VERSION_ID: "100168"
       INIT_MEMORY: "6G"
       MAX_MEMORY: "8G"
       MAX_PLAYERS: "1"
