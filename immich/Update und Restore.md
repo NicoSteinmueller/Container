@@ -11,7 +11,7 @@ docker exec -t immich_postgres pg_dumpall -U postgres > /mnt/user/tmp/backup.sql
 
 # Update/Restore DB
 - Stack stoppen und (db) volumes löschen
-- Stack pull und Redeploy
+- Stack pull und Redeploy Button -> Update klicken
 - Alle Container außer DB Stoppen
 
 ## Windows (PowerShell)
@@ -32,4 +32,4 @@ docker exec -i immich_postgres psql -U postgres -d immich -c "DROP SCHEMA public
 cat /mnt/user/tmp/backup.sql | docker exec -i immich_postgres psql -U postgres
 ```
 
-- Stack mit DB_SKIP_MIGRATIONS=false neu deployen
+- alle Container restarten
