@@ -30,6 +30,8 @@ services:
       - KC_DB_PASSWORD=${DB_PASSWORD:-changeme}
 
       # Health und Metrics
+      # Health-Checks sind standardmäßig auf Port 9000 (Management Interface)
+      # Falls benötigt, kann mit --health-enabled=true beim Build aktiviert werden
       - KC_HEALTH_ENABLED=true
       - KC_METRICS_ENABLED=true
     ports:
@@ -38,7 +40,7 @@ services:
       database:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'"]
+      test: ["CMD-SHELL", "(exec 3<>/dev/tcp/localhost/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && timeout 2 cat <&3) | head -1 | grep -q 200"]
       interval: 30s
       timeout: 10s
       retries: 3
