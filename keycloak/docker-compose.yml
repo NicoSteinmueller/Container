@@ -35,21 +35,21 @@ services:
     ports:
       - "61348:8080"
     depends_on:
-      keycloak-db:
+      database:
         condition: service_healthy
     networks:
       - keycloak-network
     restart: unless-stopped
 
-  keycloak-db:
-    image: postgres:16.11-alpine3.23@sha256:23e88eb049fd5d54894d70100df61d38a49ed97909263f79d4ff4c30a5d5fca2
-    container_name: keycloak-db
+  database:
+    image: postgres:18.1-alpine3.23@sha256:b40d931bd0e7ce6eecc59a5a6ac3b3c04a01e559750e73e7086b6dbd7f8bf545
+    container_name: keycloak_postgres
     environment:
       - POSTGRES_DB=keycloak
       - POSTGRES_USER=keycloak
       - POSTGRES_PASSWORD=${DB_PASSWORD:-changeme}
     volumes:
-      - keycloak-db-data:/var/lib/postgresql/data
+      - postgres:/var/lib/postgresql
     networks:
       - keycloak-network
     healthcheck:
@@ -64,5 +64,5 @@ networks:
     driver: bridge
 
 volumes:
-  keycloak-db-data:
+  postgres:
 
