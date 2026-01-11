@@ -38,17 +38,16 @@
       ],
       enabled: true,
       automerge: true,
-      automergeType: 'pr',
+      reviewersFromCodeOwners: false,
       platformAutomerge: true,
     },
     {
-      description: 'Minor-Updates: Manuelle Review erforderlich',
+      description: 'Minor-Updates: Auto',
       matchUpdateTypes: [
         'minor',
       ],
       enabled: true,
       automerge: false,
-      groupName: null,
     },
     {
       description: 'Major-Updates: Manuelle Review erforderlich',
@@ -57,14 +56,12 @@
       ],
       enabled: true,
       automerge: false,
-      groupName: null,
     },
     {
       description: 'Backrest Updates - ein PR pro Datei',
       matchFileNames: [
         'backrest/docker-compose.yml',
       ],
-      groupName: null,
       additionalBranchPrefix: 'backrest-',
     },
     {
@@ -72,7 +69,6 @@
       matchFileNames: [
         'immich/docker-compose.yml',
       ],
-      groupName: null,
       additionalBranchPrefix: 'immich-',
     },
     {
@@ -80,7 +76,6 @@
       matchFileNames: [
         'keycloak/docker-compose.yml',
       ],
-      groupName: null,
       additionalBranchPrefix: 'keycloak-',
     },
     {
@@ -88,7 +83,6 @@
       matchFileNames: [
         'kopia/docker-compose.yml',
       ],
-      groupName: null,
       additionalBranchPrefix: 'kopia-',
     },
   ],
