@@ -1,0 +1,127 @@
+# ============================================
+# KONFIGURIERBARE VARIABLEN (in Portainer ändern)
+# ============================================
+# INSTANCE_NAME            - Instanz-Name für eindeutige Container (default: main)
+# INSTANCE_PORT            - Externer Port (default: 61349)
+# PAPERLESS_ADMIN_USER     - Admin-Benutzername (default: admin)
+# PAPERLESS_ADMIN_PASSWORD - Admin-Passwort (default: changeme)
+# PAPERLESS_SECRET_KEY     - Django Secret Key (Pflichtfeld, generieren!)
+# DB_PASSWORD              - Datenbank-Passwort (default: changeme)
+# ============================================
+# Für weitere Instanzen:
+# - INSTANCE_NAME ändern (z.B. "privat", "firma")
+# - INSTANCE_PORT ändern (z.B. 61350, 61351)
+# - Neue PAPERLESS_SECRET_KEY generieren
+# - Gotenberg/Tika werden automatisch geteilt
+# ============================================
+
+services:
+  paperless:
+    image: ghcr.io/paperless-ngx/paperless-ngx:2.16.2@sha256:6ca86e4bd4a3f5e70ccc4a5baad52aa6a0e92b4ddf7e1de5d0b5c5f0825ad5a1
+    container_name: paperless_${INSTANCE_NAME:-main}
+    environment:
+      # Redis-Konfiguration
+      - PAPERLESS_REDIS=redis://redis:6379
+
+      # Datenbank-Konfiguration (PostgreSQL)
+      - PAPERLESS_DBHOST=database
+      - PAPERLESS_DBNAME=paperless
+      - PAPERLESS_DBUSER=paperless
+      - PAPERLESS_DBPASS=${DB_PASSWORD:-changeme}
+
+      # Admin-Credentials
+      - PAPERLESS_ADMIN_USER=${PAPERLESS_ADMIN_USER:-admin}
+      - PAPERLESS_ADMIN_PASSWORD=${PAPERLESS_ADMIN_PASSWORD:-changeme}
+
+      # Basis-Konfiguration
+      - PAPERLESS_SECRET_KEY=${PAPERLESS_SECRET_KEY:-changeme}
+      - PAPERLESS_TIME_ZONE=Europe/Berlin
+      - PAPERLESS_OCR_LANGUAGE=deu+eng
+
+      # URLs für Tika und Gotenberg (gemeinsam genutzt)
+      - PAPERLESS_TIKA_ENABLED=1
+      - PAPERLESS_TIKA_GOTENBERG_ENDPOINT=http://gotenberg:3000
+      - PAPERLESS_TIKA_ENDPOINT=http://tika:9998
+
+      # Zusätzliche Optionen
+      - PAPERLESS_URL=http://localhost:${INSTANCE_PORT:-61349}
+      - PAPERLESS_CONSUMER_POLLING=60
+      - PAPERLESS_CONSUMER_DELETE_DUPLICATES=true
+      - PAPERLESS_CONSUMER_RECURSIVE=true
+      - PAPERLESS_CONSUMER_SUBDIRS_AS_TAGS=true
+    volumes:
+      - data:/usr/src/paperless/data
+      - media:/usr/src/paperless/media
+      - export:/usr/src/paperless/export
+      - consume:/usr/src/paperless/consume
+    ports:
+      - "${INSTANCE_PORT:-61349}:8000"
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - paperless-instance-network
+      - paperless-shared-network
+    restart: unless-stopped
+
+  database:
+    image: postgres:18.1-alpine3.23@sha256:b40d931bd0e7ce6eecc59a5a6ac3b3c04a01e559750e73e7086b6dbd7f8bf545
+    container_name: paperless_postgres_${INSTANCE_NAME:-main}
+    environment:
+      - POSTGRES_DB=paperless
+      - POSTGRES_USER=paperless
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-changeme}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    networks:
+      - paperless-instance-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperless -d paperless"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: docker.io/valkey/valkey:9.0.1-alpine3.23@sha256:c106a0c03bcb23cbdf9febe693114cb7800646b11ca8b303aee7409de005faa8
+    container_name: paperless_redis_${INSTANCE_NAME:-main}
+    networks:
+      - paperless-instance-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  # Instanz-spezifisches Netzwerk (DB, Redis)
+  paperless-instance-network:
+    driver: bridge
+    name: paperless_${INSTANCE_NAME:-main}_network
+
+  # Gemeinsames Netzwerk für geteilte Services (Gotenberg, Tika)
+  paperless-shared-network:
+    external: true
+    name: paperless_shared
+
+volumes:
+  postgres:
+    name: postgres_${INSTANCE_NAME:-main}
+  data:
+    name: data_${INSTANCE_NAME:-main}
+  media:
+    name: media_${INSTANCE_NAME:-main}
+  export:
+    name: export_${INSTANCE_NAME:-main}
+  consume:
+    name: consume_${INSTANCE_NAME:-main}
+

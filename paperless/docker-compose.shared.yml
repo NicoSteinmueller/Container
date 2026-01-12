@@ -1,0 +1,50 @@
+version: "3.9"
+
+# ============================================
+# GETEILTE SERVICES FÜR ALLE PAPERLESS-INSTANZEN
+# ============================================
+# Diese Datei muss EINMAL deployed werden.
+# Alle Paperless-Instanzen nutzen diese Services gemeinsam.
+#
+# Deployment in Portainer:
+# 1. Stack-Name: paperless-shared
+# 2. Diese docker-compose.shared.yml hochladen
+# 3. Deploy klicken
+# ============================================
+
+services:
+  gotenberg:
+    image: gotenberg/gotenberg:8.25.1
+    container_name: paperless_shared_gotenberg
+    command:
+      - "gotenberg"
+      - "--chromium-disable-javascript=true"
+      - "--chromium-allow-list=file:///tmp/.*"
+    networks:
+      - paperless-shared
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  tika:
+    image: apache/tika:3.2.3.0-full
+    container_name: paperless_shared_tika
+    networks:
+      - paperless-shared
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 -O /dev/null http://localhost:9998/version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+networks:
+  paperless-shared:
+    driver: bridge
+    name: paperless_shared
+
