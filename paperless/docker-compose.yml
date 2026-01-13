@@ -1,18 +1,39 @@
 # ============================================
 # KONFIGURIERBARE VARIABLEN (in Portainer ändern)
 # ============================================
-# INSTANCE_NAME            - Instanz-Name für eindeutige Container (default: main)
-# INSTANCE_PORT            - Externer Port (default: 61349)
-# PAPERLESS_ADMIN_USER     - Admin-Benutzername (default: admin)
-# PAPERLESS_ADMIN_PASSWORD - Admin-Passwort (default: changeme)
-# PAPERLESS_SECRET_KEY     - Django Secret Key (Pflichtfeld, generieren!)
-# DB_PASSWORD              - Datenbank-Passwort (default: changeme)
-# ============================================
-# Für weitere Instanzen:
-# - INSTANCE_NAME ändern (z.B. "privat", "firma")
-# - INSTANCE_PORT ändern (z.B. 61350, 61351)
-# - Neue PAPERLESS_SECRET_KEY generieren
-# - Gotenberg/Tika werden automatisch geteilt
+#
+# === INSTANZ-KONFIGURATION ===
+# INSTANCE_NAME                - Instanz-Name für eindeutige Container/Volumes/Netzwerke (default: main)
+# INSTANCE_PORT                - Externer Port für Webinterface (default: 61349)
+#
+# === DATENBANK & SICHERHEIT ===
+# DB_PASSWORD                  - PostgreSQL Datenbank-Passwort (default: changeme)
+# PAPERLESS_SECRET_KEY         - Django Secret Key mindestens 50 Zeichen (AlphaNum + Sonderzeichen)
+#
+# === HOST PATH MOUNTS (Consume/Export/Media) ===
+# PAPERLESS_DATA_BASE_PATH     - Grundpfad auf dem Host für Instanz-Daten.
+#                                Struktur: ${PAPERLESS_DATA_BASE_PATH}/${INSTANCE_NAME}/(consume|export|media)
+#                                (Default: ./data)
+#                                Beispiel: /mnt/paperless → /mnt/paperless/main/consume
+#
+# === URL & PATH-ROUTING (für Subpath-Deployment hinter Reverse Proxy) ===
+# PAPERLESS_URL                - Externe Basis-URL OHNE Subpath (z.B. https://docs.example.com)
+#                                (Default: leer)
+# PAPERLESS_SUBPATH            - Subpath für die Instanz (z.B. /paperless-main)
+#                                Wird verwendet für FORCE_SCRIPT_NAME und STATIC_URL
+#                                (Default: leer = Root-Deployment)
+#
+# === KEYCLOAK / OIDC INTEGRATION ===
+# KEYCLOAK_CONFIG              - JSON-Konfiguration für OpenID Connect Provider
+#                                Format: {"openid_connect":{"APPS":[{"provider_id":"keycloak","name":"Keycloak","client_id":"paperless-main","secret":"CLIENT_SECRET","settings":{"server_url":"https://keycloak.example.com/realms/homelab/.well-known/openid-configuration"}}]}}
+#                                (Default: leer)
+# PAPERLESS_ALLOW_SIGNUPS      - Automatisches Anlegen von Usern bei erstem SSO-Login (default: false)
+# PAPERLESS_DISABLE_REGULAR_LOGIN - Deaktiviert Login-Formular, erzwingt SSO (default: true)
+#
+# === ERWEITERTE KONFIGURATION ===
+# PAPERLESS_IGNORE_DATES       - Komma-getrennte Liste von Daten, die bei Erkennung ignoriert werden
+#                                (z.B. Geburtsdaten: "25.04.1985,01.01.2000")
+#                                (Default: leer)
 # ============================================
 
 services:
@@ -20,40 +41,95 @@ services:
     image: ghcr.io/paperless-ngx/paperless-ngx:2.16.2@sha256:6ca86e4bd4a3f5e70ccc4a5baad52aa6a0e92b4ddf7e1de5d0b5c5f0825ad5a1
     container_name: paperless_${INSTANCE_NAME:-main}
     environment:
+      # https://docs.paperless-ngx.com/configuration/
       # Redis-Konfiguration
-      - PAPERLESS_REDIS=redis://redis:6379
+      PAPERLESS_REDIS: redis://redis:6379
 
       # Datenbank-Konfiguration (PostgreSQL)
-      - PAPERLESS_DBHOST=database
-      - PAPERLESS_DBNAME=paperless
-      - PAPERLESS_DBUSER=paperless
-      - PAPERLESS_DBPASS=${DB_PASSWORD:-changeme}
+      PAPERLESS_DBHOST: database
+      PAPERLESS_DBENGINE: postgresql
+      PAPERLESS_DBNAME: paperless
+      PAPERLESS_DBUSER: paperless
+      PAPERLESS_DBPASS: ${DB_PASSWORD:-changeme}
 
-      # Admin-Credentials
-      - PAPERLESS_ADMIN_USER=${PAPERLESS_ADMIN_USER:-admin}
-      - PAPERLESS_ADMIN_PASSWORD=${PAPERLESS_ADMIN_PASSWORD:-changeme}
+      # Tika und Gotenberg (gemeinsam genutzt)
+      PAPERLESS_TIKA_ENABLED: true
+      PAPERLESS_TIKA_ENDPOINT: http://tika:9998
+      PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://gotenberg:3000
+
+      # https://docs.paperless-ngx.com/advanced_usage/#file-name-handling
+      PAPERLESS_FILENAME_FORMAT: '{document_type}/{created_year}/{created}-{correspondent}-{title}'
 
       # Basis-Konfiguration
-      - PAPERLESS_SECRET_KEY=${PAPERLESS_SECRET_KEY:-changeme}
-      - PAPERLESS_TIME_ZONE=Europe/Berlin
-      - PAPERLESS_OCR_LANGUAGE=deu+eng
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:-changeme}
+      # URL ohe path, z.B. paperless.deine-domain.de,192.168.178.50,localhost
+      PAPERLESS_URL: ${PAPERLESS_URL:-}
+      # Für Subpath-Deployment (z.B. /paperless-main)
+      PAPERLESS_FORCE_SCRIPT_NAME: ${PAPERLESS_SUBPATH:-}
+      PAPERLESS_STATIC_URL: ${PAPERLESS_SUBPATH:-}/static/
+      # Bei Einsatz hinter Reverse Proxy, um korrekte Host-Header zu verwenden
+      PAPERLESS_USE_X_FORWARD_HOST: true
+      # Cookie Prefix, wichtig bei mehreren Instanzen auf einem Host
+      PAPERLESS_COOKIE_PREFIX: ${INSTANCE_NAME:-main}
 
-      # URLs für Tika und Gotenberg (gemeinsam genutzt)
-      - PAPERLESS_TIKA_ENABLED=1
-      - PAPERLESS_TIKA_GOTENBERG_ENDPOINT=http://gotenberg:3000
-      - PAPERLESS_TIKA_ENDPOINT=http://tika:9998
+      # TODO: Admin-Credentials für initialen Login
+#      PAPERLESS_ADMIN_USER: ${PAPERLESS_ADMIN_USER:-admin}
+#      PAPERLESS_ADMIN_PASSWORD: ${PAPERLESS_ADMIN_PASSWORD:-changeme}
 
-      # Zusätzliche Optionen
-      - PAPERLESS_URL=http://localhost:${INSTANCE_PORT:-61349}
-      - PAPERLESS_CONSUMER_POLLING=60
-      - PAPERLESS_CONSUMER_DELETE_DUPLICATES=true
-      - PAPERLESS_CONSUMER_RECURSIVE=true
-      - PAPERLESS_CONSUMER_SUBDIRS_AS_TAGS=true
+      # OpenID Connect für Keycloak SSO
+      PAPERLESS_APPS: allauth.socialaccount.providers.openid_connect
+      # z.B.: {"openid_connect":{"APPS":[{"provider_id":"keycloak","name":"Keycloak","client_id":"paperless-main","secret":"SECRET_MAIN","settings":{"server_url":"https://keycloak.example.com/realms/homelab/.well-known/openid-configuration"}}]}}
+      PAPERLESS_SOCIALACCOUNT_PROVIDERS: ${KEYCLOAK_CONFIG:-}
+      # Automatisches Anlegen von Usern bei erstem Login mit Keycloak
+      PAPERLESS_SOCIALACCOUNT_ALLOW_SIGNUPS: ${PAPERLESS_ALLOW_SIGNUPS:-false}
+      # Deaktiviere regulären Login
+      PAPERLESS_DISABLE_REGULAR_LOGIN: ${PAPERLESS_DISABLE_REGULAR_LOGIN:-true}
+      PAPERLESS_SESSION_COOKIE_AGE: 86400  # 1 Tag
+
+      # TODO: To prevent access to the Django admin, consider blocking /admin/ in your web server or reverse proxy configuration.
+
+      # OCR Sprachen
+      PAPERLESS_OCR_LANGUAGE: deu+eng
+      # Erstellung von Archivdateien wird nie übersprungen
+      PAPERLESS_OCR_SKIP_ARCHIVE_FILE: never
+      # Seiten automatisch drehen (90°, 180°, 270°)
+      PAPERLESS_OCR_ROTATE_PAGES: true
+      # Rotationsschwelle für automatische Seitendrehung (niedriger = aggressiver, 15 = konservativ, 2 = aggressiv (führt oft zu falschen Drehungen))
+      PAPERLESS_OCR_ROTATE_PAGES_THRESHOLD: 12
+      # Entfernt digitale Signaturen aus PDFs während der OCR-Verarbeitung.
+      PAPERLESS_OCR_USER_ARGS: '{"invalidate_digital_signatures": true}'
+
+      # Zeitzone
+      PAPERLESS_TIME_ZONE: Europe/Berlin
+
+      # Document Consumption
+      # When the consumer detects a duplicate document, it will not touch the original document.
+      # Duplikate (Hash gleich) werden beim Import automatisch gelöscht.
+      PAPERLESS_CONSUMER_DELETE_DUPLICATES: true
+      # Dateien werden auch in Unterordnern des "consume"-Verzeichnisses gesucht.
+      PAPERLESS_CONSUMER_RECURSIVE: true
+
+      # Anzahl der vorgeschlagenen ersten gefundenen Daten
+      PAPERLESS_NUMBER_OF_SUGGESTED_DATES: 6
+      # Daten, die bei der Datumserkennung ignoriert werden sollen (z.B. Geburtsdatum, "25.04.1985,01.01.2000")
+      PAPERLESS_IGNORE_DATES: ${PAPERLESS_IGNORE_DATES:-}
+
+      # Sekunden, die der Consumer wartet, bevor er mit der Verarbeitung einer neuen Datei beginnt.
+      PAPERLESS_CONSUMER_INOTIFY_DELAY: 30
+
+      # Anzahl der Tage, die Dokumente im Papierkorb verbleiben, bevor sie endgültig gelöscht werden.
+      PAPERLESS_EMPTY_TRASH_DELAY: 90
+
+      # Name der Instanz im App-Titel
+      PAPERLESS_APP_TITLE: Paperless-ngx ${INSTANCE_NAME:-main}
+
     volumes:
+      # data bleibt als named volume (Container-intern)
       - data:/usr/src/paperless/data
-      - media:/usr/src/paperless/media
-      - export:/usr/src/paperless/export
-      - consume:/usr/src/paperless/consume
+      # consume/export/media werden vom Host gemappt: <BASE>/<INSTANCE>/<ordner>
+      - ${PAPERLESS_DATA_BASE_PATH:-./data}/${INSTANCE_NAME:-main}/media:/usr/src/paperless/media
+      - ${PAPERLESS_DATA_BASE_PATH:-./data}/${INSTANCE_NAME:-main}/export:/usr/src/paperless/export
+      - ${PAPERLESS_DATA_BASE_PATH:-./data}/${INSTANCE_NAME:-main}/consume:/usr/src/paperless/consume
     ports:
       - "${INSTANCE_PORT:-61349}:8000"
     depends_on:
@@ -76,9 +152,9 @@ services:
     image: postgres:18.1-alpine3.23@sha256:b40d931bd0e7ce6eecc59a5a6ac3b3c04a01e559750e73e7086b6dbd7f8bf545
     container_name: paperless_postgres_${INSTANCE_NAME:-main}
     environment:
-      - POSTGRES_DB=paperless
-      - POSTGRES_USER=paperless
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-changeme}
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
     volumes:
       - postgres:/var/lib/postgresql/data
     networks:
@@ -118,10 +194,3 @@ volumes:
     name: postgres_${INSTANCE_NAME:-main}
   data:
     name: data_${INSTANCE_NAME:-main}
-  media:
-    name: media_${INSTANCE_NAME:-main}
-  export:
-    name: export_${INSTANCE_NAME:-main}
-  consume:
-    name: consume_${INSTANCE_NAME:-main}
-
