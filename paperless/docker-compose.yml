@@ -38,7 +38,7 @@
 
 services:
   paperless:
-    image: ghcr.io/paperless-ngx/paperless-ngx:2.16.2@sha256:6ca86e4bd4a3f5e70ccc4a5baad52aa6a0e92b4ddf7e1de5d0b5c5f0825ad5a1
+    image: ghcr.io/paperless-ngx/paperless-ngx:2.20.4@sha256:06ca6a6c2a21cfebcc7c5f2e0d38f892dba4bcb090b8781a55d003c63cce386a
     container_name: paperless_${INSTANCE_NAME:-main}
     environment:
       # https://docs.paperless-ngx.com/configuration/
