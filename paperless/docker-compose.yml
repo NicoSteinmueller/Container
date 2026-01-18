@@ -25,10 +25,13 @@
 #
 # === KEYCLOAK / OIDC INTEGRATION ===
 # KEYCLOAK_CONFIG              - JSON-Konfiguration für OpenID Connect Provider
-#                                Format: {"openid_connect":{"APPS":[{"provider_id":"keycloak","name":"Keycloak","client_id":"paperless-main","secret":"CLIENT_SECRET","settings":{"server_url":"https://keycloak.example.com/realms/homelab/.well-known/openid-configuration"}}]}}
+#                                Format: {"openid_connect":{"APPS":[{"provider_id":"keycloak","name":"Keycloak","client_id":"paperless-main","secret":"CLIENT_SECRET","settings":{"server_url":"https://keycloak.example.com/realms/homelab/.well-known/openid-configuration"}}],"OAUTH_PKCE_ENABLED":true}}
 #                                (Default: leer)
 # PAPERLESS_ALLOW_SIGNUPS      - Automatisches Anlegen von Usern bei erstem SSO-Login (default: false)
 # PAPERLESS_DISABLE_REGULAR_LOGIN - Deaktiviert Login-Formular, erzwingt SSO (default: true)
+# PAPERLESS_LOGOUT_REDIRECT_URL - URL für Single Logout mit Keycloak
+#                                Format: https://keycloak.example.com/realms/homelab/protocol/openid-connect/logout?post_logout_redirect_uri=https://docs.example.com/paperless-main&client_id=paperless-main
+#                                (Default: leer)
 #
 # === ERWEITERTE KONFIGURATION ===
 # PAPERLESS_IGNORE_DATES       - Komma-getrennte Liste von Daten, die bei Erkennung ignoriert werden
@@ -62,7 +65,7 @@ services:
 
       # Basis-Konfiguration
       PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:-changeme}
-      # URL ohe path, z.B. paperless.deine-domain.de,192.168.178.50,localhost
+      # URL ohe path, z.B. paperless.deine-domain.de
       PAPERLESS_URL: ${PAPERLESS_URL:-}
       # Für Subpath-Deployment (z.B. /paperless-main)
       PAPERLESS_FORCE_SCRIPT_NAME: ${PAPERLESS_SUBPATH:-}
@@ -79,12 +82,14 @@ services:
 
       # OpenID Connect für Keycloak SSO
       PAPERLESS_APPS: allauth.socialaccount.providers.openid_connect
-      # z.B.: {"openid_connect":{"APPS":[{"provider_id":"keycloak","name":"Keycloak","client_id":"paperless-main","secret":"SECRET_MAIN","settings":{"server_url":"https://keycloak.example.com/realms/homelab/.well-known/openid-configuration"}}]}}
+      # z.B.: {"openid_connect":{"APPS":[{"provider_id":"keycloak","name":"Keycloak","client_id":"paperless-main","secret":"SECRET_MAIN","settings":{"server_url":"https://keycloak.example.com/realms/homelab/.well-known/openid-configuration"}}],"OAUTH_PKCE_ENABLED":true}}
       PAPERLESS_SOCIALACCOUNT_PROVIDERS: ${KEYCLOAK_CONFIG:-}
       # Automatisches Anlegen von Usern bei erstem Login mit Keycloak
       PAPERLESS_SOCIALACCOUNT_ALLOW_SIGNUPS: ${PAPERLESS_ALLOW_SIGNUPS:-false}
       # Deaktiviere regulären Login
       PAPERLESS_DISABLE_REGULAR_LOGIN: ${PAPERLESS_DISABLE_REGULAR_LOGIN:-true}
+      # Single Logout URL für Keycloak
+      PAPERLESS_LOGOUT_REDIRECT_URL: ${PAPERLESS_LOGOUT_REDIRECT_URL:-}
       PAPERLESS_SESSION_COOKIE_AGE: 86400  # 1 Tag
 
       # TODO: To prevent access to the Django admin, consider blocking /admin/ in your web server or reverse proxy configuration.

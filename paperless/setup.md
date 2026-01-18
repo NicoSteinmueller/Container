@@ -76,13 +76,20 @@ PAPERLESS_ALLOWED_HOSTS=docs.example.com
 
 # === KEYCLOAK SSO ===
 PAPERLESS_APPS=allauth.socialaccount.providers.openid_connect
-KEYCLOAK_CONFIG={"openid_connect":{"APPS":[{"provider_id":"keycloak","name":"Keycloak","client_id":"paperless-main","secret":"SECRET_MAIN","settings":{"server_url":"https://keycloak.example.com/realms/homelab/.well-known/openid-configuration"}}]}}
+KEYCLOAK_CONFIG={"openid_connect":{"APPS":[{"provider_id":"keycloak","name":"Keycloak","client_id":"paperless-main","secret":"SECRET_MAIN","settings":{"server_url":"https://keycloak.example.com/realms/homelab/.well-known/openid-configuration"}}],"OAUTH_PKCE_ENABLED":true}}
 PAPERLESS_ALLOW_SIGNUPS=false
 PAPERLESS_DISABLE_REGULAR_LOGIN=true
+PAPERLESS_LOGOUT_REDIRECT_URL=https://keycloak.example.com/realms/homelab/protocol/openid-connect/logout?post_logout_redirect_uri=https://docs.example.com/paperless-main&client_id=paperless-main
 
 # === HOST PATH MOUNTS ===
 PAPERLESS_DATA_BASE_PATH=/mnt/paperless
 ```
+
+**Wichtig für Single Logout:**
+- `PAPERLESS_LOGOUT_REDIRECT_URL` leitet nach dem lokalen Logout zu Keycloak weiter
+- Keycloak beendet dann die SSO-Session
+- `post_logout_redirect_uri` muss in Keycloak als **Valid post logout redirect URI** eingetragen sein
+- Nach Keycloak-Logout wird der Benutzer zurück zu Paperless geleitet (Login-Seite)
 
 **Wichtig für Subpath-Deployment:**
 - `PAPERLESS_URL` enthält die Basis-URL **OHNE** Subpath
@@ -281,6 +288,32 @@ Paperless-ngx unterstützt **OpenID Connect (OIDC)** für Single Sign-On mit Key
 
 Jede Paperless-Instanz bekommt eine eigene Gruppe in Keycloak, und nur Mitglieder dieser Gruppe dürfen sich anmelden.
 
+### ⚠️ Single Logout (SLO) - Wichtig!
+
+**Problem:** Standardmäßig meldet Paperless den Benutzer nur lokal ab. Die Keycloak-Session bleibt aktiv.
+
+**Lösung:** Mit `PAPERLESS_LOGOUT_REDIRECT_URL` wird der Benutzer nach dem lokalen Logout zu Keycloak weitergeleitet, wo auch die SSO-Session beendet wird.
+
+**Ablauf beim Logout:**
+1. ✅ Benutzer klickt in Paperless auf "Abmelden"
+2. ✅ Paperless beendet die lokale Session
+3. ✅ Weiterleitung zu Keycloak Logout-URL
+4. ✅ Keycloak beendet die SSO-Session
+5. ✅ Rückleitung zu Paperless Login-Seite
+
+**Konfiguration:**
+
+```env
+PAPERLESS_LOGOUT_REDIRECT_URL=https://keycloak.example.com/realms/homelab/protocol/openid-connect/logout?post_logout_redirect_uri=https://docs.example.com/paperless-main&client_id=paperless-main
+```
+
+**URL-Parameter erklärt:**
+- `https://keycloak.example.com/realms/homelab` - Dein Keycloak Realm
+- `post_logout_redirect_uri=https://docs.example.com/paperless-main` - Wohin nach Logout (muss in Keycloak erlaubt sein!)
+- `client_id=paperless-main` - Deine Client-ID in Keycloak
+
+**Wichtig:** Die `post_logout_redirect_uri` muss in Keycloak unter **Valid post logout redirect URIs** eingetragen sein!
+
 ### Client erstellen
 
 1. Gehe zu **Clients** → **Create client**
@@ -300,11 +333,16 @@ Jede Paperless-Instanz bekommt eine eigene Gruppe in Keycloak, und nur Mitgliede
 4. **Login settings:**
    - Root URL: `https://docs.example.com/paperless-main`
    - Valid redirect URIs: `https://docs.example.com/paperless-main/accounts/oidc/keycloak/login/callback/`
-   - Valid post logout redirect URIs: `https://docs.example.com/paperless-main/`
+   - Valid post logout redirect URIs: 
+     - `https://docs.example.com/paperless-main`
+     - `https://docs.example.com/paperless-main/`
+     - `https://docs.example.com/paperless-main/accounts/login/`
    - Web origins: `https://docs.example.com`
    - Klicke **Save**
    
-   **Wichtig bei Subpath-Deployment:** Alle URIs müssen den Subpath enthalten!
+   **Wichtig bei Subpath-Deployment:** 
+   - Alle URIs müssen den Subpath enthalten!
+   - Die **post logout redirect URIs** ermöglichen den Rücksprung nach dem Keycloak-Logout
 
 ### 1️⃣ Gruppen in Keycloak erstellen
 
