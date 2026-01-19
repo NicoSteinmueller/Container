@@ -133,9 +133,9 @@ services:
       # data bleibt als named volume (Container-intern)
       - data:/usr/src/paperless/data
       # consume/export/media werden vom Host gemappt: <BASE>/<INSTANCE>/<ordner>
-      - ${PAPERLESS_DATA_BASE_PATH:-./data}/${INSTANCE_NAME:-main}/media:/usr/src/paperless/media
-      - ${PAPERLESS_DATA_BASE_PATH:-./data}/${INSTANCE_NAME:-main}/export:/usr/src/paperless/export
-      - ${PAPERLESS_DATA_BASE_PATH:-./data}/${INSTANCE_NAME:-main}/consume:/usr/src/paperless/consume
+      - ${PAPERLESS_DATA_BASE_PATH:-./data}/media/${INSTANCE_NAME:-main}:/usr/src/paperless/media
+      - ${PAPERLESS_DATA_BASE_PATH:-./data}/export/${INSTANCE_NAME:-main}:/usr/src/paperless/export
+      - ${PAPERLESS_DATA_BASE_PATH:-./data}/consume/${INSTANCE_NAME:-main}:/usr/src/paperless/consume
     ports:
       - "${INSTANCE_PORT:-61349}:8000"
     depends_on:
