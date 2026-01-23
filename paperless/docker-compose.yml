@@ -16,12 +16,9 @@
 #                                (Default: ./data)
 #                                Beispiel: /mnt/paperless → /mnt/paperless/main/consume
 #
-# === URL & PATH-ROUTING (für Subpath-Deployment hinter Reverse Proxy) ===
-# PAPERLESS_URL                - Externe Basis-URL OHNE Subpath (z.B. https://docs.example.com)
+# === URL (für Deployment hinter Reverse Proxy) ===
+# PAPERLESS_URL                - Externe Basis-URL (z.B. https://docs.example.com)
 #                                (Default: leer)
-# PAPERLESS_SUBPATH            - Subpath für die Instanz (z.B. /paperless-main)
-#                                Wird verwendet für FORCE_SCRIPT_NAME und STATIC_URL
-#                                (Default: leer = Root-Deployment)
 #
 # === KEYCLOAK / OIDC INTEGRATION ===
 # KEYCLOAK_CONFIG              - JSON-Konfiguration für OpenID Connect Provider
@@ -67,18 +64,11 @@ services:
       PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:-changeme}
       # URL ohe path, z.B. paperless.deine-domain.de
       PAPERLESS_URL: ${PAPERLESS_URL:-}
-      # Für Subpath-Deployment (z.B. /paperless-main)
-      PAPERLESS_FORCE_SCRIPT_NAME: ${PAPERLESS_SUBPATH:-}
-      PAPERLESS_STATIC_URL: ${PAPERLESS_SUBPATH:-}/static/
       # Bei Einsatz hinter Reverse Proxy, um korrekte Host-Header zu verwenden
       PAPERLESS_USE_X_FORWARD_HOST: true
       PAPERLESS_USE_X_FORWARD_PORT: true
       # Cookie Prefix, wichtig bei mehreren Instanzen auf einem Host
       PAPERLESS_COOKIE_PREFIX: ${INSTANCE_NAME:-main}_
-
-      # TODO: Admin-Credentials für initialen Login
-#      PAPERLESS_ADMIN_USER: ${PAPERLESS_ADMIN_USER:-admin}
-#      PAPERLESS_ADMIN_PASSWORD: ${PAPERLESS_ADMIN_PASSWORD:-changeme}
 
       # OpenID Connect für Keycloak SSO
       PAPERLESS_APPS: allauth.socialaccount.providers.openid_connect
@@ -91,8 +81,6 @@ services:
       # Single Logout URL für Keycloak
       PAPERLESS_LOGOUT_REDIRECT_URL: ${PAPERLESS_LOGOUT_REDIRECT_URL:-}
       PAPERLESS_SESSION_COOKIE_AGE: 86400  # 1 Tag
-
-      # TODO: To prevent access to the Django admin, consider blocking /admin/ in your web server or reverse proxy configuration.
 
       # OCR Sprachen
       PAPERLESS_OCR_LANGUAGE: deu+eng
