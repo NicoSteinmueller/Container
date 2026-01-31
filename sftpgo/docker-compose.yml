@@ -1,45 +1,88 @@
-services:
-  database:
-    image: postgres:18.1-alpine3.23
-    container_name: sftpgo_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: sftpgo
-      POSTGRES_USER: sftpgo
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
-    volumes:
-      - ./postgres-data:/var/lib/postgresql
-    networks:
-      - sftpgo_network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sftpgo -d sftpgo"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    security_opt:
-      - no-new-privileges:true
+# ═══════════════════════════════════════════════════════════════════════════════
+# SFTPGo Docker Compose - Umgebungsvariablen Dokumentation
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# ┌──────────────────────┬──────────────────────────────────────────────────────┐
+# │ Variable             │ Beschreibung & Beispiele                             │
+# ├──────────────────────┼──────────────────────────────────────────────────────┤
+# │ PFLICHT-VARIABLEN                                                           │
+# ├──────────────────────┼──────────────────────────────────────────────────────┤
+# │ DB_PASSWORD          │ PostgreSQL Datenbank-Passwort                        │
+# │                      │ Standard: changeme (UNSICHER!)                       │
+# │                      │ Beispiel: MySecureP@ssw0rd!2024                      │
+# ├──────────────────────┼──────────────────────────────────────────────────────┤
+# │ DATA-VERWALTUNG                                                             │
+# ├──────────────────────┼──────────────────────────────────────────────────────┤
+# │ DATA_BASE_PATH       │ Basis-Pfad für lokale Volumes (data, config, backups)│
+# │                      │ Standard: . (aktuelles Verzeichnis)                 │
+# │                      │ Beispiel: /mnt/sftpgo oder C:\SFTPGo-Data            │
+# │                      │ Struktur: ${DATA_BASE_PATH}/data                     │
+# │                      │          ${DATA_BASE_PATH}/config                    │
+# │                      │          ${DATA_BASE_PATH}/backups                   │
+# ├──────────────────────┼──────────────────────────────────────────────────────┤
+# │ SICHERHEIT (für Produktion empfohlen)                                       │
+# ├──────────────────────┼──────────────────────────────────────────────────────┤
+# │ PROXY_ALLOWED        │ Erlaubte Proxy-IPs (kommasepariert)                  │
+# │                      │ Standard: leer (alle IPs - UNSICHER!)                │
+# │                      │ Beispiel: 172.18.0.0/16,10.0.0.0/8                   │
+# ├──────────────────────┼──────────────────────────────────────────────────────┤
+# │ ALLOWED_HOSTS        │ Erlaubte Hostnamen (kommasepariert)                  │
+# │                      │ Standard: leer (alle Hosts erlaubt)                  │
+# │                      │ Beispiel: sftpgo.example.com,files.example.com       │
+# ├──────────────────────┼──────────────────────────────────────────────────────┤
+# │ OIDC/SSO (optional)                                                         │
+# ├──────────────────────┼──────────────────────────────────────────────────────┤
+# │ OIDC_CONFIG_URL      │ OpenID Connect Discovery URL                         │
+# │                      │ Beispiel: https://keycloak.example.com/realms/       │
+# │                      │           myrealm/.well-known/openid-configuration   │
+# ├──────────────────────┼──────────────────────────────────────────────────────┤
+# │ OIDC_CLIENT_ID       │ OIDC Client ID                                       │
+# │                      │ Beispiel: sftpgo-webclient                           │
+# ├──────────────────────┼──────────────────────────────────────────────────────┤
+# │ OIDC_CLIENT_SECRET   │ OIDC Client Secret (sicher aufbewahren!)             │
+# │                      │ Beispiel: abc123-xyz789-secret                       │
+# ├──────────────────────┼──────────────────────────────────────────────────────┤
+# │ OIDC_REDIRECT_BASE   │ Basis-URL für OIDC (ohne /web/oidc/redirect)         │
+# │ _URL                 │ Beispiel: https://sftpgo.example.com                 │
+# └──────────────────────┴──────────────────────────────────────────────────────┘
+#
+# BEISPIEL .env DATEIEN:
+# ──────────────────────────────────────────────────────────────────────────────
+# Minimal:      DB_PASSWORD=MeinSicheresPasswort123!
+#
+# Mit Datenpfad: DB_PASSWORD=MeinSicheresPasswort123!
+#                DATA_BASE_PATH=/mnt/sftpgo
+#
+# Mit Proxy:    DB_PASSWORD=MeinSicheresPasswort123!
+#               PROXY_ALLOWED=172.18.0.0/16
+#               ALLOWED_HOSTS=sftpgo.example.com
+#               DATA_BASE_PATH=/mnt/sftpgo
+#
+# Mit OIDC:     DB_PASSWORD=MeinSicheresPasswort123!
+#               PROXY_ALLOWED=172.18.0.0/16
+#               ALLOWED_HOSTS=sftpgo.example.com
+#               DATA_BASE_PATH=/mnt/sftpgo
+#               OIDC_CONFIG_URL=https://keycloak.example.com/realms/myrealm/.well-known/openid-configuration
+#               OIDC_CLIENT_ID=sftpgo-webclient
+#               OIDC_CLIENT_SECRET=geheimer-schluessel
+#               OIDC_REDIRECT_BASE_URL=https://sftpgo.example.com
+# ═══════════════════════════════════════════════════════════════════════════════
 
+services:
   sftpgo:
-    image: drakkan/sftpgo:v2.7.0
+    image: drakkan/sftpgo:v2.7.0-alpine
     container_name: sftpgo
     restart: unless-stopped
     depends_on:
       database:
         condition: service_healthy
     ports:
-      # WebClient (öffentlich über NPM): Port 8080
-      # WebAdmin (nur intern): Port 8081 - NUR im lokalen Netzwerk erreichbar
-      # SFTP (öffentlich über NPM Stream): Port 2022
-
-      - "8080:8080"   # WebClient → NPM Proxy Host (öffentlich)
-      - "127.0.0.1:8081:8081"   # WebAdmin → nur lokal erreichbar
-      - "2022:2022"   # SFTP → NPM TCP Stream (öffentlich)
+      - "48214:8080"   # WebClient
+      - "48215:2022"   # SFTP
     volumes:
-      - ./data:/srv/sftpgo
-      - ./config:/var/lib/sftpgo
-      - ./backups:/srv/sftpgo/backups
+      - ${DATA_BASE_PATH:-.}/data:/srv/sftpgo/data
+      - ${DATA_BASE_PATH:-.}/config:/var/lib/sftpgo
+      - ${DATA_BASE_PATH:-.}/backups:/srv/sftpgo/backups
     environment:
       # Zeit nach der ein inaktiver Benutzer automatisch abgemeldet wird (in Minuten, 0 = deaktiviert)
       SFTPGO_COMMON__IDLE_TIMEOUT: 15
@@ -60,10 +103,9 @@ services:
       SFTPGO_COMMON__PROXY_PROTOCOL: 1
       # Liste erlaubter Proxy-IPs (Kommasepariert). Leer = alle IPs erlaubt (UNSICHER!)
       # Beispiel: 172.18.0.0/16,10.0.0.0/8 für Docker-Netzwerke
-      # WICHTIG: Passen Sie dies an Ihr Netzwerk an!
-      SFTPGO_COMMON__PROXY_ALLOWED: # TODO
+      SFTPGO_COMMON__PROXY_ALLOWED: ${PROXY_ALLOWED:-}
       # IPs, die von Proxy-Checks übersprungen werden sollen (optional)
-      SFTPGO_COMMON__PROXY_SKIPPED: # TODO
+      SFTPGO_COMMON__PROXY_SKIPPED:
       # Maximale Anzahl gleichzeitiger Verbindungen (0 = unbegrenzt)
       SFTPGO_COMMON__MAX_TOTAL_CONNECTIONS: 300
       # Maximale Anzahl gleichzeitiger Verbindungen pro Host (0 = unbegrenzt)
@@ -147,7 +189,6 @@ services:
       SFTPGO_DATA_PROVIDER__DRIVER: postgresql
       # Datenbank-Name
       SFTPGO_DATA_PROVIDER__NAME: sftpgo
-      # TODO Datenbank Einstellungen für Postgres vornehmen
       # Datenbank-Host
       SFTPGO_DATA_PROVIDER__HOST: database
       # Datenbank-Port
@@ -172,7 +213,7 @@ services:
       # Adresse für HTTP Server (leer lassen für alle Interfaces)
       SFTPGO_HTTPD__BINDINGS__0__ADDRESS: 0.0.0.0
       # WebAdmin Interface deaktivieren (nur auf Binding 1)
-      SFTPGO_HTTPD__BINDINGS__0__ENABLE_WEB_ADMIN: false
+      SFTPGO_HTTPD__BINDINGS__0__ENABLE_WEB_ADMIN: true
       # WebClient Interface aktivieren
       SFTPGO_HTTPD__BINDINGS__0__ENABLE_WEB_CLIENT: true
       # REST API deaktivieren (nur auf Binding 1)
@@ -209,57 +250,38 @@ services:
       #   1 = Link zur WebClient-Login-Seite wird auf Admin-Login-Seite versteckt
       #   2 = Link zur WebAdmin-Login-Seite wird auf Client-Login-Seite versteckt
       #   3 = beide Login-Links werden versteckt
-      SFTPGO_HTTPD__BINDINGS__0__HIDE_LOGIN_URL: 2
+      SFTPGO_HTTPD__BINDINGS__0__HIDE_LOGIN_URL: 0
       # OpenAPI Schema aktivieren
       SFTPGO_HTTPD__BINDINGS__0__RENDER_OPENAPI: false
       # Sprache (unterstützt: en, it, de, fr)
       SFTPGO_HTTPD__BINDINGS__0__LANGUAGES: de
       # --------------------------------------------------------
-      # Binding 1: WebAdmin (nur lokal, Port 8081)
-      SFTPGO_HTTPD__BINDINGS__1__PORT: 8081
-      # Adresse für HTTP Server (nur localhost)
-      SFTPGO_HTTPD__BINDINGS__1__ADDRESS: 0.0.0.0
-      # WebAdmin Interface aktivieren
-      SFTPGO_HTTPD__BINDINGS__1__ENABLE_WEB_ADMIN: true
-      # WebClient Interface deaktivieren
-      SFTPGO_HTTPD__BINDINGS__1__ENABLE_WEB_CLIENT: false
-      # REST API aktivieren
-      SFTPGO_HTTPD__BINDINGS__1__ENABLE_REST_API: true
-      # Loginmethoden (siehe Binding 0 für Details)
-      SFTPGO_HTTPD__BINDINGS__1__DISABLED_LOGIN_METHODS: 0
-      # Proxy Mode deaktiviert (kein Reverse Proxy)
-      SFTPGO_HTTPD__BINDINGS__1__PROXY_MODE: 0
-      # OpenAPI Schema aktivieren
-      SFTPGO_HTTPD__BINDINGS__1__RENDER_OPENAPI: true
-      # Sprache
-      SFTPGO_HTTPD__BINDINGS__1__LANGUAGES: de
-      # --------------------------------------------------------
-      # OpenID Einstellungen
+      # OpenID Einstellungen (optional - bei Bedarf aktivieren)
       # OIDC URL (z.B. Keycloak, Google, etc.)
-#      SFTPGO_HTTPD__BINDINGS__0__OIDC__CONFIG_URL: # TODO: OIDC Konfigurations-URL
-#      # OIDC Client ID
-#      SFTPGO_HTTPD__BINDINGS__0__OIDC__CLIENT_ID: # TODO: OIDC Client ID
-#      # OIDC Client Secret
-#      SFTPGO_HTTPD__BINDINGS__0__OIDC__CLIENT_SECRET: # TODO: OIDC
-#      # SFTPGo Redirect URL (suffix /web/oidc/redirect wird automatisch hinzugefügt)
-#      SFTPGO_HTTPD__BINDINGS__0__OIDC__REDIRECT_BASE_URL: # TODO: OIDC Redirect URL
-#      # OIDC Username Feld im ID Token
-#      SFTPGO_HTTPD__BINDINGS__0__OIDC__USERNAME_FIELD: preferred_username
-#      # OIDC Scopes, die angefordert werden
-#      SFTPGO_HTTPD__BINDINGS__0__OIDC__SCOPES: openid,profile,email
-#      # OIDC Role Feld im ID Token (optional)
-#      SFTPGO_HTTPD__BINDINGS__0__OIDC__ROLE_FIELD:
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__CONFIG_URL: ${OIDC_CONFIG_URL:-}
+      # OIDC Client ID
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      # OIDC Client Secret
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      # SFTPGo Redirect URL (suffix /web/oidc/redirect wird automatisch hinzugefügt)
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__REDIRECT_BASE_URL: ${OIDC_REDIRECT_BASE_URL:-}
+      # OIDC Username Feld im ID Token
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__USERNAME_FIELD: preferred_username
+      # OIDC Scopes, die angefordert werden
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__SCOPES: openid,profile,email
+      # OIDC Role Feld im ID Token (optional)
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__ROLE_FIELD:
       # --------------------------------------------------------
       # Sicherheitseinstellungen für HTTPD
       # Sicherheitskonfiguration aktivieren/deaktivieren
       SFTPGO_HTTPD__BINDINGS__0__SECURITY__ENABLED: true
       # Erlaubte Hostnamen (leer = alle erlaubt, empfohlen: Ihre Domain angeben)
       # Beispiel: example.com,sftpgo.example.com
-      SFTPGO_HTTPD__BINDINGS__0__SECURITY__ALLOWED_HOSTS: # TODO
+      SFTPGO_HTTPD__BINDINGS__0__SECURITY__ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
       # Liste an Header Keys, die die tatsächliche Hostname-Information enthalten (z.B. X-Forwarded-Host)
       SFTPGO_HTTPD__BINDINGS__0__SECURITY__HOSTS_PROXY_HEADERS: X-Forwarded-Host
       # HTTPS Redirect aktivieren (nur wenn hinter Reverse Proxy mit HTTPS)
-      SFTPGO_HTTPD__BINDINGS__0__SECURITY__HTTPS_REDIRECT: true
+      SFTPGO_HTTPD__BINDINGS__0__SECURITY__HTTPS_REDIRECT: false
       # Liste an Header Keys für HTTPS-Erkennung
       SFTPGO_HTTPD__BINDINGS__0__SECURITY__HTTPS_PROXY_HEADERS: X-Forwarded-Proto
       # HTTP Strict Transport Security (HSTS) in Sekunden (0 = deaktiviert)
@@ -306,14 +328,13 @@ services:
       # Logo Datei Pfad 256x256 px empfohlen (in Static Files Verzeichnis)
       #SFTPGO_HTTPD__BINDINGS__0__BRANDING__WEB_CLIENT__LOGO_PATH: /var/lib/logo.png
       # --------------------------------------------------------
-      # TODO: Zertifikat?
       # Sponsoren Link verstecken
       SFTPGO_HTTPD__HIDE_SUPPORT_LINK: true
       ###########################################################
       # Telemetrie
       # bietet die Endpunkte /healthz und /metrics (opt. /debug/pprof/ bei Profiler aktiv)
       # Telemetrie Port (0 = deaktiviert)
-      SFTPGO_TELEMETRY__BIND_PORT: 43155
+      SFTPGO_TELEMETRY__BIND_PORT: 0
       # Telemetrie Adresse (leer lassen für alle Interfaces, Standard: 127.0.0.1)
       SFTPGO_TELEMETRY__BIND_ADDRESS: 127.0.0.1
       # Profiler aktivieren
@@ -337,7 +358,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 30s
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -351,7 +372,32 @@ services:
     tmpfs:
       - /tmp:noexec,nosuid,size=100m
 
+  database:
+    image: postgres:18.1-alpine3.23
+    container_name: sftpgo_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sftpgo
+      POSTGRES_USER: sftpgo
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - postgres:/var/lib/postgresql
+    networks:
+      - sftpgo_network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U sftpgo -d sftpgo" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+
 networks:
   sftpgo_network:
     name: sftpgo_network
+
+volumes:
+  postgres:
 
