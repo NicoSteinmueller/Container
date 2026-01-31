@@ -150,7 +150,7 @@ services:
       POSTGRES_USER: paperless
       POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
     volumes:
-      - postgres:/var/lib/postgresql/data
+      - postgres:/var/lib/postgresql
     networks:
       - paperless-instance-network
     healthcheck:
