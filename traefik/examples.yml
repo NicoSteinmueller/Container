@@ -1,0 +1,330 @@
+# ============================================
+# BEISPIEL: Service mit Traefik Integration
+# ============================================
+# Diese Datei zeigt verschiedene Konfigurationsbeispiele
+# für die Integration von Services mit Traefik
+
+# ============================================
+# BEISPIEL 1: Einfacher Web-Service
+# ============================================
+version: '3.9'
+
+services:
+  webapp:
+    image: nginx:alpine
+    container_name: webapp
+    networks:
+      - proxy
+    labels:
+      # Traefik aktivieren
+      - "traefik.enable=true"
+
+      # HTTP Router (wird automatisch zu HTTPS weitergeleitet)
+      - "traefik.http.routers.webapp.rule=Host(`webapp.localhost`)"
+      - "traefik.http.routers.webapp.entrypoints=websecure"
+
+      # SSL aktivieren
+      - "traefik.http.routers.webapp.tls=true"
+      # Optional: Let's Encrypt aktivieren
+      # - "traefik.http.routers.webapp.tls.certresolver=letsencrypt"
+
+      # Service-Port (Standard: 80, nur nötig wenn anders)
+      - "traefik.http.services.webapp.loadbalancer.server.port=80"
+
+      # Middlewares hinzufügen
+      - "traefik.http.routers.webapp.middlewares=secureHeaders@file,compress@file"
+
+networks:
+  proxy:
+    external: true
+
+# ============================================
+# BEISPIEL 2: Service mit eigenem Netzwerk + Traefik
+# ============================================
+---
+version: '3.9'
+
+services:
+  app:
+    image: myapp:latest
+    container_name: myapp
+    networks:
+      - internal  # Internes Netzwerk für DB-Verbindung
+      - proxy     # Traefik-Netzwerk für externen Zugriff
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.myapp.rule=Host(`myapp.example.com`)"
+      - "traefik.http.routers.myapp.entrypoints=websecure"
+      - "traefik.http.routers.myapp.tls=true"
+      - "traefik.http.routers.myapp.tls.certresolver=letsencrypt"
+      - "traefik.http.services.myapp.loadbalancer.server.port=3000"
+      # Nur aus lokalem Netzwerk erreichbar
+      - "traefik.http.routers.myapp.middlewares=localOnly@file"
+
+  database:
+    image: postgres:16-alpine
+    container_name: myapp_db
+    networks:
+      - internal  # Nur im internen Netzwerk, nicht über Traefik erreichbar
+    environment:
+      POSTGRES_PASSWORD: changeme
+
+networks:
+  internal:
+    driver: bridge
+  proxy:
+    external: true
+
+# ============================================
+# BEISPIEL 3: Service mit BasicAuth
+# ============================================
+---
+version: '3.9'
+
+services:
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    networks:
+      - proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.rule=Host(`portainer.localhost`)"
+      - "traefik.http.routers.portainer.entrypoints=websecure"
+      - "traefik.http.routers.portainer.tls=true"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+
+      # BasicAuth Middleware
+      # Passwort generieren: echo $(htpasswd -nb admin password) | sed -e s/\\$/\\$\\$/g
+      - "traefik.http.routers.portainer.middlewares=portainer-auth"
+      - "traefik.http.middlewares.portainer-auth.basicauth.users=admin:$$apr1$$8EVjn/nj$$GiLUZqcbueTFeD23SuB6x0"
+
+networks:
+  proxy:
+    external: true
+
+volumes:
+  portainer_data:
+
+# ============================================
+# BEISPIEL 4: Service mit Subdomain UND Subpath
+# ============================================
+---
+version: '3.9'
+
+services:
+  api:
+    image: my-api:latest
+    container_name: api
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+
+      # Mehrere Routen für denselben Service
+      # Route 1: Subdomain
+      - "traefik.http.routers.api-subdomain.rule=Host(`api.example.com`)"
+      - "traefik.http.routers.api-subdomain.entrypoints=websecure"
+      - "traefik.http.routers.api-subdomain.tls=true"
+      - "traefik.http.routers.api-subdomain.tls.certresolver=letsencrypt"
+
+      # Route 2: Subpath
+      - "traefik.http.routers.api-path.rule=Host(`example.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.api-path.entrypoints=websecure"
+      - "traefik.http.routers.api-path.tls=true"
+      - "traefik.http.routers.api-path.tls.certresolver=letsencrypt"
+
+      # Middleware: /api prefix entfernen bevor Request an Backend geht
+      - "traefik.http.routers.api-path.middlewares=api-stripprefix"
+      - "traefik.http.middlewares.api-stripprefix.stripprefix.prefixes=/api"
+
+      # Service-Port
+      - "traefik.http.services.api.loadbalancer.server.port=8080"
+
+networks:
+  proxy:
+    external: true
+
+# ============================================
+# BEISPIEL 5: Mehrere Container (Load Balancing)
+# ============================================
+---
+version: '3.9'
+
+services:
+  web1:
+    image: nginx:alpine
+    container_name: web1
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`web.localhost`)"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.services.web.loadbalancer.server.port=80"
+
+  web2:
+    image: nginx:alpine
+    container_name: web2
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`web.localhost`)"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.services.web.loadbalancer.server.port=80"
+
+networks:
+  proxy:
+    external: true
+
+# Traefik verteilt automatisch Load zwischen web1 und web2
+
+# ============================================
+# BEISPIEL 6: Websocket-Support
+# ============================================
+---
+version: '3.9'
+
+services:
+  websocket-app:
+    image: my-websocket-app:latest
+    container_name: websocket-app
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ws.rule=Host(`ws.example.com`)"
+      - "traefik.http.routers.ws.entrypoints=websecure"
+      - "traefik.http.routers.ws.tls=true"
+      - "traefik.http.services.ws.loadbalancer.server.port=8080"
+
+      # Websocket-spezifische Headers
+      - "traefik.http.middlewares.ws-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
+      - "traefik.http.routers.ws.middlewares=ws-headers"
+
+networks:
+  proxy:
+    external: true
+
+# ============================================
+# BEISPIEL 7: Redirect (www zu non-www)
+# ============================================
+---
+version: '3.9'
+
+services:
+  mysite:
+    image: nginx:alpine
+    container_name: mysite
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+
+      # Haupt-Route (non-www)
+      - "traefik.http.routers.mysite.rule=Host(`example.com`)"
+      - "traefik.http.routers.mysite.entrypoints=websecure"
+      - "traefik.http.routers.mysite.tls=true"
+      - "traefik.http.services.mysite.loadbalancer.server.port=80"
+
+      # Redirect www -> non-www
+      - "traefik.http.routers.mysite-www.rule=Host(`www.example.com`)"
+      - "traefik.http.routers.mysite-www.entrypoints=websecure"
+      - "traefik.http.routers.mysite-www.tls=true"
+      - "traefik.http.routers.mysite-www.middlewares=redirect-www"
+      - "traefik.http.middlewares.redirect-www.redirectregex.regex=^https://www\\.(.+)"
+      - "traefik.http.middlewares.redirect-www.redirectregex.replacement=https://$${1}"
+      - "traefik.http.middlewares.redirect-www.redirectregex.permanent=true"
+
+networks:
+  proxy:
+    external: true
+
+# ============================================
+# BEISPIEL 8: Rate Limiting pro Service
+# ============================================
+---
+version: '3.9'
+
+services:
+  public-api:
+    image: my-public-api:latest
+    container_name: public-api
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.publicapi.rule=Host(`api.example.com`)"
+      - "traefik.http.routers.publicapi.entrypoints=websecure"
+      - "traefik.http.routers.publicapi.tls=true"
+      - "traefik.http.services.publicapi.loadbalancer.server.port=3000"
+
+      # Custom Rate Limit für diesen Service
+      - "traefik.http.routers.publicapi.middlewares=api-ratelimit"
+      - "traefik.http.middlewares.api-ratelimit.ratelimit.average=50"
+      - "traefik.http.middlewares.api-ratelimit.ratelimit.burst=20"
+      - "traefik.http.middlewares.api-ratelimit.ratelimit.period=1m"
+
+networks:
+  proxy:
+    external: true
+
+# ============================================
+# BEISPIEL 9: Sticky Sessions (für Cluster)
+# ============================================
+---
+version: '3.9'
+
+services:
+  app:
+    image: my-app:latest
+    deploy:
+      replicas: 3
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`app.example.com`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.services.app.loadbalancer.server.port=8080"
+
+      # Sticky Sessions (Cookie-basiert)
+      - "traefik.http.services.app.loadbalancer.sticky.cookie=true"
+      - "traefik.http.services.app.loadbalancer.sticky.cookie.name=app_session"
+      - "traefik.http.services.app.loadbalancer.sticky.cookie.secure=true"
+      - "traefik.http.services.app.loadbalancer.sticky.cookie.httpOnly=true"
+
+networks:
+  proxy:
+    external: true
+
+# ============================================
+# BEISPIEL 10: Health Checks
+# ============================================
+---
+version: '3.9'
+
+services:
+  backend:
+    image: my-backend:latest
+    container_name: backend
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`backend.example.com`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.services.backend.loadbalancer.server.port=8080"
+
+      # Health Check konfigurieren
+      - "traefik.http.services.backend.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.backend.loadbalancer.healthcheck.interval=10s"
+      - "traefik.http.services.backend.loadbalancer.healthcheck.timeout=3s"
+
+networks:
+  proxy:
+    external: true

@@ -1,0 +1,61 @@
+version: '3.9'
+
+services:
+  traefik:
+    image: traefik:3.2
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - proxy
+    ports:
+      # HTTP
+      - "80:80"
+      # HTTPS
+      - "443:443"
+      # Traefik Dashboard (Optional, kann auch über HTTPS exposed werden)
+      - "8080:8080"
+    environment:
+      # Cloudflare API Token (optional, für DNS Challenge)
+      # CF_API_EMAIL: ${CF_API_EMAIL}
+      # CF_DNS_API_TOKEN: ${CF_DNS_API_TOKEN}
+      TZ: Europe/Berlin
+    volumes:
+      # Docker Socket (read-only für Auto-Discovery)
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Traefik Konfigurationsdateien
+      - ./traefik.yml:/traefik.yml:ro
+      - ./config.yml:/config.yml:ro
+      # SSL Zertifikate (Let's Encrypt)
+      - ./letsencrypt:/letsencrypt
+      # Logs
+      - ./logs:/logs
+    labels:
+      # Dashboard aktivieren
+      - "traefik.enable=true"
+
+      # Dashboard HTTP-Router
+      - "traefik.http.routers.traefik.rule=Host(`traefik.localhost`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls=true"
+      # Optional: Let's Encrypt aktivieren
+      # - "traefik.http.routers.traefik.tls.certresolver=cloudflare"
+
+      # Dashboard Middleware (BasicAuth)
+      - "traefik.http.routers.traefik.middlewares=traefik-auth"
+      # Passwort: admin / generiert mit: echo $(htpasswd -nb admin password) | sed -e s/\\$/\\$\\$/g
+      # BITTE ÄNDERN! Verwende: htpasswd -nb username password
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=admin:$$apr1$$8EVjn/nj$$GiLUZqcbueTFeD23SuB6x0"
+
+      # Global Redirect HTTP zu HTTPS
+      - "traefik.http.routers.http-catchall.rule=hostregexp(`{host:.+}`)"
+      - "traefik.http.routers.http-catchall.entrypoints=web"
+      - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+
+networks:
+  proxy:
+    name: proxy
+    driver: bridge

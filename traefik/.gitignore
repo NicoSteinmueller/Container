@@ -1,0 +1,8 @@
+# Traefik Daten
+letsencrypt/
+logs/
+.env
+
+# Windows
+Thumbs.db
+desktop.ini
