@@ -14,7 +14,7 @@
 # │ DATA-VERWALTUNG                                                             │
 # ├──────────────────────┼──────────────────────────────────────────────────────┤
 # │ DATA_BASE_PATH       │ Basis-Pfad für lokale Volumes (data, config, backups)│
-# │                      │ Standard: . (aktuelles Verzeichnis)                 │
+# │                      │ Standard: . (aktuelles Verzeichnis)                  │
 # │                      │ Beispiel: /mnt/sftpgo oder C:\SFTPGo-Data            │
 # │                      │ Struktur: ${DATA_BASE_PATH}/data                     │
 # │                      │          ${DATA_BASE_PATH}/config                    │
@@ -34,7 +34,7 @@
 # ├──────────────────────┼──────────────────────────────────────────────────────┤
 # │ OIDC_CONFIG_URL      │ OpenID Connect Discovery URL                         │
 # │                      │ Beispiel: https://keycloak.example.com/realms/       │
-# │                      │           myrealm/.well-known/openid-configuration   │
+# │                      │           myrealm                                    │
 # ├──────────────────────┼──────────────────────────────────────────────────────┤
 # │ OIDC_CLIENT_ID       │ OIDC Client ID                                       │
 # │                      │ Beispiel: sftpgo-webclient                           │
@@ -62,7 +62,7 @@
 #               PROXY_ALLOWED=172.18.0.0/16
 #               ALLOWED_HOSTS=sftpgo.example.com
 #               DATA_BASE_PATH=/mnt/sftpgo
-#               OIDC_CONFIG_URL=https://keycloak.example.com/realms/myrealm/.well-known/openid-configuration
+#               OIDC_CONFIG_URL=https://keycloak.example.com/realms/myrealm
 #               OIDC_CLIENT_ID=sftpgo-webclient
 #               OIDC_CLIENT_SECRET=geheimer-schluessel
 #               OIDC_REDIRECT_BASE_URL=https://sftpgo.example.com
@@ -219,7 +219,7 @@ services:
       # REST API deaktivieren (nur auf Binding 1)
       SFTPGO_HTTPD__BINDINGS__0__ENABLE_REST_API: false
       # Loginmethoden
-      #   0 = alle Methoden aktiviert (Standard)
+      #   0 = alle Methoden aktiviert (Standard) - OIDC für Client, Formular für Admin
       #   1 = OIDC für WebAdmin UI deaktiviert
       #   2 = OIDC für WebClient UI deaktiviert
       #   4 = Login-Formular für WebAdmin UI deaktiviert
@@ -231,7 +231,9 @@ services:
       #   Werte können kombiniert werden, z.B.:
       #   12 (4+8) = Login-Formulare für WebAdmin und WebClient deaktiviert (nur OIDC)
       #   252 (4+8+16+32+64+128) = nur OIDC-Login erlaubt
-      #   Empfehlung: 0 wenn OIDC nicht konfiguriert ist, sonst 12 für reine OIDC-Nutzung
+      #   Empfehlung: 0 wenn OIDC nicht konfiguriert ist
+      #   Wichtig: Wenn OIDC konfiguriert ist, wird es nur für Client angezeigt, nicht für Admin!
+      #   Für Admin OIDC: Wert 0 belassen, Admin muss sich über /web/client einloggen
       SFTPGO_HTTPD__BINDINGS__0__DISABLED_LOGIN_METHODS: 0
       # Proxy Mode
       #   0 = deaktiviert (Standard)
@@ -258,6 +260,7 @@ services:
       # --------------------------------------------------------
       # OpenID Einstellungen (optional - bei Bedarf aktivieren)
       # OIDC URL (z.B. Keycloak, Google, etc.)
+      # https://keycloak.example.com/realms/myrealm + automatisch hinzugefügt ".well-known/openid-configuration"
       SFTPGO_HTTPD__BINDINGS__0__OIDC__CONFIG_URL: ${OIDC_CONFIG_URL:-}
       # OIDC Client ID
       SFTPGO_HTTPD__BINDINGS__0__OIDC__CLIENT_ID: ${OIDC_CLIENT_ID:-}
@@ -270,7 +273,7 @@ services:
       # OIDC Scopes, die angefordert werden
       SFTPGO_HTTPD__BINDINGS__0__OIDC__SCOPES: openid,profile,email
       # OIDC Role Feld im ID Token (optional)
-      SFTPGO_HTTPD__BINDINGS__0__OIDC__ROLE_FIELD:
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__ROLE_FIELD: sftpgo_role
       # --------------------------------------------------------
       # Sicherheitseinstellungen für HTTPD
       # Sicherheitskonfiguration aktivieren/deaktivieren
@@ -351,6 +354,9 @@ services:
       # SMTP Einstellungen (E-Mail Versand)
       # SMTP Server Adresse (Leer lassen um E-Mail Versand zu deaktivieren)
       SFTPGO_SMTP__HOST:
+      ###############################################################
+      # Logging Level (debug, info, warn, error)
+      SFTPGO_LOG_LEVEL: info
     networks:
       - sftpgo_network
     healthcheck:
