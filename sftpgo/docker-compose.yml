@@ -100,7 +100,7 @@ services:
       #   1 = aktiviert. Proxy Header wird versucht zu lesen, aber ignoriert wenn upstream IP nicht erlaubt ist
       #   2 = erforderlich. Verbindung wird abgelehnt wenn upstream IP nicht erlaubt ist aber Proxy Header gefunden wird
       # Wenn hinter Nginx Proxy Manager, verwenden Sie Mode 1 oder 2
-      SFTPGO_COMMON__PROXY_PROTOCOL: 1
+      SFTPGO_COMMON__PROXY_PROTOCOL: 2
       # Liste erlaubter Proxy-IPs (Kommasepariert). Leer = alle IPs erlaubt (UNSICHER!)
       # Beispiel: 172.18.0.0/16,10.0.0.0/8 für Docker-Netzwerke
       SFTPGO_COMMON__PROXY_ALLOWED: ${PROXY_ALLOWED:-}
