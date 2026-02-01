@@ -219,7 +219,7 @@ services:
       # REST API deaktivieren (nur auf Binding 1)
       SFTPGO_HTTPD__BINDINGS__0__ENABLE_REST_API: false
       # Loginmethoden
-      #   0 = alle Methoden aktiviert (Standard) - OIDC für Client, Formular für Admin
+      #   0 = alle Methoden aktiviert (Standard)
       #   1 = OIDC für WebAdmin UI deaktiviert
       #   2 = OIDC für WebClient UI deaktiviert
       #   4 = Login-Formular für WebAdmin UI deaktiviert
@@ -232,9 +232,7 @@ services:
       #   12 (4+8) = Login-Formulare für WebAdmin und WebClient deaktiviert (nur OIDC)
       #   252 (4+8+16+32+64+128) = nur OIDC-Login erlaubt
       #   Empfehlung: 0 wenn OIDC nicht konfiguriert ist
-      #   Wichtig: Wenn OIDC konfiguriert ist, wird es nur für Client angezeigt, nicht für Admin!
-      #   Für Admin OIDC: Wert 0 belassen, Admin muss sich über /web/client einloggen
-      SFTPGO_HTTPD__BINDINGS__0__DISABLED_LOGIN_METHODS: 0
+      SFTPGO_HTTPD__BINDINGS__0__DISABLED_LOGIN_METHODS: 252
       # Proxy Mode
       #   0 = deaktiviert (Standard)
       #   1 = Einstellung aus Common Section verwenden
@@ -272,7 +270,7 @@ services:
       SFTPGO_HTTPD__BINDINGS__0__OIDC__USERNAME_FIELD: preferred_username
       # OIDC Scopes, die angefordert werden
       SFTPGO_HTTPD__BINDINGS__0__OIDC__SCOPES: openid,profile,email
-      # OIDC Role Feld im ID Token (optional)
+      # OIDC Role Feld im ID Token, notwendig für Admin OIDC-Nutzung
       SFTPGO_HTTPD__BINDINGS__0__OIDC__ROLE_FIELD: sftpgo_role
       # --------------------------------------------------------
       # Sicherheitseinstellungen für HTTPD
@@ -280,7 +278,7 @@ services:
       SFTPGO_HTTPD__BINDINGS__0__SECURITY__ENABLED: true
       # Erlaubte Hostnamen (leer = alle erlaubt, empfohlen: Ihre Domain angeben)
       # Beispiel: example.com,sftpgo.example.com
-      SFTPGO_HTTPD__BINDINGS__0__SECURITY__ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
+      SFTPGO_HTTPD__BINDINGS__0__SECURITY__ALLOWED_HOSTS: ${ALLOWED_HOSTS:-},localhost:8080
       # Liste an Header Keys, die die tatsächliche Hostname-Information enthalten (z.B. X-Forwarded-Host)
       SFTPGO_HTTPD__BINDINGS__0__SECURITY__HOSTS_PROXY_HEADERS: X-Forwarded-Host
       # HTTPS Redirect aktivieren (nur wenn hinter Reverse Proxy mit HTTPS)
