@@ -354,7 +354,7 @@ services:
       SFTPGO_SMTP__HOST:
       ###############################################################
       # Logging Level (debug, info, warn, error)
-      SFTPGO_LOG_LEVEL: info
+      SFTPGO_LOG_LEVEL: debug
     networks:
       - sftpgo_network
     healthcheck:
