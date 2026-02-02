@@ -70,7 +70,7 @@
 
 services:
   sftpgo:
-    image: drakkan/sftpgo:v2.7.0-alpine
+    image: drakkan/sftpgo:v2.7.0-alpine@sha256:2262e0e7932bad780a6d843a994dba4f00003bc30f236f5680d8ded095897dd1
     container_name: sftpgo
     restart: unless-stopped
     depends_on:
@@ -378,7 +378,7 @@ services:
       - /tmp:noexec,nosuid,size=100m
 
   database:
-    image: postgres:18.1-alpine3.23
+    image: postgres:18.1-alpine3.23@sha256:aa6eb304ddb6dd26df23d05db4e5cb05af8951cda3e0dc57731b771e0ef4ab29
     container_name: sftpgo_postgres
     restart: unless-stopped
     environment:
