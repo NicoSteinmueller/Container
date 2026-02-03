@@ -22,7 +22,7 @@
       pinDigests: true,
     },
     {
-      description: 'Patch-Updates: Vollautomatisch',
+      description: 'Patch-Updates: Vollautomatisch ohne PR',
       matchUpdateTypes: [
         'patch',
       ],
@@ -32,9 +32,13 @@
       platformAutomerge: true,
       reviewersFromCodeOwners: false,
       assigneesFromCodeOwners: false,
+      minimumReleaseAge: '0 days',
+      internalChecksFilter: 'strict',
+      prCreation: 'not-pending',
+      groupName: null,
     },
     {
-      description: 'Digest-Updates: Vollautomatisch',
+      description: 'Digest-Updates: Vollautomatisch ohne PR',
       matchUpdateTypes: [
         'digest',
       ],
@@ -44,6 +48,10 @@
       platformAutomerge: true,
       reviewersFromCodeOwners: false,
       assigneesFromCodeOwners: false,
+      minimumReleaseAge: '0 days',
+      internalChecksFilter: 'strict',
+      prCreation: 'not-pending',
+      groupName: null,
     },
     {
       description: 'Minor-Updates: Automerge nach Genehmigung',
@@ -54,6 +62,18 @@
       automerge: true,
       automergeType: 'pr',
       platformAutomerge: true,
+      prBodyNotes: [
+        '### Release Notes',
+        '{{#if releases}}',
+        '{{#each releases}}',
+        '#### {{title}}',
+        '{{#if url}}[Release]({{{url}}}){{/if}}',
+        '{{#if body}}',
+        '{{{body}}}',
+        '{{/if}}',
+        '{{/each}}',
+        '{{/if}}',
+      ],
     },
     {
       description: 'Major-Updates: Manuelle Review erforderlich',
@@ -62,34 +82,26 @@
       ],
       enabled: true,
       automerge: false,
+      prBodyNotes: [
+        '### ⚠️ Breaking Changes',
+        '{{#if releases}}',
+        '{{#each releases}}',
+        '#### {{title}}',
+        '{{#if url}}[Release]({{{url}}}){{/if}}',
+        '{{#if body}}',
+        '{{{body}}}',
+        '{{/if}}',
+        '{{/each}}',
+        '{{/if}}',
+      ],
     },
     {
-      description: 'Backrest Updates - ein PR pro Datei',
-      matchFileNames: [
-        'backrest/docker-compose.yml',
+      description: 'Docker Compose Updates - pro Ordner gruppiert',
+      matchManagers: [
+        'docker-compose',
       ],
-      additionalBranchPrefix: 'backrest-',
-    },
-    {
-      description: 'Immich Updates - ein PR pro Datei',
-      matchFileNames: [
-        'immich/docker-compose.yml',
-      ],
-      additionalBranchPrefix: 'immich-',
-    },
-    {
-      description: 'Keycloak Updates - ein PR pro Datei',
-      matchFileNames: [
-        'keycloak/docker-compose.yml',
-      ],
-      additionalBranchPrefix: 'keycloak-',
-    },
-    {
-      description: 'Kopia Updates - ein PR pro Datei',
-      matchFileNames: [
-        'kopia/docker-compose.yml',
-      ],
-      additionalBranchPrefix: 'kopia-',
+      groupName: '{{parentDir}}',
+      additionalBranchPrefix: '{{parentDir}}-',
     },
   ],
   prConcurrentLimit: 10,
