@@ -9,6 +9,7 @@ services:
 
     networks:
       - proxy
+      - bond0
 
     ports:
       - "80:80"
@@ -23,3 +24,5 @@ services:
 networks:
   proxy:
     name: proxy
+  bond0:
+    external: true
