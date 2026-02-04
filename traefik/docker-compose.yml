@@ -23,6 +23,3 @@ services:
 networks:
   proxy:
     name: proxy
-  internal:
-    name: internal
-    driver: bond0
