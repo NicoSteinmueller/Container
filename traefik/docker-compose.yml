@@ -24,7 +24,7 @@ services:
       - --global.checkNewVersion=false
       - --global.sendAnonymousUsage=false
       # Log
-      - --log.level=DEBUG
+      - --log.level=DEBUG  # TODO change to INFO or ERROR in production
       # API
       - --api.dashboard=true
       - --api.insecure=true
