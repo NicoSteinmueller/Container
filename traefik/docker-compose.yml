@@ -37,9 +37,6 @@ services:
       # EntryPoints
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
-      - --entryPoints.websecure.http.tls=true
-      - --entryPoints.web.http.redirections.entryPoint.to=websecure
-      - --entryPoints.web.http.redirections.entryPoint.scheme=https
       # Let's Encrypt configuration
       - --certificatesresolvers.le.acme.email=nico.steinmueller@gmx.net
       - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
