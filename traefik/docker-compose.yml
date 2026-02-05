@@ -18,6 +18,7 @@ services:
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
 
     command:
       # Global
@@ -28,15 +29,24 @@ services:
       # API
       - --api.dashboard=true
       - --api.insecure=true
-      # EntryPoints
-      - --entrypoints.web.address=:80
-      - --entrypoints.websecure.address=:443
       # Providers
       - --providers.docker=true
       - --providers.docker.endpoint=unix:///var/run/docker.sock
       - --providers.docker.exposedByDefault=false
       - --providers.docker.network=proxy
+      # EntryPoints
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entryPoints.websecure.http.tls=true
+      - --entryPoints.web.http.redirections.entryPoint.to=websecure
+      - --entryPoints.web.http.redirections.entryPoint.scheme=https
+      # Let's Encrypt configuration
+      - --certificatesresolvers.le.acme.email=nico.steinmueller@gmx.net
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
 
+volumes:
+  letsencrypt:
 
 networks:
   proxy:
