@@ -1,0 +1,180 @@
+version: "3.9"
+
+# ============================================
+# KONFIGURIERBARE VARIABLEN (in Portainer ändern)
+# ============================================
+# POSTGRES_PASSWORD       - Datenbank-Passwort (default: changeme)
+# NEXTCLOUD_ADMIN_USER    - Admin-Benutzername (default: admin)
+# NEXTCLOUD_ADMIN_PASSWORD - Admin-Passwort (default: changeme)
+# NEXTCLOUD_TRUSTED_DOMAINS - Vertrauenswürdige Domains (default: localhost)
+# ============================================
+
+services:
+  # TODO
+  # https://github.com/docker-library/docs/blob/master/nextcloud/README.md
+  nextcloud:
+    image: nextcloud:31.0.13-apache
+    container_name: nextcloud
+    restart: unless-stopped
+    ports:
+      - "38080:80"
+    environment:
+      POSTGRES_HOST: database
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+
+#      Konfiguration für die automatische Einrichtung von Nextcloud, wenn es zum ersten Mal gestartet wird.
+#      NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_ADMIN_USER:-admin}
+#      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD:-changeme}
+
+      # Vertrauenswürdige Domains, die auf die Nextcloud-Instanz zugreifen dürfen.
+      # TODO: prüfen mit apache reverse proxy
+      NEXTCLOUD_TRUSTED_DOMAINS: ${NEXTCLOUD_TRUSTED_DOMAINS:-localhost}
+      # Aktualisiert die htaccess-Datei (Sicherheitsregeln) automatisch, beim Starten des Containers.
+      NEXTCLOUD_INIT_HTACCESS: true
+
+      # Redis
+      REDIS_HOST: redis
+
+
+      # SMTP (für Benachrichtigungen, etc.)
+      # Hostname des SMTP-Servers (erforderlich)
+#      SMTP_HOST:
+      # Verschlüsselung: ssl oder tls
+#      SMTP_SECURE:
+      # SMTP-Port (default: 465 für SSL, unverschlüsselt: 25, STARTTLS: 587)
+#      SMTP_PORT:
+      # Authentifizierungsmethode (default: LOGIN, ohne Auth: PLAIN)
+#      SMTP_AUTHTYPE:
+      # Benutzername für SMTP-Authentifizierung
+#      SMTP_NAME:
+      # Passwort für SMTP-Authentifizierung
+#      SMTP_PASSWORD:
+      # Lokaler Teil der Absenderadresse (z.B. "noreply")
+#      MAIL_FROM_ADDRESS:
+      # Domain für E-Mails (z.B. "example.com")
+#      MAIL_DOMAIN:
+
+      # PHP-Limits
+      # Maximale Speichergröße für PHP-Skripte (default: 512M)
+#      PHP_MEMORY_LIMIT: 512M
+      # Upload-Limit für große Dateien (setzt post_max_size und upload_max_filesize) (default: 512M)
+      # evtl. müssen weitere Werte angepasst werden
+      # https://docs.nextcloud.com/server/latest/admin_manual/configuration_files/big_file_upload_configuration.html
+#      PHP_UPLOAD_LIMIT: 512M
+
+      # Apache-Limits
+      # Maximale Größe des HTTP-Request-Body (default: 1073741824 = 1GiB, 0 = unbegrenzt)
+      # https://docs.nextcloud.com/server/latest/admin_manual/configuration_files/big_file_upload_configuration.html#apache
+#      APACHE_BODY_LIMIT: 1073741824
+
+
+
+#  Using the apache image behind a reverse proxy and auto configure server host and protocol
+#
+#  The apache image will replace the remote addr (IP address visible to Nextcloud) with the IP address from X-Real-IP if the request is coming from a proxy in 10.0.0.0/8, 172.16.0.0/12 or 192.168.0.0/16 by default. If you want Nextcloud to pick up the server host (HTTP_X_FORWARDED_HOST), protocol (HTTP_X_FORWARDED_PROTO) and client IP (HTTP_X_FORWARDED_FOR) from a trusted proxy, then disable rewrite IP and add the reverse proxy's IP address to TRUSTED_PROXIES.
+#
+#APACHE_DISABLE_REWRITE_IP (not set by default): Set to 1 to disable rewrite IP.
+#TRUSTED_PROXIES (empty by default): A space-separated list of trusted proxies. CIDR notation is supported for IPv4.
+#
+#  If the TRUSTED_PROXIES approach does not work for you, try using fixed values for overwrite parameters.
+#
+#OVERWRITEHOST (empty by default): Set the hostname of the proxy. Can also specify a port.
+#OVERWRITEPROTOCOL (empty by default): Set the protocol of the proxy, http or https.
+#OVERWRITECLIURL (empty by default): Set the cli url of the proxy (e.g. https://mydnsname.example.com)
+#OVERWRITEWEBROOT (empty by default): Set the absolute path of the proxy.
+#OVERWRITECONDADDR (empty by default): Regex to overwrite the values dependent on the remote address.
+#
+#  Check the Nexcloud documentation for more details.
+#  https://docs.nextcloud.com/server/latest/admin_manual/configuration_server/reverse_proxy_configuration.html
+#
+#  Keep in mind that once set, removing these environment variables won't remove these values from the configuration file, due to how Nextcloud merges configuration files together.
+
+# TODO: https://github.com/docker-library/docs/blob/master/nextcloud/README.md#make-your-nextcloud-available-from-the-internet
+
+#      - TZ=Europe/Berlin
+    volumes:
+      - nextcloud-data:/var/www/html # Main folder, needed for updating
+      - nextcloud-apps:/var/www/html/custom_apps # installed / modified apps
+      - nextcloud-config:/var/www/html/config # local configuration
+      - nextcloud-theme:/var/www/html/themes # theming/branding
+      - {NEXTCLOUD_DATA:-./data}:/var/www/html/data # the actual data of your Nextcloud
+        # TODO Paperless
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80/status.php || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - nextcloud-network
+
+  database:
+    image: postgres:18.1-alpine3.23@sha256:aa6eb304ddb6dd26df23d05db4e5cb05af8951cda3e0dc57731b771e0ef4ab29
+    container_name: nextcloud_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
+    volumes:
+      - postgres:/var/lib/postgresql
+    networks:
+      - nextcloud-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nextcloud -d nextcloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+
+# TODO siehe paperless
+  redis:
+    image: redis:7.4.2-alpine@sha256:de13e74e14b98eb96bdf886791ae47686c3c5d29f9d5f85ea55206843e3fce26
+    container_name: nextcloud_redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-changeme}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - nextcloud-network
+
+  # TODO
+  cron:
+    image: nextcloud:30.1.0-apache@sha256:3f0b8c3a09b8b5e97b6c93d9a4b3b8e5b7a2c6d8f1a3b7e9c5d8f2a6b9c3d7e1
+    container_name: nextcloud_cron
+    restart: unless-stopped
+    volumes:
+      - nextcloud-data:/var/www/html
+      - nextcloud-config:/var/www/html/config
+      - nextcloud-apps:/var/www/html/custom_apps
+      - nextcloud-theme:/var/www/html/themes
+    entrypoint: /cron.sh
+    depends_on:
+      - database
+      - redis
+    networks:
+      - nextcloud-network
+
+volumes:
+  nextcloud-data:
+  nextcloud-config:
+  nextcloud-apps:
+  nextcloud-theme:
+  postgres:
+
+networks:
+  nextcloud-network:
+    name: nextcloud-network
