@@ -96,8 +96,12 @@ services:
 
 #      - TZ=Europe/Berlin
     volumes:
-      - ${NEXTCLOUD_DATA:-./data}:/var/www/html
-        # TODO Paperless
+      - nextcloud:/var/www/html # Main folder, needed for updating
+      - ${NEXTCLOUD_DATA:-./data}/apps:/var/www/html/custom_apps # installed / modified apps
+      - ${NEXTCLOUD_DATA:-./data}/config:/var/www/html/config # local configuration
+      - ${NEXTCLOUD_DATA:-./data}/themes:/var/www/html/themes # theming/branding
+      - ${NEXTCLOUD_DATA:-./data}/data:/var/www/html/data # the actual data of your Nextcloud
+      # TODO Paperless
         # TODO evtl. komplettes html auf lokalen Ordner mappen
     depends_on:
       database:
@@ -119,7 +123,11 @@ services:
     restart: unless-stopped
     volumes:
       # TODO gleiche wie nextcloud
-      - ${NEXTCLOUD_DATA:-./data}:/var/www/html
+      - nextcloud:/var/www/html # Main folder, needed for updating
+      - ${NEXTCLOUD_DATA:-./data}/apps:/var/www/html/custom_apps # installed / modified apps
+      - ${NEXTCLOUD_DATA:-./data}/config:/var/www/html/config # local configuration
+      - ${NEXTCLOUD_DATA:-./data}/themes:/var/www/html/themes # theming/branding
+      - ${NEXTCLOUD_DATA:-./data}/data:/var/www/html/data # the actual data of your Nextcloud
     entrypoint: /cron.sh
     depends_on:
       database:
@@ -170,10 +178,7 @@ services:
       - nextcloud-network
 
 volumes:
-  nextcloud-data:
-  nextcloud-config:
-  nextcloud-apps:
-  nextcloud-theme:
+  nextcloud:
   postgres:
 
 networks:
