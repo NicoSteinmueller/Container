@@ -38,7 +38,7 @@
 
 services:
   paperless:
-    image: ghcr.io/paperless-ngx/paperless-ngx:2.20.5@sha256:665f2f5cc5482ea2e44f90a7fa170908aaeb95d8d3c70e17f746de8fcb81f644
+    image: ghcr.io/paperless-ngx/paperless-ngx:2.20.6@sha256:a28330462994b937938e02aaa5632a1effcc7f9acfba96c1bef9c50e1167a027
     container_name: paperless_${INSTANCE_NAME:-main}
     environment:
       # https://docs.paperless-ngx.com/configuration/
@@ -161,7 +161,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: docker.io/valkey/valkey:9.0.1-alpine3.23@sha256:c106a0c03bcb23cbdf9febe693114cb7800646b11ca8b303aee7409de005faa8
+    image: docker.io/valkey/valkey:9.0.2-alpine3.23@sha256:68677f85c863830af7836ff07c4a13b7f085ebeff62f4dedb71499ca27d229f2
     container_name: paperless_${INSTANCE_NAME:-main}_redis
     networks:
       - paperless-instance-network
