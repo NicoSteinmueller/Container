@@ -91,7 +91,11 @@ services:
 #
 #  Keep in mind that once set, removing these environment variables won't remove these values from the configuration file, due to how Nextcloud merges configuration files together.
 
-# TODO: https://github.com/docker-library/docs/blob/master/nextcloud/README.md#make-your-nextcloud-available-from-the-internet
+      #
+
+    
+
+
 
 #      - TZ=Europe/Berlin
     volumes:
@@ -99,19 +103,40 @@ services:
       - nextcloud-apps:/var/www/html/custom_apps # installed / modified apps
       - nextcloud-config:/var/www/html/config # local configuration
       - nextcloud-theme:/var/www/html/themes # theming/branding
-      - {NEXTCLOUD_DATA:-./data}:/var/www/html/data # the actual data of your Nextcloud
+      - ${NEXTCLOUD_DATA:-./data}:/var/www/html/data # the actual data of your Nextcloud
         # TODO Paperless
+        # TODO evtl. komplettes html auf lokalen Ordner mappen
     depends_on:
       database:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:80/status.php || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 120s
+    networks:
+      - nextcloud-network
+
+  cron:
+    image: nextcloud:31.0.13-apache
+    container_name: nextcloud_cron
+    restart: unless-stopped
+    volumes:
+      # TODO gleiche wie nextcloud
+      - nextcloud-data:/var/www/html # Main folder, needed for updating
+      - nextcloud-apps:/var/www/html/custom_apps # installed / modified apps
+      - nextcloud-config:/var/www/html/config # local configuration
+      - nextcloud-theme:/var/www/html/themes # theming/branding
+      - ${NEXTCLOUD_DATA:-./data}:/var/www/html/data # the actual data of your Nextcloud
+    entrypoint: /cron.sh
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - nextcloud-network
 
@@ -137,34 +162,15 @@ services:
     security_opt:
       - no-new-privileges:true
 
-# TODO siehe paperless
   redis:
-    image: redis:7.4.2-alpine@sha256:de13e74e14b98eb96bdf886791ae47686c3c5d29f9d5f85ea55206843e3fce26
+    image: docker.io/valkey/valkey:9.0.1-alpine3.23@sha256:c106a0c03bcb23cbdf9febe693114cb7800646b11ca8b303aee7409de005faa8
     container_name: nextcloud_redis
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:-changeme}
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
-    networks:
-      - nextcloud-network
-
-  # TODO
-  cron:
-    image: nextcloud:30.1.0-apache@sha256:3f0b8c3a09b8b5e97b6c93d9a4b3b8e5b7a2c6d8f1a3b7e9c5d8f2a6b9c3d7e1
-    container_name: nextcloud_cron
-    restart: unless-stopped
-    volumes:
-      - nextcloud-data:/var/www/html
-      - nextcloud-config:/var/www/html/config
-      - nextcloud-apps:/var/www/html/custom_apps
-      - nextcloud-theme:/var/www/html/themes
-    entrypoint: /cron.sh
-    depends_on:
-      - database
-      - redis
     networks:
       - nextcloud-network
 
