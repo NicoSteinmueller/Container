@@ -11,7 +11,7 @@ services:
   # TODO
   # https://github.com/docker-library/docs/blob/master/nextcloud/README.md
   nextcloud:
-    image: nextcloud:31.0.13-apache
+    image: nextcloud:32.0.5-apache@sha256:aa9bb9bbde6e6afc756f7f101d65fbd57526165184737a85e31cc98dfbaaa2e2
     container_name: nextcloud
     restart: unless-stopped
     ports:
@@ -118,7 +118,7 @@ services:
       - nextcloud-network
 
   cron:
-    image: nextcloud:31.0.13-apache
+    image: nextcloud:32.0.5-apache@sha256:aa9bb9bbde6e6afc756f7f101d65fbd57526165184737a85e31cc98dfbaaa2e2
     container_name: nextcloud_cron
     restart: unless-stopped
     volumes:
