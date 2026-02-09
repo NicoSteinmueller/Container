@@ -18,7 +18,7 @@ services:
   immich-server:
     container_name: immich_server
     # https://github.com/immich-app/immich/pkgs/container/immich-server
-    image: ghcr.io/immich-app/immich-server:v2.5.2@sha256:8ac5a6d471fbb6fcfec6bc34854dd5a947c1795547f0d9345d9bf1803d1209e3
+    image: ghcr.io/immich-app/immich-server:v2.5.5@sha256:161b1ec8af9e0478797cfd75ea857c7e55af271fa7cea103cb30ab1ba5b418d8
     volumes:
       - ${UPLOAD_LOCATION:-./immich-data}:/data
       - /etc/localtime:/etc/localtime:ro
@@ -40,7 +40,7 @@ services:
   immich-machine-learning:
     container_name: immich_machine_learning
     # https://github.com/immich-app/immich/pkgs/container/immich-machine-learning
-    image: ghcr.io/immich-app/immich-machine-learning:v2.5.2@sha256:531d2bccbe20d0412496e36455715a18d692911eca5e2ee37d32e1e4f50e14bb
+    image: ghcr.io/immich-app/immich-machine-learning:v2.5.5@sha256:2e17e15855907ece0d5b3a7bf625b12f6d987a5854fa71d888641acae28b0323
     volumes:
       - model-cache:/cache
     restart: always
@@ -50,7 +50,7 @@ services:
   redis:
 #    TODO: evtl. Update to alpine version later
     container_name: immich_redis
-    image: docker.io/valkey/valkey:9.0.1-trixie@sha256:546304417feac0874c3dd576e0952c6bb8f06bb4093ea0c9ca303c73cf458f63
+    image: docker.io/valkey/valkey:9.0.2-trixie@sha256:930b41430fb727f533c5982fe509b6f04233e26d0f7354e04de4b0d5c706e44e
     healthcheck:
       test: redis-cli ping || exit 1
     restart: always
@@ -58,7 +58,7 @@ services:
   database:
     container_name: immich_postgres
     # https://github.com/immich-app/base-images/pkgs/container/postgres/versions?filters%5Bversion_type%5D=tagged
-    image: ghcr.io/immich-app/postgres:18-vectorchord0.5.3-pgvector0.8.1@sha256:4d69da6e90cbaae3ddca1cd244e717a6e421488aaaf4fb8264d46c617ac9b5a2
+    image: ghcr.io/immich-app/postgres:18-vectorchord0.5.3-pgvector0.8.1@sha256:fb5d39e22bdda0950eec2786f57b1ef580161237e92684db261119662a6d4670
     environment:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_USER: postgres
