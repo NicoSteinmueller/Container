@@ -1,10 +1,13 @@
 # ============================================
 # KONFIGURIERBARE VARIABLEN (in Portainer ändern)
 # ============================================
-# POSTGRES_PASSWORD       - Datenbank-Passwort (default: changeme)
-# NEXTCLOUD_ADMIN_USER    - Admin-Benutzername (default: admin)
-# NEXTCLOUD_ADMIN_PASSWORD - Admin-Passwort (default: changeme)
-# NEXTCLOUD_TRUSTED_DOMAINS - Vertrauenswürdige Domains (default: localhost)
+# | Variable                   | Beschreibung                    | Default       |
+# |----------------------------|---------------------------------|---------------|
+# | POSTGRES_PASSWORD          | Datenbank-Passwort              | changeme      |
+# | NEXTCLOUD_ADMIN_USER       | Admin-Benutzername              | admin         |
+# | NEXTCLOUD_ADMIN_PASSWORD   | Admin-Passwort                  | changeme      |
+# | NEXTCLOUD_TRUSTED_DOMAINS  | Vertrauenswürdige Domains       | localhost     |
+# | NEXTCLOUD_DATA             | Pfad für Nextcloud-Daten        | ./data        |
 # ============================================
 
 services:
@@ -35,66 +38,68 @@ services:
       # Redis
       REDIS_HOST: redis
 
-      # SMTP (für Benachrichtigungen, etc.)
-      # Hostname des SMTP-Servers (erforderlich)
-#      SMTP_HOST:
-      # Verschlüsselung: ssl oder tls
-#      SMTP_SECURE:
-      # SMTP-Port (default: 465 für SSL, unverschlüsselt: 25, STARTTLS: 587)
-#      SMTP_PORT:
-      # Authentifizierungsmethode (default: LOGIN, ohne Auth: PLAIN)
-#      SMTP_AUTHTYPE:
-      # Benutzername für SMTP-Authentifizierung
-#      SMTP_NAME:
-      # Passwort für SMTP-Authentifizierung
-#      SMTP_PASSWORD:
-      # Lokaler Teil der Absenderadresse (z.B. "noreply")
-#      MAIL_FROM_ADDRESS:
-      # Domain für E-Mails (z.B. "example.com")
-#      MAIL_DOMAIN:
-
       # PHP-Limits
       # Maximale Speichergröße für PHP-Skripte (default: 512M)
 #      PHP_MEMORY_LIMIT: 512M
       # Upload-Limit für große Dateien (setzt post_max_size und upload_max_filesize) (default: 512M)
       # evtl. müssen weitere Werte angepasst werden
       # https://docs.nextcloud.com/server/latest/admin_manual/configuration_files/big_file_upload_configuration.html
-#      PHP_UPLOAD_LIMIT: 512M
+      PHP_UPLOAD_LIMIT: 50G
 
       # Apache-Limits
       # Maximale Größe des HTTP-Request-Body (default: 1073741824 = 1GiB, 0 = unbegrenzt)
       # https://docs.nextcloud.com/server/latest/admin_manual/configuration_files/big_file_upload_configuration.html#apache
-#      APACHE_BODY_LIMIT: 1073741824
+      APACHE_BODY_LIMIT: 53687091200
 
 
+      # Konfiguration für die Verwendung eines Reverse Proxys
+      # Nachdem die Werte einmal gesetzt wurden, werden sie in die Nextcloud-Konfigurationsdatei übernommen und bleiben dort auch nach dem Entfernen der Umgebungsvariablen erhalten, da Nextcloud die Konfigurationsdateien zusammenführt.
 
-#  Using the apache image behind a reverse proxy and auto configure server host and protocol
-#
-#  The apache image will replace the remote addr (IP address visible to Nextcloud) with the IP address from X-Real-IP if the request is coming from a proxy in 10.0.0.0/8, 172.16.0.0/12 or 192.168.0.0/16 by default. If you want Nextcloud to pick up the server host (HTTP_X_FORWARDED_HOST), protocol (HTTP_X_FORWARDED_PROTO) and client IP (HTTP_X_FORWARDED_FOR) from a trusted proxy, then disable rewrite IP and add the reverse proxy's IP address to TRUSTED_PROXIES.
-#
-#APACHE_DISABLE_REWRITE_IP (not set by default): Set to 1 to disable rewrite IP.
-#TRUSTED_PROXIES (empty by default): A space-separated list of trusted proxies. CIDR notation is supported for IPv4.
-#
-#  If the TRUSTED_PROXIES approach does not work for you, try using fixed values for overwrite parameters.
-#
-#OVERWRITEHOST (empty by default): Set the hostname of the proxy. Can also specify a port.
-#OVERWRITEPROTOCOL (empty by default): Set the protocol of the proxy, http or https.
-#OVERWRITECLIURL (empty by default): Set the cli url of the proxy (e.g. https://mydnsname.example.com)
-#OVERWRITEWEBROOT (empty by default): Set the absolute path of the proxy.
-#OVERWRITECONDADDR (empty by default): Regex to overwrite the values dependent on the remote address.
-#
-#  Check the Nexcloud documentation for more details.
-#  https://docs.nextcloud.com/server/latest/admin_manual/configuration_server/reverse_proxy_configuration.html
-#
-#  Keep in mind that once set, removing these environment variables won't remove these values from the configuration file, due to how Nextcloud merges configuration files together.
+      # Ersetzt die Remote-Adresse mit der IP-Adresse aus X-Real-IP, wenn die Anfrage von einem Proxy in 10.0.0.0/8, 172.16.0.0/12 oder 192.168.0.0/16 kommt.
+      # Wenn Sie möchten, dass Nextcloud den Server-Host (HTTP_X_FORWARDED_HOST), das Protokoll (HTTP_X_FORWARDED_PROTO) und die Client-IP (HTTP_X_FORWARDED_FOR) von einem vertrauenswürdigen Proxy übernimmt,
+      # deaktivieren Sie rewrite IP und fügen Sie die IP-Adresse des Reverse Proxys zu TRUSTED_PROXIES hinzu.
 
-      #
+      # IP-Umschreibung deaktivieren (1 = deaktivieren, 0 = aktivieren, default: 0)
+      # APACHE_DISABLE_REWRITE_IP: 1
+
+      # vertrauenswürdige Proxy-IPs (CIDR-Notation für IPV4, Leerzeichengetrennt, default: leer)
+      # TRUSTED_PROXIES:
+
+      # Wenn TRUSTED_PROXIES nicht funktioniert, dann die festen Werte für die  Überschreibungsparameter verwenden.
+
+      # Hostname des Proxys setzen, kann auch Port enthalten (default: leer)
+      # OVERWRITEHOST:
+
+      # Protokoll des Proxys setzen, http oder https (default: leer)
+      # OVERWRITEPROTOCOL:
+
+      # CLI-URL des Proxys setzen (z.B. https://mydnsname.example.com) (default: leer)
+      # OVERWRITECLIURL:
+
+      # Absoluten Pfad des Proxys setzen (default: leer)
+      # OVERWRITEWEBROOT:
+
+      # Regex, um die Werte abhängig von der Remote-Adresse zu überschreiben (default: leer)
+      # OVERWRITECONDADDR:
 
 
-
-
-
-#      - TZ=Europe/Berlin
+      # SMTP (für Benachrichtigungen, etc.)
+      # Hostname des SMTP-Servers (erforderlich)
+      #      SMTP_HOST:
+      # Verschlüsselung: ssl oder tls
+      #      SMTP_SECURE:
+      # SMTP-Port (default: 465 für SSL, unverschlüsselt: 25, STARTTLS: 587)
+      #      SMTP_PORT:
+      # Authentifizierungsmethode (default: LOGIN, ohne Auth: PLAIN)
+      #      SMTP_AUTHTYPE:
+      # Benutzername für SMTP-Authentifizierung
+      #      SMTP_NAME:
+      # Passwort für SMTP-Authentifizierung
+      #      SMTP_PASSWORD:
+      # Lokaler Teil der Absenderadresse (z.B. "noreply")
+      #      MAIL_FROM_ADDRESS:
+      # Domain für E-Mails (z.B. "example.com")
+      #      MAIL_DOMAIN:
     volumes:
       - nextcloud:/var/www/html # Main folder, needed for updating
       - ${NEXTCLOUD_DATA:-./data}/apps:/var/www/html/custom_apps # installed / modified apps
@@ -102,14 +107,13 @@ services:
       - ${NEXTCLOUD_DATA:-./data}/themes:/var/www/html/themes # theming/branding
       - ${NEXTCLOUD_DATA:-./data}/data:/var/www/html/data # the actual data of your Nextcloud
       # TODO Paperless
-        # TODO evtl. komplettes html auf lokalen Ordner mappen
     depends_on:
       database:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:80/status.php || exit 1"]
+      test: ["CMD-SHELL", "php -f /var/www/html/status.php > /dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
