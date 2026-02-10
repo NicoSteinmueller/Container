@@ -4,10 +4,8 @@
 # | Variable                   | Beschreibung                    | Default       |
 # |----------------------------|---------------------------------|---------------|
 # | POSTGRES_PASSWORD          | Datenbank-Passwort              | changeme      |
-# | NEXTCLOUD_ADMIN_USER       | Admin-Benutzername              | admin         |
-# | NEXTCLOUD_ADMIN_PASSWORD   | Admin-Passwort                  | changeme      |
-# | NEXTCLOUD_TRUSTED_DOMAINS  | Vertrauenswürdige Domains       | localhost     |
 # | NEXTCLOUD_DATA             | Pfad für Nextcloud-Daten        | ./data        |
+# | PAPERLESS_DATA             | Pfad für Paperless-Daten        | ./data        |
 # ============================================
 
 services:
@@ -19,19 +17,11 @@ services:
     ports:
       - "38080:80"
     environment:
-      # ⚠️ NUR BEIM ERSTEN START: Nach der Ersteinrichtung werden diese Werte in der Datenbank gespeichert
       POSTGRES_HOST: database
       POSTGRES_DB: nextcloud
       POSTGRES_USER: nextcloud
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
 
-      # ⚠️ NUR BEIM ERSTEN START: Konfiguration für die automatische Einrichtung von Nextcloud, wenn es zum ersten Mal gestartet wird.
-      NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_ADMIN_USER:-admin}
-      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD:-changeme}
-
-      # Vertrauenswürdige Domains, die auf die Nextcloud-Instanz zugreifen dürfen.
-      # ⚠️ NUR BEIM ERSTEN START: Konfiguration für die automatische Einrichtung von Nextcloud, wenn es zum ersten Mal gestartet wird.
-      NEXTCLOUD_TRUSTED_DOMAINS: ${NEXTCLOUD_TRUSTED_DOMAINS:-localhost}
       # Aktualisiert die htaccess-Datei (Sicherheitsregeln) automatisch, beim Starten des Containers.
       NEXTCLOUD_INIT_HTACCESS: true
 
@@ -51,63 +41,14 @@ services:
       # https://docs.nextcloud.com/server/latest/admin_manual/configuration_files/big_file_upload_configuration.html#apache
       APACHE_BODY_LIMIT: 53687091200
 
-
-      # ⚠️ NUR BEIM ERSTEN START: Konfiguration für die Verwendung eines Reverse Proxys
-      # Nachdem die Werte einmal gesetzt wurden, werden sie in die Nextcloud-Konfigurationsdatei übernommen und bleiben dort auch nach dem Entfernen der Umgebungsvariablen erhalten, da Nextcloud die Konfigurationsdateien zusammenführt.
-
-      # Ersetzt die Remote-Adresse mit der IP-Adresse aus X-Real-IP, wenn die Anfrage von einem Proxy in 10.0.0.0/8, 172.16.0.0/12 oder 192.168.0.0/16 kommt.
-      # Wenn Sie möchten, dass Nextcloud den Server-Host (HTTP_X_FORWARDED_HOST), das Protokoll (HTTP_X_FORWARDED_PROTO) und die Client-IP (HTTP_X_FORWARDED_FOR) von einem vertrauenswürdigen Proxy übernimmt,
-      # deaktivieren Sie rewrite IP und fügen Sie die IP-Adresse des Reverse Proxys zu TRUSTED_PROXIES hinzu.
-
-      # ⚠️ NUR BEIM ERSTEN START: IP-Umschreibung deaktivieren (1 = deaktivieren, 0 = aktivieren, default: 0)
-      # APACHE_DISABLE_REWRITE_IP: 1
-
-      # ⚠️ NUR BEIM ERSTEN START: vertrauenswürdige Proxy-IPs (CIDR-Notation für IPV4, Leerzeichengetrennt, default: leer)
-      # TRUSTED_PROXIES:
-
-      # Wenn TRUSTED_PROXIES nicht funktioniert, dann die festen Werte für die  Überschreibungsparameter verwenden.
-
-      # ⚠️ NUR BEIM ERSTEN START: Hostname des Proxys setzen, kann auch Port enthalten (default: leer)
-      # OVERWRITEHOST:
-
-      # ⚠️ NUR BEIM ERSTEN START: Protokoll des Proxys setzen, http oder https (default: leer)
-      # OVERWRITEPROTOCOL:
-
-      # ⚠️ NUR BEIM ERSTEN START: CLI-URL des Proxys setzen (z.B. https://mydnsname.example.com) (default: leer)
-      # OVERWRITECLIURL:
-
-      # ⚠️ NUR BEIM ERSTEN START: Absoluten Pfad des Proxys setzen (default: leer)
-      # OVERWRITEWEBROOT:
-
-      # ⚠️ NUR BEIM ERSTEN START: Regex, um die Werte abhängig von der Remote-Adresse zu überschreiben (default: leer)
-      # OVERWRITECONDADDR:
-
-
-      # ⚠️ NUR BEIM ERSTEN START: SMTP (für Benachrichtigungen, etc.)
-      # Nachdem die Werte einmal gesetzt wurden, werden sie in die Nextcloud-Konfigurationsdatei übernommen.
-      # Hostname des SMTP-Servers (erforderlich)
-      SMTP_HOST: test.smtp.server
-      # Verschlüsselung: ssl oder tls
-      #      SMTP_SECURE:
-      # SMTP-Port (default: 465 für SSL, unverschlüsselt: 25, STARTTLS: 587)
-      #      SMTP_PORT:
-      # Authentifizierungsmethode (default: LOGIN, ohne Auth: PLAIN)
-      #      SMTP_AUTHTYPE:
-      # Benutzername für SMTP-Authentifizierung
-      #      SMTP_NAME:
-      # Passwort für SMTP-Authentifizierung
-      #      SMTP_PASSWORD:
-      # Lokaler Teil der Absenderadresse (z.B. "noreply")
-      #      MAIL_FROM_ADDRESS:
-      # Domain für E-Mails (z.B. "example.com")
-      #      MAIL_DOMAIN:
     volumes:
+      # gleiche wie cron Container, damit die Cron-Jobs Zugriff auf die gleichen Daten haben
       - nextcloud:/var/www/html # Main folder, needed for updating
       - ${NEXTCLOUD_DATA:-./data}/apps:/var/www/html/custom_apps # installed / modified apps
       - ${NEXTCLOUD_DATA:-./data}/config:/var/www/html/config # local configuration
       - ${NEXTCLOUD_DATA:-./data}/themes:/var/www/html/themes # theming/branding
       - ${NEXTCLOUD_DATA:-./data}/data:/var/www/html/data # the actual data of your Nextcloud
-      # TODO Paperless
+      - ${PAPERLESS_DATA:-./paperless}:/paperless-consume
     depends_on:
       database:
         condition: service_healthy
@@ -127,12 +68,13 @@ services:
     container_name: nextcloud_cron
     restart: unless-stopped
     volumes:
-      # TODO gleiche wie nextcloud
+      # gleiche wie nextcloud Container, damit die Cron-Jobs Zugriff auf die gleichen Daten haben
       - nextcloud:/var/www/html # Main folder, needed for updating
       - ${NEXTCLOUD_DATA:-./data}/apps:/var/www/html/custom_apps # installed / modified apps
       - ${NEXTCLOUD_DATA:-./data}/config:/var/www/html/config # local configuration
       - ${NEXTCLOUD_DATA:-./data}/themes:/var/www/html/themes # theming/branding
       - ${NEXTCLOUD_DATA:-./data}/data:/var/www/html/data # the actual data of your Nextcloud
+      - ${PAPERLESS_DATA:-./paperless}:/paperless-consume
     entrypoint: /cron.sh
     depends_on:
       database:
