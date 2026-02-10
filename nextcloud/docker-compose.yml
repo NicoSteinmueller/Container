@@ -11,7 +11,6 @@
 # ============================================
 
 services:
-  # TODO
   # https://github.com/docker-library/docs/blob/master/nextcloud/README.md
   nextcloud:
     image: nextcloud:32.0.5-apache@sha256:aa9bb9bbde6e6afc756f7f101d65fbd57526165184737a85e31cc98dfbaaa2e2
@@ -20,17 +19,18 @@ services:
     ports:
       - "38080:80"
     environment:
+      # ⚠️ NUR BEIM ERSTEN START: Nach der Ersteinrichtung werden diese Werte in der Datenbank gespeichert
       POSTGRES_HOST: database
       POSTGRES_DB: nextcloud
       POSTGRES_USER: nextcloud
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
 
-#      Konfiguration für die automatische Einrichtung von Nextcloud, wenn es zum ersten Mal gestartet wird.
+      # ⚠️ NUR BEIM ERSTEN START: Konfiguration für die automatische Einrichtung von Nextcloud, wenn es zum ersten Mal gestartet wird.
       NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_ADMIN_USER:-admin}
       NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD:-changeme}
 
       # Vertrauenswürdige Domains, die auf die Nextcloud-Instanz zugreifen dürfen.
-      # TODO: prüfen mit apache reverse proxy
+      # ⚠️ NUR BEIM ERSTEN START: Konfiguration für die automatische Einrichtung von Nextcloud, wenn es zum ersten Mal gestartet wird.
       NEXTCLOUD_TRUSTED_DOMAINS: ${NEXTCLOUD_TRUSTED_DOMAINS:-localhost}
       # Aktualisiert die htaccess-Datei (Sicherheitsregeln) automatisch, beim Starten des Containers.
       NEXTCLOUD_INIT_HTACCESS: true
@@ -52,40 +52,41 @@ services:
       APACHE_BODY_LIMIT: 53687091200
 
 
-      # Konfiguration für die Verwendung eines Reverse Proxys
+      # ⚠️ NUR BEIM ERSTEN START: Konfiguration für die Verwendung eines Reverse Proxys
       # Nachdem die Werte einmal gesetzt wurden, werden sie in die Nextcloud-Konfigurationsdatei übernommen und bleiben dort auch nach dem Entfernen der Umgebungsvariablen erhalten, da Nextcloud die Konfigurationsdateien zusammenführt.
 
       # Ersetzt die Remote-Adresse mit der IP-Adresse aus X-Real-IP, wenn die Anfrage von einem Proxy in 10.0.0.0/8, 172.16.0.0/12 oder 192.168.0.0/16 kommt.
       # Wenn Sie möchten, dass Nextcloud den Server-Host (HTTP_X_FORWARDED_HOST), das Protokoll (HTTP_X_FORWARDED_PROTO) und die Client-IP (HTTP_X_FORWARDED_FOR) von einem vertrauenswürdigen Proxy übernimmt,
       # deaktivieren Sie rewrite IP und fügen Sie die IP-Adresse des Reverse Proxys zu TRUSTED_PROXIES hinzu.
 
-      # IP-Umschreibung deaktivieren (1 = deaktivieren, 0 = aktivieren, default: 0)
+      # ⚠️ NUR BEIM ERSTEN START: IP-Umschreibung deaktivieren (1 = deaktivieren, 0 = aktivieren, default: 0)
       # APACHE_DISABLE_REWRITE_IP: 1
 
-      # vertrauenswürdige Proxy-IPs (CIDR-Notation für IPV4, Leerzeichengetrennt, default: leer)
+      # ⚠️ NUR BEIM ERSTEN START: vertrauenswürdige Proxy-IPs (CIDR-Notation für IPV4, Leerzeichengetrennt, default: leer)
       # TRUSTED_PROXIES:
 
       # Wenn TRUSTED_PROXIES nicht funktioniert, dann die festen Werte für die  Überschreibungsparameter verwenden.
 
-      # Hostname des Proxys setzen, kann auch Port enthalten (default: leer)
+      # ⚠️ NUR BEIM ERSTEN START: Hostname des Proxys setzen, kann auch Port enthalten (default: leer)
       # OVERWRITEHOST:
 
-      # Protokoll des Proxys setzen, http oder https (default: leer)
+      # ⚠️ NUR BEIM ERSTEN START: Protokoll des Proxys setzen, http oder https (default: leer)
       # OVERWRITEPROTOCOL:
 
-      # CLI-URL des Proxys setzen (z.B. https://mydnsname.example.com) (default: leer)
+      # ⚠️ NUR BEIM ERSTEN START: CLI-URL des Proxys setzen (z.B. https://mydnsname.example.com) (default: leer)
       # OVERWRITECLIURL:
 
-      # Absoluten Pfad des Proxys setzen (default: leer)
+      # ⚠️ NUR BEIM ERSTEN START: Absoluten Pfad des Proxys setzen (default: leer)
       # OVERWRITEWEBROOT:
 
-      # Regex, um die Werte abhängig von der Remote-Adresse zu überschreiben (default: leer)
+      # ⚠️ NUR BEIM ERSTEN START: Regex, um die Werte abhängig von der Remote-Adresse zu überschreiben (default: leer)
       # OVERWRITECONDADDR:
 
 
-      # SMTP (für Benachrichtigungen, etc.)
+      # ⚠️ NUR BEIM ERSTEN START: SMTP (für Benachrichtigungen, etc.)
+      # Nachdem die Werte einmal gesetzt wurden, werden sie in die Nextcloud-Konfigurationsdatei übernommen.
       # Hostname des SMTP-Servers (erforderlich)
-      #      SMTP_HOST:
+      SMTP_HOST: test.smtp.server
       # Verschlüsselung: ssl oder tls
       #      SMTP_SECURE:
       # SMTP-Port (default: 465 für SSL, unverschlüsselt: 25, STARTTLS: 587)
@@ -148,7 +149,7 @@ services:
       - nextcloud-network
 
   database:
-    image: postgres:18.1-alpine3.23@sha256:aa6eb304ddb6dd26df23d05db4e5cb05af8951cda3e0dc57731b771e0ef4ab29
+    image: postgres:17.7-alpine3.23
     container_name: nextcloud_postgres
     restart: unless-stopped
     environment:
@@ -157,7 +158,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
     volumes:
-      - postgres:/var/lib/postgresql
+      - postgres:/var/lib/postgresql/data
     networks:
       - nextcloud-network
     healthcheck:
