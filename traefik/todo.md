@@ -18,10 +18,11 @@ https://www.youtube.com/watch?v=CmUzMi5QLzI
 
 # Config TODO
 - metrics
+- plugins
 
 
 
-
+- Dashboard mit Authentifizierung absichern
 
 
     labels:

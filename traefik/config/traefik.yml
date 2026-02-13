@@ -73,9 +73,18 @@ http:
         sslRedirect: true
         browserXssFilter: true
         contentTypeNosniff: true
+        forceSTSHeader: true
         stsIncludeSubdomains: true
         stsPreload: true
         stsSeconds: 31536000
+        customFrameOptionsValue: SAMEORIGIN
+        customResponseHeaders:
+          X-Forwarded-Proto: https
+#    secure-local-only:
+#      chain:
+#        middlewares:
+#          - secure-headers
+#          - local-only
 
 log:
   level: DEBUG # TODO change to INFO or ERROR in production

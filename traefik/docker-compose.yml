@@ -14,6 +14,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "443:443/udp"
+      - "443:443/tcp"
       - "8080:8080"
 
     environment:
@@ -21,7 +23,6 @@ services:
       # API Key erstellen unter: https://developer.hosting.ionos.de/keys
       # Nur Berechtigung TXT-Record (DNS) erforderlich (kein Zugriff auf z.B. A-Records oder andere Ressourcen notwendig)
       - IONOS_API_KEY=${IONOS_API_KEY}
-      # WICHTIG: API Key muss die Berechtigung "DNS" haben
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
