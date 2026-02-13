@@ -36,3 +36,8 @@ desktop.ini
 target/
 build/
 
+# Environment variables
+.env
+**/.env
+!.env.example
+!**/.env.example

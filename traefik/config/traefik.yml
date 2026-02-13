@@ -1,19 +1,56 @@
+# TODO: nach Aktualisierung auf server laden
 global:
-  checkNewVersion: false
+  checkNewVersion: true
   sendAnonymousUsage: false
 log:
   level: DEBUG # TODO change to INFO or ERROR in production
 api:
   dashboard: true
+  # TODO prüfen
   insecure: true
-entryPoints:
-  web:
-    address: :80
-  websecure:
-    address: :443
+  # TODO prüfen
+  debug: true
 providers:
   docker:
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
     network: proxy
-    # tee
+entryPoints:
+  web:
+    address: :80
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: :443
+    http:
+      tls:
+        certResolver: letsencrypt
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: nico.steinmueller@gmx.net
+      storage: /letsencrypt/acme.json # TODO: evtl. auf Server speichern statt volume
+      #caServer: https://acme-v02.api.letsencrypt.org/directory # TODO: Let's Encrypt Production Server
+      caServer: https://acme-staging-v02.api.letsencrypt.org/directory # Let's Encrypt Staging Server (für Tests)
+      dnsChallenge:
+        provider: ionos
+        resolvers:
+          - "1.1.1.1:53"
+          - "8.8.8.8:53"
+        delayBeforeCheck: "30"
+
+# Middleware für lokale IP-Beschränkung
+http:
+  middlewares:
+    local-only:
+      ipAllowList:
+        sourceRange:
+          - "127.0.0.1/32"      # Localhost
+          - "192.168.0.0/16"    # Privates Netzwerk 192.168.x.x
+          - "10.0.0.0/8"        # Privates Netzwerk 10.x.x.x
+          - "172.16.0.0/12"     # Privates Netzwerk 172.16-31.x.x
+          # TODO: Hier Ihre spezifischen lokalen IP-Bereiche eintragen

@@ -1,7 +1,7 @@
 # docker-compose.yml
 services:
   traefik:
-    image: traefik:v3.6@sha256:a9890c898f379c1905ee5b28342f6b408dc863f08db2dab20e46c267d1ff463a
+    image: traefik:v3.6.8
     container_name: traefik
     restart: unless-stopped
     security_opt:
@@ -16,31 +16,17 @@ services:
       - "443:443"
       - "8080:8080"
 
+    environment:
+      # IONOS DNS Challenge
+      # API Key erstellen unter: https://developer.hosting.ionos.de/keys
+      # Nur Berechtigung TXT-Record (DNS) erforderlich (kein Zugriff auf z.B. A-Records oder andere Ressourcen notwendig)
+      - IONOS_API_KEY=${IONOS_API_KEY}
+      # WICHTIG: API Key muss die Berechtigung "DNS" haben
+
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - letsencrypt:/letsencrypt
-
-    command:
-      # Global
-      - --global.checkNewVersion=false
-      - --global.sendAnonymousUsage=false
-      # Log
-      - --log.level=DEBUG  # TODO change to INFO or ERROR in production
-      # API
-      - --api.dashboard=true
-      - --api.insecure=true
-      # Providers
-      - --providers.docker=true
-      - --providers.docker.endpoint=unix:///var/run/docker.sock
-      - --providers.docker.exposedByDefault=false
-      - --providers.docker.network=proxy
-      # EntryPoints
-      - --entrypoints.web.address=:80
-      - --entrypoints.websecure.address=:443
-      # Let's Encrypt configuration
-      - --certificatesresolvers.le.acme.email=nico.steinmueller@gmx.net
-      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
-      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      - ./config/traefik.yml:/traefik.yml:ro # TODO: auf Server Pfad anpassen
 
 volumes:
   letsencrypt:

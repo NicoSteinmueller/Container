@@ -15,7 +15,7 @@ services:
       - traefik.http.routers.whoami-secure.rule=Host(`who.nico-steinmueller.de`)
       - traefik.http.routers.whoami-secure.entrypoints=websecure
       - traefik.http.routers.whoami-secure.tls=true
-      - traefik.http.routers.whoami-secure.tls.certresolver=le
+      - traefik.http.routers.whoami-secure.tls.certresolver=letsencrypt
       - traefik.http.routers.whoami-secure.middlewares=secure-headers #,ip-allowlist
       # Middlewares
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
