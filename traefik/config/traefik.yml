@@ -1,20 +1,27 @@
+# yaml-language-server: $schema=https://json.schemastore.org/traefik-v3.json
+# Traefik v3 Configuration
+# Documentation: https://doc.traefik.io/traefik/v3.0/
 # TODO: nach Aktualisierung auf server laden
 global:
   checkNewVersion: true
   sendAnonymousUsage: false
+
 log:
   level: DEBUG # TODO change to INFO or ERROR in production
+
 api:
   dashboard: true
   # TODO prüfen
   insecure: true
   # TODO prüfen
   debug: true
+
 providers:
   docker:
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
     network: proxy
+
 entryPoints:
   web:
     address: :80
@@ -26,9 +33,11 @@ entryPoints:
           permanent: true
   websecure:
     address: :443
+    http3: {}
     http:
       tls:
         certResolver: letsencrypt
+
 certificatesResolvers:
   letsencrypt:
     acme:
@@ -54,3 +63,12 @@ http:
           - "10.0.0.0/8"        # Privates Netzwerk 10.x.x.x
           - "172.16.0.0/12"     # Privates Netzwerk 172.16-31.x.x
           # TODO: Hier Ihre spezifischen lokalen IP-Bereiche eintragen
+    secure-headers:
+      headers:
+        frameDeny: true
+        sslRedirect: true
+        browserXssFilter: true
+        contentTypeNosniff: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 31536000

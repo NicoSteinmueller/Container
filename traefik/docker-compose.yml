@@ -33,6 +33,7 @@ volumes:
 
 networks:
   proxy:
+    # TODO: evtl. direkt anlegen mit "docker network create proxy" und dann hier "external: true" setzen
     name: proxy
   bond0:
     external: true
