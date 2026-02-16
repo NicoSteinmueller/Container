@@ -22,19 +22,19 @@ providers:
     directory: /config/dynamic
     watch: true
 
-#certificatesResolvers:
-#  letsencrypt:
-#    acme:
-#      email: nico.steinmueller@gmx.net
-#      storage: /letsencrypt/acme.json # TODO: evtl. auf Server speichern statt volume
-#      #caServer: https://acme-v02.api.letsencrypt.org/directory # TODO: Let's Encrypt Production Server
-#      caServer: https://acme-staging-v02.api.letsencrypt.org/directory # Let's Encrypt Staging Server (für Tests)
-#      dnsChallenge:
-#        provider: ionos
-#        resolvers:
-#          - "1.1.1.1:53"
-#          - "8.8.8.8:53"
-#        delayBeforeCheck: "30"
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: nico.steinmueller@gmx.net
+      storage: /letsencrypt/acme.json # TODO: evtl. auf Server speichern statt volume
+      #caServer: https://acme-v02.api.letsencrypt.org/directory # TODO: Let's Encrypt Production Server
+      caServer: https://acme-staging-v02.api.letsencrypt.org/directory # Let's Encrypt Staging Server (für Tests)
+      dnsChallenge:
+        provider: ionos
+        resolvers:
+          - "1.1.1.1:53"
+          - "8.8.8.8:53"
+        delayBeforeCheck: "30"
 
 entryPoints:
   ping:

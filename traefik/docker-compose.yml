@@ -1,4 +1,13 @@
 # docker-compose.yml
+#
+# Umgebungsvariablen:
+# ┌──────────────────┬────────────────────────────────┬──────────────────────────────────────────┐
+# │ Variable         │ Beispiel                       │ Erklärung                                │
+# ├──────────────────┼────────────────────────────────┼──────────────────────────────────────────┤
+# │ IONOS_API_KEY    │ abc123def456ghi789...          │ API-Key für IONOS DNS Challenge          │
+# │ TRAEFIK_LOCATION │ ./config                       │ Pfad zur Traefik-Hauptkonfiguration      │
+# └──────────────────┴────────────────────────────────┴──────────────────────────────────────────┘
+#
 services:
   traefik:
     image: traefik:v3.6.8
@@ -23,7 +32,7 @@ services:
       # IONOS DNS Challenge
       # API Key erstellen unter: https://developer.hosting.ionos.de/keys
       # Nur Berechtigung TXT-Record (DNS) erforderlich (kein Zugriff auf z.B. A-Records oder andere Ressourcen notwendig)
-#      IONOS_API_KEY: ${IONOS_API_KEY}
+      IONOS_API_KEY: ${IONOS_API_KEY}
 
       TZ: Europe/Berlin
 
@@ -31,9 +40,9 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - letsencrypt:/letsencrypt
-      - ./config/traefik.yml:/traefik.yml:ro # TODO: auf Server Pfad anpassen
-      - ./config/dynamic:/config/dynamic:ro # Dynamische Konfiguration (Middlewares, Router, TLS)
-      - ./logs:/logs # TODO: auf Server Pfad anpassen
+      - ${TRAEFIK_LOCATION:-./config}/traefik.yml:/traefik.yml:ro
+      - ${TRAEFIK_LOCATION:-./config}/dynamic:/config/dynamic:ro
+      - ${TRAEFIK_LOCATION:-.}/logs:/logs
 
 volumes:
   letsencrypt:
