@@ -22,12 +22,16 @@ services:
       # IONOS DNS Challenge
       # API Key erstellen unter: https://developer.hosting.ionos.de/keys
       # Nur Berechtigung TXT-Record (DNS) erforderlich (kein Zugriff auf z.B. A-Records oder andere Ressourcen notwendig)
-      - IONOS_API_KEY=${IONOS_API_KEY}
+      IONOS_API_KEY: ${IONOS_API_KEY}
+
+      TZ: Europe/Berlin
 
     volumes:
+      - /etc/localtime:/etc/localtime:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - letsencrypt:/letsencrypt
       - ./config/traefik.yml:/traefik.yml:ro # TODO: auf Server Pfad anpassen
+      - ./logs:/logs # TODO: auf Server Pfad anpassen
 
 volumes:
   letsencrypt:

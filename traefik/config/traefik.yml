@@ -50,6 +50,7 @@ entryPoints:
     http:
       tls:
         certResolver: letsencrypt
+#        options: TODO
       middlewares:
         - secure-headers
 
@@ -88,7 +89,7 @@ http:
 
 log:
   level: DEBUG # TODO change to INFO or ERROR in production
-#  filePath: /logs/traefik.log
+  filePath: /logs/traefik.log
   format: json
   maxSize: 10
   maxBackups: 10
@@ -97,15 +98,17 @@ log:
 accessLog:
   filePath: /logs/access.log
   format: json
+#  filters:
+#    statusCodes:
+#      - "200"
+#      - "400-404"
+#      - "500-503"
   fields:
+    # modes are "keep", "drop" or "redact"
     defaultMode: keep
     names:
+      # https://doc.traefik.io/traefik/reference/install-configuration/observability/logs-and-accesslogs/#json-format-fields
       ClientUsername: drop
-      ClientPassword: drop
-#      RequestHeaderNames: drop
-#      ResponseHeaderNames: drop
-#      RequestBody: drop
-#      ResponseBody: drop
     headers:
       defaultMode: keep
       names:
@@ -117,5 +120,26 @@ accessLog:
         Content-Type: keep
         Accept: keep
         Authorization: redact
-        Cookie: redact
+        Cookie: redact          # Zeigt "REDACTED" wenn Cookie vorhanden
         Set-Cookie: redact
+
+#metrics:
+# openTelemetry, Prometheus, Datadog, InfluxDB 2.x, StatsD
+#  otlp:
+#    http:
+#      endpoint: http://myotlpcollector:4318/v1/metrics
+
+#tracing:
+#  otlp:
+#    http:
+#      endpoint: http://myotlpcollector:4318/v1/trace
+
+
+
+#experimental:
+#  plugins:
+# https://plugins.traefik.io/plugins
+# https://plugins.traefik.io/install
+#    bouncer:
+#      moduleName: github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
+#      version: v1.4.6

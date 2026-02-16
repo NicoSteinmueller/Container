@@ -20,9 +20,22 @@ https://www.youtube.com/watch?v=CmUzMi5QLzI
 - metrics
 - plugins
 
-
+- Admin Pfad der Container nur lokal erreichbar machen
 
 - Dashboard mit Authentifizierung absichern
+
+- zwei Configs
+  - Statische Config
+    - Restart Notwendig
+    - Entrypoints
+    - Providers
+    - API/Dashboard
+    - Logging
+  - Dynamische Config
+    - Kein Restart Notwendig
+    - Routers
+    - Services
+    - Middlewares
 
 
     labels:
