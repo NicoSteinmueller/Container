@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=https://json.schemastore.org/traefik-v3-dynamic.json
+# Traefik v3 Dynamic Configuration - Middlewares
+# Documentation: https://doc.traefik.io/traefik/v3.0/middlewares/overview/
+
+http:
+  middlewares:
+    # Middleware für lokale IP-Beschränkung
+    local-only:
+      ipAllowList:
+        sourceRange:
+          - "127.0.0.1/32"      # Localhost
+          - "192.168.178.0/24"    # Privates Netzwerk 192.168.178.x
+
+    # Middleware für sichere Headers
+    secure-headers:
+      headers:
+        frameDeny: true
+        sslRedirect: true
+        browserXssFilter: true
+        contentTypeNosniff: true
+        forceSTSHeader: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 31536000
+        customFrameOptionsValue: SAMEORIGIN
+        customResponseHeaders:
+          X-Forwarded-Proto: https
+
+    # Kombinierte Middleware für sichere lokale Zugriffe
+    secure-local-only:
+      chain:
+        middlewares:
+          - secure-headers
+          - local-only
+
+    # Rate Limiting Middleware (optional)
+    rate-limit:
+      rateLimit:
+        average: 100
+        period: 1s
+        burst: 50
+
+    # Basic Auth Middleware (Beispiel - Credentials müssen angepasst werden)
+    # Generieren mit: htpasswd -nb user password
+    # basic-auth:
+    #   basicAuth:
+    #     users:
+    #       - "admin:$apr1$..." # TODO: Anpassen
+
+    # Compress Middleware für bessere Performance
+    compress:
+      compress: {}
+

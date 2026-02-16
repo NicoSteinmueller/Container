@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://json.schemastore.org/traefik-v3-dynamic.json
+# Traefik v3 Dynamic Configuration - TLS
+# Documentation: https://doc.traefik.io/traefik/v3.0/https/tls/
+
+tls:
+  options:
+    # Moderne TLS-Konfiguration (empfohlen)
+    modern:
+      minVersion: VersionTLS13
+      sniStrict: true
+      curvePreferences:
+        - CurveP521
+        - CurveP384
+
+    # Intermediate TLS-Konfiguration (gute Kompatibilität)
+    intermediate:
+      minVersion: VersionTLS12
+      sniStrict: true
+      cipherSuites:
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
+        - TLS_AES_128_GCM_SHA256
+        - TLS_AES_256_GCM_SHA384
+        - TLS_CHACHA20_POLY1305_SHA256
+      curvePreferences:
+        - CurveP521
+        - CurveP384
+
+    # Default TLS-Konfiguration
+    default:
+      minVersion: VersionTLS12
+      sniStrict: false
+

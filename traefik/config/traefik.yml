@@ -18,6 +18,9 @@ providers:
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
     network: proxy
+  file:
+    directory: /config/dynamic
+    watch: true
 
 certificatesResolvers:
   letsencrypt:
@@ -50,42 +53,13 @@ entryPoints:
     http:
       tls:
         certResolver: letsencrypt
-#        options: TODO
+        options: default@file
       middlewares:
-        - secure-headers
+        - secure-headers@file
 
 ping:
     entryPoint: ping
 
-# Middleware für lokale IP-Beschränkung
-http:
-  middlewares:
-    local-only:
-      ipAllowList:
-        sourceRange:
-          - "127.0.0.1/32"      # Localhost
-          - "192.168.0.0/16"    # Privates Netzwerk 192.168.x.x
-          - "10.0.0.0/8"        # Privates Netzwerk 10.x.x.x
-          - "172.16.0.0/12"     # Privates Netzwerk 172.16-31.x.x
-          # TODO: Hier Ihre spezifischen lokalen IP-Bereiche eintragen
-    secure-headers:
-      headers:
-        frameDeny: true
-        sslRedirect: true
-        browserXssFilter: true
-        contentTypeNosniff: true
-        forceSTSHeader: true
-        stsIncludeSubdomains: true
-        stsPreload: true
-        stsSeconds: 31536000
-        customFrameOptionsValue: SAMEORIGIN
-        customResponseHeaders:
-          X-Forwarded-Proto: https
-#    secure-local-only:
-#      chain:
-#        middlewares:
-#          - secure-headers
-#          - local-only
 
 log:
   level: DEBUG # TODO change to INFO or ERROR in production
