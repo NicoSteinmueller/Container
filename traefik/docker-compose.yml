@@ -10,6 +10,7 @@ services:
     networks:
       - proxy
       - bond0
+#      - monitoring
 
     ports:
       - "80:80"
@@ -22,7 +23,7 @@ services:
       # IONOS DNS Challenge
       # API Key erstellen unter: https://developer.hosting.ionos.de/keys
       # Nur Berechtigung TXT-Record (DNS) erforderlich (kein Zugriff auf z.B. A-Records oder andere Ressourcen notwendig)
-      IONOS_API_KEY: ${IONOS_API_KEY}
+#      IONOS_API_KEY: ${IONOS_API_KEY}
 
       TZ: Europe/Berlin
 
@@ -43,3 +44,5 @@ networks:
     name: proxy
   bond0:
     external: true
+#  monitoring:
+#    external: true

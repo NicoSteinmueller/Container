@@ -1,0 +1,61 @@
+# Promtail Configuration - Log Shipper für Loki
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Traefik Access Logs (JSON Format)
+  - job_name: traefik-access
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: traefik
+          type: access
+          __path__: /var/log/traefik/access.log
+    pipeline_stages:
+      - json:
+          expressions:
+            time: time
+            level: level
+            method: RequestMethod
+            path: RequestPath
+            status: DownstreamStatus
+            duration: Duration
+            client_ip: ClientAddr
+            user_agent: request_User-Agent
+      - labels:
+          method:
+          status:
+          level:
+      - timestamp:
+          source: time
+          format: RFC3339Nano
+
+  # Traefik Application Logs (JSON Format)
+  - job_name: traefik-app
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: traefik
+          type: application
+          __path__: /var/log/traefik/traefik.log
+    pipeline_stages:
+      - json:
+          expressions:
+            time: time
+            level: level
+            msg: msg
+      - labels:
+          level:
+      - timestamp:
+          source: time
+          format: RFC3339Nano
+

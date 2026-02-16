@@ -22,19 +22,19 @@ providers:
     directory: /config/dynamic
     watch: true
 
-certificatesResolvers:
-  letsencrypt:
-    acme:
-      email: nico.steinmueller@gmx.net
-      storage: /letsencrypt/acme.json # TODO: evtl. auf Server speichern statt volume
-      #caServer: https://acme-v02.api.letsencrypt.org/directory # TODO: Let's Encrypt Production Server
-      caServer: https://acme-staging-v02.api.letsencrypt.org/directory # Let's Encrypt Staging Server (für Tests)
-      dnsChallenge:
-        provider: ionos
-        resolvers:
-          - "1.1.1.1:53"
-          - "8.8.8.8:53"
-        delayBeforeCheck: "30"
+#certificatesResolvers:
+#  letsencrypt:
+#    acme:
+#      email: nico.steinmueller@gmx.net
+#      storage: /letsencrypt/acme.json # TODO: evtl. auf Server speichern statt volume
+#      #caServer: https://acme-v02.api.letsencrypt.org/directory # TODO: Let's Encrypt Production Server
+#      caServer: https://acme-staging-v02.api.letsencrypt.org/directory # Let's Encrypt Staging Server (für Tests)
+#      dnsChallenge:
+#        provider: ionos
+#        resolvers:
+#          - "1.1.1.1:53"
+#          - "8.8.8.8:53"
+#        delayBeforeCheck: "30"
 
 entryPoints:
   ping:
@@ -98,15 +98,11 @@ accessLog:
         Set-Cookie: redact
 
 #metrics:
-# openTelemetry, Prometheus, Datadog, InfluxDB 2.x, StatsD
-#  otlp:
-#    http:
-#      endpoint: http://myotlpcollector:4318/v1/metrics
-
-#tracing:
-#  otlp:
-#    http:
-#      endpoint: http://myotlpcollector:4318/v1/trace
+#  prometheus:
+#    addEntryPointsLabels: true
+#    addRoutersLabels: true
+#    addServicesLabels: true
+#    entryPoint: traefik  # Metriken verfügbar auf Port 8080
 
 
 

@@ -1,0 +1,12 @@
+# Environment variables
+.env
+
+# Grafana
+grafana/grafana.db
+
+# Prometheus
+prometheus/data/
+
+# Loki
+loki/data/
+
