@@ -41,3 +41,5 @@ build/
 **/.env
 !.env.example
 !**/.env.example
+/traefik/logs/access.log
+/traefik/logs/traefik.log

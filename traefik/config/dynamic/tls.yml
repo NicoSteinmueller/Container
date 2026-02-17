@@ -28,7 +28,7 @@ tls:
         - CurveP384
 
     # Default TLS-Konfiguration
-    default:
+    minimal:
       minVersion: VersionTLS12
       sniStrict: false
 

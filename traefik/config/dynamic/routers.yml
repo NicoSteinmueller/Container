@@ -16,7 +16,7 @@
     #   middlewares:
     #     - secure-headers
     #     # - basic-auth  # Optional: Dashboard mit Auth schützen
- - ping
+# - ping
 
 # Services können hier definiert werden, wenn nicht Docker Provider genutzt wird
 # http:

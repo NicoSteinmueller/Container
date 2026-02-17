@@ -26,9 +26,9 @@ certificatesResolvers:
   letsencrypt:
     acme:
       email: nico.steinmueller@gmx.net
-      storage: /letsencrypt/acme.json # TODO: evtl. auf Server speichern statt volume
-      #caServer: https://acme-v02.api.letsencrypt.org/directory # TODO: Let's Encrypt Production Server
-      caServer: https://acme-staging-v02.api.letsencrypt.org/directory # Let's Encrypt Staging Server (für Tests)
+      storage: /letsencrypt/acme.json
+      caServer: https://acme-v02.api.letsencrypt.org/directory # Let's Encrypt Production Server
+#      caServer: https://acme-staging-v02.api.letsencrypt.org/directory # Let's Encrypt Staging Server (für Tests)
       dnsChallenge:
         provider: ionos
         resolvers:
@@ -53,7 +53,7 @@ entryPoints:
     http:
       tls:
         certResolver: letsencrypt
-        options: default@file
+        options: minimal@file
       middlewares:
         - secure-headers@file
 
