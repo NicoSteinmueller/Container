@@ -44,6 +44,13 @@ services:
       - ${TRAEFIK_LOCATION:-./config}/dynamic:/config/dynamic:ro
       - ${TRAEFIK_LOCATION:-.}/logs:/logs
 
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
 volumes:
   letsencrypt:
 
