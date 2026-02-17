@@ -17,9 +17,10 @@ services:
       - no-new-privileges:true
 
     networks:
-      - proxy
-      - bond0
-#      - monitoring
+      proxy:
+      bond0:
+        ipv4_address: 192.168.178.5
+#      monitoring:
 
     ports:
       - "80:80"
@@ -60,5 +61,8 @@ networks:
     name: proxy
   bond0:
     external: true
+    ipam:
+      config:
+        - subnet: 192.168.178.0/24
 #  monitoring:
 #    external: true
