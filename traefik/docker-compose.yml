@@ -5,7 +5,6 @@
 # │ Variable                    │ Beispiel                       │ Erklärung                                │
 # ├─────────────────────────────┼────────────────────────────────┼──────────────────────────────────────────┤
 # │ IONOS_API_KEY               │ abc123def456ghi789...          │ API-Key für IONOS DNS Challenge          │
-# │ CROWDSEC_BOUNCER_API_KEY    │ abc123def456ghi789...          │ API-Key für CrowdSec Bouncer Plugin      │
 # │ TRAEFIK_LOCATION            │ ./config                       │ Pfad zur Traefik-Hauptkonfiguration      │
 # └─────────────────────────────┴────────────────────────────────┴──────────────────────────────────────────┘
 #
@@ -36,9 +35,6 @@ services:
       # Nur Berechtigung TXT-Record (DNS) erforderlich (kein Zugriff auf z.B. A-Records oder andere Ressourcen notwendig)
       IONOS_API_KEY: ${IONOS_API_KEY}
 
-      # CrowdSec Bouncer API Key
-      # Generieren mit: docker exec crowdsec cscli bouncers add traefik-bouncer
-      CROWDSEC_BOUNCER_API_KEY: ${CROWDSEC_BOUNCER_API_KEY}
 
       TZ: Europe/Berlin
 
