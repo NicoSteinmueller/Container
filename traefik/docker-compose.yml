@@ -72,6 +72,11 @@ services:
     networks:
       proxy:
 
+    # genutzte Ports
+    # 6060/tcp: Prometheus metrics port
+    # 8080/tcp: API port
+    # https://docs.crowdsec.net/u/getting_started/intro/
+
     environment:
       COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve"
 #      GID: "1000"
