@@ -44,6 +44,8 @@ http:
         stsPreload: true
         stsSeconds: 31536000
         customFrameOptionsValue: SAMEORIGIN
+        # referrerPolicy: "strict-origin-when-cross-origin"
+        # contentSecurityPolicy: "default-src 'self'"
         customResponseHeaders:
           X-Forwarded-Proto: https
 
