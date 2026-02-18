@@ -114,6 +114,7 @@ experimental:
     crowdsec-bouncer:
       moduleName: github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
       version: v1.5.0
+    # TODO: evtl https://plugins.traefik.io/plugins/62d6ce04832ba9805374d62c/geo-block
 # TODO: automatischer Update auf neuere Version prüfen, z.B. mit Renovate Bot oder Dependabot
 #  {
 #    "customManagers": [
