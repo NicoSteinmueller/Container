@@ -1,12 +1,13 @@
 # docker-compose.yml
 #
 # Umgebungsvariablen:
-# ┌──────────────────┬────────────────────────────────┬──────────────────────────────────────────┐
-# │ Variable         │ Beispiel                       │ Erklärung                                │
-# ├──────────────────┼────────────────────────────────┼──────────────────────────────────────────┤
-# │ IONOS_API_KEY    │ abc123def456ghi789...          │ API-Key für IONOS DNS Challenge          │
-# │ TRAEFIK_LOCATION │ ./config                       │ Pfad zur Traefik-Hauptkonfiguration      │
-# └──────────────────┴────────────────────────────────┴──────────────────────────────────────────┘
+# ┌─────────────────────────────┬────────────────────────────────┬──────────────────────────────────────────┐
+# │ Variable                    │ Beispiel                       │ Erklärung                                │
+# ├─────────────────────────────┼────────────────────────────────┼──────────────────────────────────────────┤
+# │ IONOS_API_KEY               │ abc123def456ghi789...          │ API-Key für IONOS DNS Challenge          │
+# │ CROWDSEC_BOUNCER_API_KEY    │ abc123def456ghi789...          │ API-Key für CrowdSec Bouncer Plugin      │
+# │ TRAEFIK_LOCATION            │ ./config                       │ Pfad zur Traefik-Hauptkonfiguration      │
+# └─────────────────────────────┴────────────────────────────────┴──────────────────────────────────────────┘
 #
 services:
   traefik:
@@ -18,8 +19,8 @@ services:
 
     networks:
       proxy:
-      bond0:
-        ipv4_address: 192.168.178.5
+#      bond0:
+#        ipv4_address: 192.168.178.5
 #      monitoring:
 
     ports:
@@ -34,6 +35,10 @@ services:
       # API Key erstellen unter: https://developer.hosting.ionos.de/keys
       # Nur Berechtigung TXT-Record (DNS) erforderlich (kein Zugriff auf z.B. A-Records oder andere Ressourcen notwendig)
       IONOS_API_KEY: ${IONOS_API_KEY}
+
+      # CrowdSec Bouncer API Key
+      # Generieren mit: docker exec crowdsec cscli bouncers add traefik-bouncer
+      CROWDSEC_BOUNCER_API_KEY: ${CROWDSEC_BOUNCER_API_KEY}
 
       TZ: Europe/Berlin
 
@@ -52,8 +57,34 @@ services:
       retries: 3
       start_period: 40s
 
+    depends_on:
+      - crowdsec
+
+  crowdsec:
+    image: crowdsecurity/crowdsec:v1.7.6
+    container_name: crowdsec
+    restart: unless-stopped
+
+    networks:
+      proxy:
+
+    environment:
+      COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve"
+#      GID: "1000"
+      TZ: Europe/Berlin
+
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - crowdsec-data:/var/lib/crowdsec/data/
+      - crowdsec-config:/etc/crowdsec/
+      - ${TRAEFIK_LOCATION:-.}/logs:/var/log/traefik:ro
+      - ${TRAEFIK_LOCATION:-./config}/crowdsec:/etc/crowdsec/acquis.d:ro
+
+
 volumes:
   letsencrypt:
+  crowdsec-data:
+  crowdsec-config:
 
 networks:
   proxy:

@@ -1,0 +1,10 @@
+---
+# CrowdSec Acquisition Configuration for Traefik Access Logs
+# This file maps Traefik access logs to CrowdSec parsers
+# Documentation: https://docs.crowdsec.net/docs/concepts/#acquisition
+
+filenames:
+  - /var/log/traefik/access.log
+labels:
+  type: traefik
+

@@ -4,6 +4,21 @@
 
 http:
   middlewares:
+    # CrowdSec Bouncer Middleware
+    crowdsec-bouncer:
+      plugin:
+        bouncer:
+          enabled: true
+          crowdsecMode: live
+          crowdsecLapiScheme: http
+          crowdsecLapiHost: crowdsec:8080
+          crowdsecLapiKey: ${CROWDSEC_BOUNCER_API_KEY}
+#          forwardedHeadersTrustedIPs:
+#            - "192.168.178.0/24"
+          clientTrustedIPs:
+            - "192.168.178.0/24"
+          logLevel: INFO
+
     # Middleware für lokale IP-Beschränkung
     local-only:
       ipAllowList:
