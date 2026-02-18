@@ -19,8 +19,8 @@ services:
 
     networks:
       proxy:
-#      bond0:
-#        ipv4_address: 192.168.178.5
+      bond0:
+        ipv4_address: 192.168.178.5
 #      monitoring:
 
     ports:
