@@ -91,6 +91,13 @@ services:
       - ${TRAEFIK_LOCATION:-.}/logs:/var/log/traefik:ro
       - ${TRAEFIK_LOCATION:-./config}/crowdsec:/etc/crowdsec/acquis.d:ro
 
+    healthcheck:
+      test: ["CMD", "cscli", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
 
 volumes:
   letsencrypt:
