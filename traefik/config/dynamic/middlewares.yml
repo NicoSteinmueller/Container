@@ -5,7 +5,7 @@
 http:
   middlewares:
     # CrowdSec Bouncer Middleware
-    crowdsec-bouncer:
+    crowdsec:
       plugin:
         crowdsec-bouncer:
           enabled: true
@@ -14,6 +14,11 @@ http:
           crowdsecLapiHost: crowdsec:8080
           # Generieren mit: docker exec crowdsec cscli bouncers add traefik-bouncer
           crowdsecLapiKey: # TODO Key hinzufügen bevor auf Server laden
+          crowdsecAppsecEnabled: true
+          crowdsecAppsecHost: crowdsec:7422
+          crowdsecAppsecFailureBlock: true
+          crowdsecAppsecUnreachableBlock: true
+          CrowdsecAppsecBodyLimit: 10485760 # (= 10MB) TODO evtl. anpassen
 #          forwardedHeadersTrustedIPs:
 #            - "192.168.178.0/24"
           clientTrustedIPs:

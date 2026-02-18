@@ -78,7 +78,7 @@ services:
     # https://docs.crowdsec.net/u/getting_started/intro/
 
     environment:
-      COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve"
+      COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules"
 #      GID: "1000"
       TZ: Europe/Berlin
       ENROLL_KEY: ${CROWDSEC_ENROLL_KEY:-}
