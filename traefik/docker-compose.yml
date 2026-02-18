@@ -68,6 +68,8 @@ services:
       COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve"
 #      GID: "1000"
       TZ: Europe/Berlin
+      ENROLL_KEY: ${CROWDSEC_ENROLL_KEY:-}
+      ENROLL_INSTANCE_NAME: traefik
 
     volumes:
       - /etc/localtime:/etc/localtime:ro
