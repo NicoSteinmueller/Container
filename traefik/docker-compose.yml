@@ -1,12 +1,20 @@
 # docker-compose.yml
 #
 # Umgebungsvariablen:
-# ┌─────────────────────────────┬────────────────────────────────┬──────────────────────────────────────────┐
-# │ Variable                    │ Beispiel                       │ Erklärung                                │
-# ├─────────────────────────────┼────────────────────────────────┼──────────────────────────────────────────┤
-# │ IONOS_API_KEY               │ abc123def456ghi789...          │ API-Key für IONOS DNS Challenge          │
-# │ TRAEFIK_LOCATION            │ ./config                       │ Pfad zur Traefik-Hauptkonfiguration      │
-# └─────────────────────────────┴────────────────────────────────┴──────────────────────────────────────────┘
+# ┌──────────────────────────┬────────────────────────────────┬──────────────────────────────────────────────────────────┐
+# │ Variable                 │ Beispiel                       │ Erklärung                                                │
+# ├──────────────────────────┼────────────────────────────────┼──────────────────────────────────────────────────────────┤
+# │ IONOS_API_KEY            │ abc123def456ghi789...          │ API-Key für IONOS DNS Challenge                          │
+# │ CROWDSEC_ENROLL_KEY      │ abc123def456ghi789...          │ Enrollment Key für CrowdSec Console (optional)           │
+# │                          │                                │ Erstellen : https://app.crowdsec.net/security-engines    │
+# │                          │                                │ Entspricht: cscli console enroll <KEY>                   │
+# │ TRAEFIK_LOCATION         │ ./config                       │ Pfad zur Traefik-Hauptkonfiguration                      │
+# └──────────────────────────┴────────────────────────────────┴──────────────────────────────────────────────────────────┘
+#
+# CrowdSec Bouncer API Key Setup:
+# Nach dem ersten Start von CrowdSec:
+# 1. docker exec crowdsec cscli bouncers add traefik-bouncer
+# 2. Den generierten API-Key in config/dynamic/middlewares.yml bei crowdsecLapiKey eintragen
 #
 services:
   traefik:
