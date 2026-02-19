@@ -4,6 +4,31 @@
 
 http:
   middlewares:
+
+
+    # ========================================
+    # Sichere Basis-Middleware-Chains
+    # ========================================
+
+    # Sichere Basis für lokale Zugriffe (z.B. interne Dashboards, Admin-Panels)
+    # Verwendet: IP-Beschränkung + CrowdSec + sichere Headers
+    secure-local:
+      chain:
+        middlewares:
+          - local-only
+          - crowdsec
+          - secure-headers
+
+    # Sichere Basis für öffentliche Zugriffe (z.B. Webseiten, APIs)
+    # Verwendet: Geo-Blocking + CrowdSec + sichere Headers
+    secure-public:
+      chain:
+        middlewares:
+          - geoblock
+          - crowdsec
+          - secure-headers
+
+
     # CrowdSec Bouncer Middleware
     crowdsec:
       plugin:
@@ -86,13 +111,6 @@ http:
         # contentSecurityPolicy: "default-src 'self'"
         customResponseHeaders:
           X-Forwarded-Proto: https
-
-    # Kombinierte Middleware für sichere lokale Zugriffe
-    secure-local-only:
-      chain:
-        middlewares:
-          - secure-headers
-          - local-only
 
     # Rate Limiting Middleware (optional)
     rate-limit:
