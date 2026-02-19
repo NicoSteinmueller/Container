@@ -62,7 +62,9 @@ services:
       start_period: 40s
 
     depends_on:
-      - crowdsec
+      crowdsec:
+        condition: service_healthy
+        restart: true
 
   crowdsec:
     image: crowdsecurity/crowdsec:v1.7.6
@@ -93,11 +95,11 @@ services:
       - ${TRAEFIK_LOCATION:-./config}/crowdsec:/etc/crowdsec/acquis.d:ro
 
     healthcheck:
-      test: ["CMD", "cscli", "version"]
+      test: ["CMD", "sh", "-c", "cscli version && wget -q --spider http://localhost:8080/health || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 60s
+      retries: 5
+      start_period: 90s
 
 
 volumes:
