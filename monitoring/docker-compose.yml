@@ -2,7 +2,7 @@
 # Überwacht Traefik Metriken und Logs
 services:
   prometheus:
-    image: prom/prometheus:v3.2.0
+    image: prom/prometheus:v3.2.0@sha256:5888c188cf09e3f7eebc97369c3b2ce713e844cdbd88ccf36f5047c958aea120
     container_name: prometheus
     restart: unless-stopped
     command:
@@ -24,7 +24,7 @@ services:
       - "traefik.enable=false"
 
   loki:
-    image: grafana/loki:3.3.2
+    image: grafana/loki:3.3.2@sha256:8af2de1abbdd7aa92b27c9bcc96f0f4140c9096b507c77921ffddf1c6ad6c48f
     container_name: loki
     restart: unless-stopped
     command: -config.file=/etc/loki/local-config.yml
@@ -39,7 +39,7 @@ services:
       - "traefik.enable=false"
 
   promtail:
-    image: grafana/promtail:3.3.2
+    image: grafana/promtail:3.3.2@sha256:cb4990801ec58975c5e231057c2bcf204c85fac428eec65ad66e0016c64b9608
     container_name: promtail
     restart: unless-stopped
     command: -config.file=/etc/promtail/config.yml
@@ -54,7 +54,7 @@ services:
       - "traefik.enable=false"
 
   grafana:
-    image: grafana/grafana:11.5.1
+    image: grafana/grafana:11.5.1@sha256:5781759b3d27734d4d548fcbaf60b1180dbf4290e708f01f292faa6ae764c5e6
     container_name: grafana
     restart: unless-stopped
     networks:
