@@ -38,7 +38,7 @@
 
 services:
   paperless:
-    image: ghcr.io/paperless-ngx/paperless-ngx:2.20.6@sha256:a28330462994b937938e02aaa5632a1effcc7f9acfba96c1bef9c50e1167a027
+    image: ghcr.io/paperless-ngx/paperless-ngx:2.20.7@sha256:7b937cb2fa2885ab0ecfceb8c7e8827e2312472d9d897a270097ba7f5522dcdc
     container_name: paperless_${INSTANCE_NAME:-main}
     environment:
       # https://docs.paperless-ngx.com/configuration/
@@ -143,7 +143,7 @@ services:
     restart: unless-stopped
 
   database:
-    image: postgres:18.1-alpine3.23@sha256:aa6eb304ddb6dd26df23d05db4e5cb05af8951cda3e0dc57731b771e0ef4ab29
+    image: postgres:18.2-alpine3.23@sha256:035b9ab53cfa147d7202b61f5f7782b939ae815b7d6bc81c96b7b42ff1fca950
     container_name: paperless_${INSTANCE_NAME:-main}_postgres
     environment:
       POSTGRES_DB: paperless
