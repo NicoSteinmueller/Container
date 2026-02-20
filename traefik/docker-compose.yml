@@ -24,6 +24,15 @@ services:
     security_opt:
       - no-new-privileges:true
 
+    labels:
+      - "traefik.enable=true"
+      # Router
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.local.nico-steinmueller.de`)"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.traefik-dashboard.middlewares=secure-local@file"
+      # Service → internes Dashboard API
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+
     networks:
       proxy:
       bond0:

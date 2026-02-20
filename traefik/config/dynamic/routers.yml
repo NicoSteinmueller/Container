@@ -2,21 +2,21 @@
 # Traefik v3 Dynamic Configuration - Routers
 # Documentation: https://doc.traefik.io/traefik/v3.0/routing/routers/
 
-# Nur als Beispiel - Router werden in der Regel automatisch über Docker Labels definiert
+# Router werden in der Regel automatisch über Docker Labels definiert
+# Beispiel siehe traefik/docker-compose.yml
+
+# Statische Router können hier definiert werden, falls nicht Docker Provider genutzt wird
 #http:
 #  routers:
-    # Beispiel-Router für Traefik Dashboard
-    # dashboard:
-    #   rule: "Host(`traefik.example.com`)"
-    #   service: api@internal
-    #   entryPoints:
-    #     - websecure
-    #   tls:
-    #     certResolver: letsencrypt
-    #   middlewares:
-    #     - secure-headers
-    #     # - basic-auth  # Optional: Dashboard mit Auth schützen
-# - ping
+#    my-router:
+#      rule: "Host(`example.com`)"
+#      service: my-service
+#      entryPoints:
+#        - websecure
+#      tls:
+#        certResolver: letsencrypt
+#      middlewares:
+#        - secure-headers@file
 
 # Services können hier definiert werden, wenn nicht Docker Provider genutzt wird
 # http:
