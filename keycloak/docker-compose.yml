@@ -10,7 +10,7 @@ version: "3.9"
 
 services:
   keycloak:
-    image: quay.io/keycloak/keycloak:26.5.3@sha256:5a236ae4dd8ece77490115bace15a11a4d15e9cbcf58a490b95a7da2cd71d32a
+    image: quay.io/keycloak/keycloak:26.5.4@sha256:ae8efb0d218d8921334b03a2dbee7069a0b868240691c50a3ffc9f42fabba8b4
     container_name: keycloak
     command: start
     environment:
@@ -50,7 +50,7 @@ services:
     restart: unless-stopped
 
   database:
-    image: postgres:18.1-alpine3.23@sha256:aa6eb304ddb6dd26df23d05db4e5cb05af8951cda3e0dc57731b771e0ef4ab29
+    image: postgres:18.2-alpine3.23@sha256:035b9ab53cfa147d7202b61f5f7782b939ae815b7d6bc81c96b7b42ff1fca950
     container_name: keycloak_postgres
     environment:
       - POSTGRES_DB=keycloak
