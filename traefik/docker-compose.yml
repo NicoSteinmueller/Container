@@ -36,11 +36,11 @@ services:
     networks:
       proxy:
       bond0:
-        #ipv4_address: 192.168.178.5
+        ipv4_address: 192.168.178.5
 #      monitoring:
 
     ports:
-      - "80:80"
+      #- "80:80"
       - "443:443"
       - "443:443/udp"
       - "443:443/tcp"
