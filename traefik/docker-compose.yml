@@ -18,7 +18,7 @@
 #
 services:
   traefik:
-    image: traefik:v3.6.8
+    image: traefik:v3.6.8@sha256:90099f8948c828ecf0ababd711a4359a2443eba12261c1df2f548a3b1d815938
     container_name: traefik
     restart: unless-stopped
     security_opt:
@@ -77,7 +77,7 @@ services:
         restart: true
 
   crowdsec:
-    image: crowdsecurity/crowdsec:v1.7.6
+    image: crowdsecurity/crowdsec:v1.7.6@sha256:63b595fef92de1778573b375897a45dd226637ee9a3d3db9f57ac7355c369493
     container_name: crowdsec
     restart: unless-stopped
 
