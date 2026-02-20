@@ -11,7 +11,7 @@
 services:
   # https://github.com/docker-library/docs/blob/master/nextcloud/README.md
   nextcloud:
-    image: nextcloud:32.0.5-apache@sha256:aa9bb9bbde6e6afc756f7f101d65fbd57526165184737a85e31cc98dfbaaa2e2
+    image: nextcloud:32.0.6-apache@sha256:0e1084cc59df77bec7d6bb29d9ac6939da8372512237a9c51f74ff0a970524f2
     container_name: nextcloud
     restart: unless-stopped
     ports:
@@ -64,7 +64,7 @@ services:
       - nextcloud-network
 
   cron:
-    image: nextcloud:32.0.5-apache@sha256:aa9bb9bbde6e6afc756f7f101d65fbd57526165184737a85e31cc98dfbaaa2e2
+    image: nextcloud:32.0.6-apache@sha256:0e1084cc59df77bec7d6bb29d9ac6939da8372512237a9c51f74ff0a970524f2
     container_name: nextcloud_cron
     restart: unless-stopped
     volumes:
@@ -91,7 +91,7 @@ services:
       - nextcloud-network
 
   database:
-    image: postgres:17.8-alpine3.23@sha256:208f2023601a21e715a7d0cc61256c21a108dad7b083e0a8f7dfd402a27b1382
+    image: postgres:17.8-alpine3.23@sha256:3430fe182f5065a6ea505c3d432d2c7fff18fbab954df8f277c1dbf4c70124af
     container_name: nextcloud_postgres
     restart: unless-stopped
     environment:
