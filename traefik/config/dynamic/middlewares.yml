@@ -43,9 +43,6 @@ http:
           crowdsecAppsecHost: crowdsec:7422
           crowdsecAppsecFailureBlock: true
           crowdsecAppsecUnreachableBlock: true
-          CrowdsecAppsecBodyLimit: 10485760 # (= 10MB) TODO evtl. anpassen
-#          forwardedHeadersTrustedIPs:
-#            - "192.168.178.0/24"
           clientTrustedIPs:
             - "192.168.178.0/24"
           logLevel: INFO
