@@ -66,6 +66,8 @@ services:
     volumes:
       - model-cache:/cache
     restart: always
+    networks:
+      internal:
     healthcheck:
       disable: false
 
@@ -76,6 +78,8 @@ services:
     healthcheck:
       test: redis-cli ping || exit 1
     restart: always
+    networks:
+      internal:
 
   database:
     container_name: immich_postgres
@@ -90,6 +94,8 @@ services:
       - postgres:/var/lib/postgresql
     shm_size: 128mb
     restart: always
+    networks:
+      internal:
 
 volumes:
   model-cache:
