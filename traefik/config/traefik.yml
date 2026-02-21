@@ -53,7 +53,7 @@ entryPoints:
     http:
       tls:
         certResolver: letsencrypt
-        options: minimal@file
+        options: modern@file
       middlewares:
         - secure-headers@file
 

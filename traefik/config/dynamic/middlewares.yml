@@ -80,6 +80,8 @@ http:
 
           # Hält die Länderdatenbank automatisch aktuell
           databaseAutoUpdate: true
+          databaseAutoUpdateToken: # TODO Token hinzufügen bevor auf Server laden
+          databaseAutoUpdateCode: DB1.LITE
           # Directory to store updated databases. This must be a persistent volume in the traefik pod.
           databaseAutoUpdateDir: /data/geoblock
           databaseFilePath: /data/geoblock
