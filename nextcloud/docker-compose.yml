@@ -61,7 +61,16 @@ services:
       retries: 3
       start_period: 120s
     networks:
-      - nextcloud-network
+      nextcloud-network:
+      proxy:
+    labels:
+      traefik.enable: true
+      traefik.http.routers.nextcloud.rule: Host(`cloud.nico-steinmueller.de`)
+      traefik.http.routers.nextcloud.entrypoints: websecure
+      traefik.http.routers.nextcloud.tls.options: modern@file
+      traefik.http.routers.nextcloud.middlewares: secure-public@file, compress@file, cache-static-assets@file
+      traefik.http.routers.nextcloud.service: nextcloud
+      traefik.http.services.nextcloud.loadbalancer.server.port: 80
 
   cron:
     image: nextcloud:32.0.6-apache@sha256:0e1084cc59df77bec7d6bb29d9ac6939da8372512237a9c51f74ff0a970524f2
@@ -131,3 +140,5 @@ volumes:
 networks:
   nextcloud-network:
     name: nextcloud-network
+  proxy:
+    external: true
