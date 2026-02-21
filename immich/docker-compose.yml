@@ -34,8 +34,29 @@ services:
       - redis
       - database
     restart: always
+    networks:
+      proxy:
     healthcheck:
       disable: false
+    labels:
+      traefik.enable: true
+      # Router
+      traefik.http.routers.immich.rule: Host(`immich.nico-steinmueller.de`)
+      traefik.http.routers.immich.entrypoints: websecure
+      traefik.http.routers.immich.middlewares: secure-public@file,compress@file,immich-buffering@docker
+      traefik.http.routers.immich.service: immich
+      # Service
+      traefik.http.services.immich.loadbalancer.server.port: 2283
+      traefik.http.services.immich.loadbalancer.responseForwarding.flushInterval: 100ms
+      traefik.http.services.immich.loadbalancer.passHostHeader: true
+      traefik.http.services.immich.loadbalancer.serversTransport: immich@docker
+      # Timeouts
+      traefik.http.serversTransports.immich.forwardingTimeouts.responseHeaderTimeout: 1200s
+      traefik.http.serversTransports.immich.forwardingTimeouts.readIdleTimeout: 1200s
+      # Buffering: Große Uploads erlauben (50000MB), aber in Memory nur 10MB, damit nicht zu viel RAM verbraucht wird. Bei Netzwerkfehlern bis zu 3x retryen.
+      traefik.http.middlewares.immich-buffering.buffering.maxRequestBodyBytes: 52428800000
+      traefik.http.middlewares.immich-buffering.buffering.memRequestBodyBytes: 10485760
+      traefik.http.middlewares.immich-buffering.buffering.retryExpression: "IsNetworkError() && Attempts() < 3"
 
   immich-machine-learning:
     container_name: immich_machine_learning
@@ -72,3 +93,8 @@ services:
 volumes:
   model-cache:
   postgres:
+
+networks:
+  proxy:
+    external: true
+
