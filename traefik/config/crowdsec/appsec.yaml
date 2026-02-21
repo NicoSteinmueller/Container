@@ -1,6 +1,6 @@
 appsec_configs:
-  - crowdsecurity/appsec-default # Virtual patching rules (in-band blocking)
-  - crowdsecurity/crs # OWASP CRS rules (out-of-band detection)
+  - crowdsecurity/appsec-default            # Virtual patching rules (in-band blocking)
+  - crowdsecurity/crs                       # OWASP CRS rules (out-of-band detection)
 labels:
   type: appsec
 listen_addr: 0.0.0.0:7422

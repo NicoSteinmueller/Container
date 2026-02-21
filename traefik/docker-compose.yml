@@ -91,9 +91,9 @@ services:
 
     environment:
       # Prüfen für neue Anwendung: https://app.crowdsec.net/hub/collections
-      COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules crowdsecurity/appsec-crs crowdsecurity/sshd crowdsecurity/linux crowdsecurity/iptables crowdsecurity/base-http-scenarios crowdsecurity/http-dos crowdsecurity/whitelist-good-actors crowdsecurity/nextcloud"
+      COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules crowdsecurity/appsec-crs crowdsecurity/sshd crowdsecurity/linux crowdsecurity/iptables crowdsecurity/base-http-scenarios crowdsecurity/http-dos crowdsecurity/whitelist-good-actors crowdsecurity/nextcloud crowdsecurity/appsec-crs-exclusion-plugin-nextcloud"
       PARSER: "crowdsecurity/nextcloud-whitelist"
-      APPSEC_RULES: "crowdsecurity/crs-exclusion-plugin-nextcloud"
+      #APPSEC_RULES: "crowdsecurity/crs-exclusion-plugin-nextcloud"
 #      GID: "1000"
       TZ: Europe/Berlin
       # ENROLL_KEY + ENROLL_INSTANCE_NAME entfernt - Instanz bereits in CrowdSec Console enrolled
