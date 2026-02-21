@@ -96,8 +96,10 @@ services:
       APPSEC_RULES: "crowdsecurity/crs-exclusion-plugin-nextcloud"
 #      GID: "1000"
       TZ: Europe/Berlin
-      ENROLL_KEY: ${CROWDSEC_ENROLL_KEY:-}
-      ENROLL_INSTANCE_NAME: traefik
+      # ENROLL_KEY + ENROLL_INSTANCE_NAME entfernt - Instanz bereits in CrowdSec Console enrolled
+      # Erneut eintragen falls Instanz aus Console entfernt wird
+      # ENROLL_KEY: ${CROWDSEC_ENROLL_KEY:-}
+      # ENROLL_INSTANCE_NAME: traefik
 
     volumes:
       - /etc/localtime:/etc/localtime:ro
