@@ -50,10 +50,7 @@ services:
       traefik.http.services.immich.loadbalancer.server.port: 2283
       traefik.http.services.immich.loadbalancer.responseForwarding.flushInterval: 100ms
       traefik.http.services.immich.loadbalancer.passHostHeader: true
-      traefik.http.services.immich.loadbalancer.serversTransport: immich@docker
-      # Timeouts
-      traefik.http.serversTransports.immich.forwardingTimeouts.responseHeaderTimeout: 1200s
-      traefik.http.serversTransports.immich.forwardingTimeouts.readIdleTimeout: 1200s
+      #traefik.http.services.immich.loadbalancer.serversTransport: immich@file
       # Buffering: Große Uploads erlauben (50000MB), aber in Memory nur 10MB, damit nicht zu viel RAM verbraucht wird. Bei Netzwerkfehlern bis zu 3x retryen.
       traefik.http.middlewares.immich-buffering.buffering.maxRequestBodyBytes: 52428800000
       traefik.http.middlewares.immich-buffering.buffering.memRequestBodyBytes: 10485760
