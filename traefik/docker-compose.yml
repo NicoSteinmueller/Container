@@ -93,13 +93,10 @@ services:
       # Prüfen für neue Anwendung: https://app.crowdsec.net/hub/collections
       COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules crowdsecurity/appsec-crs crowdsecurity/sshd crowdsecurity/linux crowdsecurity/iptables crowdsecurity/base-http-scenarios crowdsecurity/http-dos crowdsecurity/whitelist-good-actors crowdsecurity/nextcloud crowdsecurity/appsec-crs-exclusion-plugin-nextcloud"
       PARSER: "crowdsecurity/nextcloud-whitelist"
-      #APPSEC_RULES: "crowdsecurity/crs-exclusion-plugin-nextcloud"
 #      GID: "1000"
       TZ: Europe/Berlin
-      # ENROLL_KEY + ENROLL_INSTANCE_NAME entfernt - Instanz bereits in CrowdSec Console enrolled
-      # Erneut eintragen falls Instanz aus Console entfernt wird
-      # ENROLL_KEY: ${CROWDSEC_ENROLL_KEY:-}
-      # ENROLL_INSTANCE_NAME: traefik
+      ENROLL_KEY: ${CROWDSEC_ENROLL_KEY:-}
+      ENROLL_INSTANCE_NAME: traefik
 
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -107,6 +104,8 @@ services:
       - crowdsec-config:/etc/crowdsec/
       - ${TRAEFIK_LOCATION:-.}/logs:/var/log/traefik:ro
       - ${TRAEFIK_LOCATION:-./config}/crowdsec:/etc/crowdsec/acquis.d:ro
+      # Überschreibt die CRS AppSec-Config um das Nextcloud-Plugin einzubinden
+      - ${TRAEFIK_LOCATION:-./config}/crowdsec/appsec-config-crs.yaml:/etc/crowdsec/appsec-configs/crs.yaml:ro
 
     healthcheck:
       test: ["CMD", "sh", "-c", "cscli version && wget -q --spider http://localhost:8080/health || exit 1"]

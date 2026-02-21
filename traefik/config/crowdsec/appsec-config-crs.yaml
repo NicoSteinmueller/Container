@@ -1,0 +1,15 @@
+---
+# CRS AppSec-Config mit Nextcloud-Plugin Support
+# Überschreibt /etc/crowdsec/appsec-configs/crs.yaml im Container
+# Die CRS-Regeln inkludieren automatisch Plugin-Dateien aus /var/lib/crowdsec/data/crs-plugins/
+name: crowdsecurity/crs
+default_remediation: ban
+#log_level: debug
+outofband_rules:
+  - crowdsecurity/crs
+  - crowdsecurity/crs-exclusion-plugin-nextcloud
+on_match:
+  - filter: IsOutBand == true
+    apply:
+      - SendAlert()
+
