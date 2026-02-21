@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://json.schemastore.org/traefik-v3-dynamic.json
+# Traefik v3 Dynamic Configuration - ServersTransports
+# Werden hier definiert, da serversTransports nicht per Docker Label konfiguriert werden können.
+
+http:
+  serversTransports:
+
+    # Für Dienste mit großen Uploads oder langen Verarbeitungszeiten (z.B. Immich, Nextcloud)
+    # Entspricht proxy_read_timeout + proxy_send_timeout in NPM
+    long-timeout:
+      forwardingTimeouts:
+        responseHeaderTimeout: 1200s
+        readIdleTimeout: 1200s
+
+
