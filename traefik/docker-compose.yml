@@ -104,8 +104,6 @@ services:
       - crowdsec-config:/etc/crowdsec/
       - ${TRAEFIK_LOCATION:-.}/logs:/var/log/traefik:ro
       - ${TRAEFIK_LOCATION:-./config}/crowdsec:/etc/crowdsec/acquis.d:ro
-      # Überschreibt die CRS AppSec-Config um das Nextcloud-Plugin einzubinden
-      - ${TRAEFIK_LOCATION:-./config}/crowdsec/appsec-config-crs.yaml:/etc/crowdsec/appsec-configs/crs.yaml:ro
 
     healthcheck:
       test: ["CMD", "sh", "-c", "cscli version && wget -q --spider http://localhost:8080/health || exit 1"]
