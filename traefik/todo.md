@@ -68,3 +68,17 @@ https://doc.traefik.io/traefik/reference/install-configuration/configuration-opt
 
       # Service
       - "traefik.http.services.nextcloud.loadbalancer.server.port=80"
+
+
+# CrowdSec AppSec
+https://github.com/crowdsecurity/hub/blob/master/appsec-rules/crowdsecurity/crs-exclusion-plugin-nextcloud.yaml
+https://hub-data.crowdsec.net/appsec/crs-plugins/nextcloud-rule-exclusions-plugin/nextcloud-rule-exclusions-before.conf
+https://github.com/coreruleset/nextcloud-rule-exclusions-plugin?tab=readme-ov-file
+https://coreruleset.org/docs/4-about-plugins/4-1-plugins/
+https://plugins.traefik.io/plugins/6335346ca4caa9ddeffda116/crowdsec-bouncer-traefik-plugin
+
+evtl. appsec.yaml anpassen, damit die Nextcloud Regeln nicht zu streng sind und die App nicht blockieren
+
+/var/lib/crowdsec/data/crs-plugins/nextcloud#
+https://app.crowdsec.net/hub/author/crowdsecurity/appsec-rules/crs
+https://docs.crowdsec.net/docs/appsec/configuration/
