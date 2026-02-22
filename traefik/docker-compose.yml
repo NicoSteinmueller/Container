@@ -90,15 +90,13 @@ services:
     # https://docs.crowdsec.net/u/getting_started/intro/
 
     environment:
-      # Prüfen für neue Anwendung: https://app.crowdsec.net/hub/collections
-      COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules crowdsecurity/appsec-crs crowdsecurity/sshd crowdsecurity/linux crowdsecurity/iptables crowdsecurity/base-http-scenarios crowdsecurity/http-dos crowdsecurity/whitelist-good-actors crowdsecurity/nextcloud"
-      APPSEC_RULES: "crowdsecurity/crs-exclusion-plugin-nextcloud"
-      PARSER: "crowdsecurity/nextcloud-whitelist"
-#      GID: "1000"
+      # Prüfen für neue Anwendung: https://app.crowdsec.net/hub/conecllections
+      COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules crowdsecurity/appsec-crs  crowdsecurity/appsec-crs-exclusion-plugin-nextcloud crowdsecurity/sshd crowdsecurity/linux crowdsecurity/iptables crowdsecurity/base-http-scenarios crowdsecurity/http-dos crowdsecurity/whitelist-good-actors crowdsecurity/nextcloud"
+      GID: "1000"
       TZ: Europe/Berlin
       # ENROLL_KEY auskommentiert - Instanz bereits enrolled, Key verursacht "Forbidden"-Fehler
-      # ENROLL_KEY: ${CROWDSEC_ENROLL_KEY:-}
-      # ENROLL_INSTANCE_NAME: traefik
+      ENROLL_KEY: ${CROWDSEC_ENROLL_KEY:-}
+      ENROLL_INSTANCE_NAME: traefik
 
     volumes:
       - /etc/localtime:/etc/localtime:ro

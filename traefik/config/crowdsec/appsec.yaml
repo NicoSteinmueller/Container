@@ -1,3 +1,4 @@
+# https://app.crowdsec.net/hub/appsec-configurations
 appsec_configs:
   - crowdsecurity/appsec-default            # Virtual patching rules (in-band blocking)
   - crowdsecurity/crs                       # OWASP CRS rules (out-of-band detection)
