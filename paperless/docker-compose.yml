@@ -140,25 +140,24 @@ services:
       - proxy
     restart: unless-stopped
     labels:
-      traefik.enable: true
+      - "traefik.enable=true"
 
       # Router für /admin - nur lokal erreichbar
-      traefik.http.routers.paperless-${INSTANCE_NAME:-main}-admin.rule: Host(`paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de`) && PathPrefix(`/admin`)
-      traefik.http.routers.paperless-${INSTANCE_NAME:-main}-admin.entrypoints: websecure
-      traefik.http.routers.paperless-${INSTANCE_NAME:-main}-admin.priority: 100
-      traefik.http.routers.paperless-${INSTANCE_NAME:-main}-admin.middlewares: local-only@file, compress@file
-      traefik.http.routers.paperless-${INSTANCE_NAME:-main}-admin.service: paperless
+      - "traefik.http.routers.paperless-${INSTANCE_NAME:-main}-admin.rule=Host(`paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de`) && PathPrefix(`/admin`)"
+      - "traefik.http.routers.paperless-${INSTANCE_NAME:-main}-admin.entrypoints=websecure"
+      - "traefik.http.routers.paperless-${INSTANCE_NAME:-main}-admin.priority=100"
+      - "traefik.http.routers.paperless-${INSTANCE_NAME:-main}-admin.middlewares=local-only@file, compress@file"
+      - "traefik.http.routers.paperless-${INSTANCE_NAME:-main}-admin.service=paperless-${INSTANCE_NAME:-main}"
 
       # Router für alle anderen Pfade - öffentlich erreichbar
-      traefik.http.routers.paperless-${INSTANCE_NAME:-main}.rule: Host(`paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de`)
-      traefik.http.routers.paperless-${INSTANCE_NAME:-main}.entrypoints: websecure
-      traefik.http.routers.paperless-${INSTANCE_NAME:-main}.priority: 50
-      # TODO: evtl. local-only@file entfernen
-      traefik.http.routers.paperless-${INSTANCE_NAME:-main}.middlewares: local-only@file, crowdsec@file, geoblock@file, compress@file
-      traefik.http.routers.paperless-${INSTANCE_NAME:-main}-.service: paperless
+      - "traefik.http.routers.paperless-${INSTANCE_NAME:-main}.rule=Host(`paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de`)"
+      - "traefik.http.routers.paperless-${INSTANCE_NAME:-main}.entrypoints=websecure"
+      - "traefik.http.routers.paperless-${INSTANCE_NAME:-main}.priority=50"
+      - "traefik.http.routers.paperless-${INSTANCE_NAME:-main}.middlewares=crowdsec@file, geoblock@file, compress@file"
+      - "traefik.http.routers.paperless-${INSTANCE_NAME:-main}.service=paperless-${INSTANCE_NAME:-main}"
 
       # Service Definition (beide Router nutzen denselben Service)
-      traefik.http.services.paperless.loadbalancer.server.port: 8000
+      - "traefik.http.services.paperless-${INSTANCE_NAME:-main}.loadbalancer.server.port=8000"
 
   database:
     image: postgres:18.2-alpine3.23@sha256:035b9ab53cfa147d7202b61f5f7782b939ae815b7d6bc81c96b7b42ff1fca950
