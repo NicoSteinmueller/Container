@@ -56,14 +56,14 @@ services:
       traefik.enable: true
 
       # ====== Normale Keycloak Oberfläche (öffentlich) ======
-      traefik.http.routers.keycloak.rule: Host(`keycloak.nico-steinmueller.de`)"
+      traefik.http.routers.keycloak.rule: Host(`keycloak.nico-steinmueller.de`)
       traefik.http.routers.keycloak.entrypoints: websecure
-      traefik.http.routers.keycloak.middlewares: keycloak-headers, crowdsec@file, compress@file
+      traefik.http.routers.keycloak.middlewares: crowdsec@file, compress@file
 
       # ====== Admin Konsole (nur lokales Netzwerk) ======
       traefik.http.routers.keycloak-admin.rule: Host(`admin.keycloak.nico-steinmueller.de`)
       traefik.http.routers.keycloak-admin.entrypoints: websecure
-      traefik.http.routers.keycloak-admin.middlewares: local-only@file, keycloak-admin-headers, compress@file"
+      traefik.http.routers.keycloak-admin.middlewares: local-only@file, compress@file"
 
       # Service Definition (beide Router nutzen denselben Service)
       traefik.http.services.keycloak.loadbalancer.server.port: 8080
