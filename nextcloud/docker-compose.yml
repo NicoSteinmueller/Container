@@ -14,8 +14,8 @@ services:
     image: nextcloud:32.0.6-apache@sha256:0e1084cc59df77bec7d6bb29d9ac6939da8372512237a9c51f74ff0a970524f2
     container_name: nextcloud
     restart: unless-stopped
-    ports:
-      - "38080:80"
+#    ports:
+#      - "38080:80"
     environment:
       POSTGRES_HOST: database
       POSTGRES_DB: nextcloud
@@ -67,7 +67,7 @@ services:
       traefik.enable: true
       traefik.http.routers.nextcloud.rule: Host(`cloud.nico-steinmueller.de`)
       traefik.http.routers.nextcloud.entrypoints: websecure
-      traefik.http.routers.nextcloud.middlewares: secure-public@file, compress@file
+      traefik.http.routers.nextcloud.middlewares: crowdsec@file, geoblock@file, compress@file
       traefik.http.routers.nextcloud.service: nextcloud
       traefik.http.services.nextcloud.loadbalancer.server.port: 80
 

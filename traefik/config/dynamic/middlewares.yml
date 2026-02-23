@@ -5,32 +5,22 @@
 http:
   middlewares:
 
-
-    # ========================================
-    # Sichere Basis-Middleware-Chains
-    # ========================================
-
-    # Sichere Basis für lokale Zugriffe (z.B. interne Dashboards, Admin-Panels)
-    # Verwendet: IP-Beschränkung + CrowdSec + sichere Headers
-    secure-local:
-      chain:
-        middlewares:
-          - local-only
-          - crowdsec
-          - secure-headers
-
-    # Sichere Basis für öffentliche Zugriffe (z.B. Webseiten, APIs)
-    # Verwendet: Geo-Blocking + CrowdSec + sichere Headers
-    secure-public:
-      chain:
-        middlewares:
-          - geoblock
-          - crowdsec
-          - secure-headers
-
-
-    # CrowdSec Bouncer Middleware
+    # CrowdSec Bouncer Middleware (ohne AppSec)
     crowdsec:
+      plugin:
+        crowdsec-bouncer:
+          enabled: true
+          crowdsecMode: live
+          crowdsecLapiScheme: http
+          crowdsecLapiHost: crowdsec:8080
+          # Generieren mit: docker exec crowdsec cscli bouncers add traefik-bouncer
+          crowdsecLapiKey: # TODO Key hinzufügen bevor auf Server laden
+          clientTrustedIPs:
+            - "192.168.178.0/24"
+          logLevel: INFO
+
+    # CrowdSec Bouncer Middleware (mit AppSec)
+    crowdsec-appsec:
       plugin:
         crowdsec-bouncer:
           enabled: true
@@ -106,8 +96,7 @@ http:
         stsPreload: true
         stsSeconds: 31536000
         customFrameOptionsValue: SAMEORIGIN
-        # referrerPolicy: "strict-origin-when-cross-origin"
-        # contentSecurityPolicy: "default-src 'self'"
+        # contentSecurityPolicy: "default-src 'none'"
         customResponseHeaders:
           X-Forwarded-Proto: https
 
