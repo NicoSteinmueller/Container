@@ -24,16 +24,6 @@ services:
     security_opt:
       - no-new-privileges:true
 
-    labels:
-      traefik.enable: true
-      # Router
-      traefik.http.routers.traefik-dashboard.rule: Host(`traefik.local.nico-steinmueller.de`)
-      traefik.http.routers.traefik-dashboard.entrypoints: websecure
-      traefik.http.routers.traefik-dashboard.middlewares: local-only@file
-      # Service → internes Dashboard API
-      traefik.http.routers.traefik-dashboard.service: api@internal
-      traefik.http.services.traefik-dashboard.loadbalancer.server.port: 8080
-
     networks:
       proxy:
       bond0:
@@ -75,6 +65,17 @@ services:
       crowdsec:
         condition: service_started
         restart: true
+
+    labels:
+      traefik.enable: true
+      # Router
+      traefik.http.routers.traefik-dashboard.rule: Host(`traefik.local.nico-steinmueller.de`)
+      traefik.http.routers.traefik-dashboard.entrypoints: websecure
+      traefik.http.routers.traefik-dashboard.middlewares: local-only@file
+      # Service → internes Dashboard API
+      traefik.http.routers.traefik-dashboard.service: api@internal
+      traefik.http.services.traefik-dashboard.loadbalancer.server.port: 8080
+
 
   crowdsec:
     image: crowdsecurity/crowdsec:v1.7.6@sha256:63b595fef92de1778573b375897a45dd226637ee9a3d3db9f57ac7355c369493
