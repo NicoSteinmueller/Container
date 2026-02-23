@@ -18,10 +18,12 @@ services:
       - KC_BOOTSTRAP_ADMIN_USERNAME=${KEYCLOAK_ADMIN_USER:-admin}
       - KC_BOOTSTRAP_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-changeme}
 
-      # Proxy-Konfiguration für Nginx Proxy Manager
+      # Proxy-Konfiguration für Traefik
       - KC_PROXY_HEADERS=xforwarded
       - KC_HTTP_ENABLED=true
-      - KC_HOSTNAME_STRICT=false
+      - KC_HOSTNAME_STRICT=true
+      - KC_HOSTNAME=keycloak.nico-steinmueller.de
+      - KC_HOSTNAME_ADMIN=admin.keycloak.nico-steinmueller.de
 
       # Datenbank-Konfiguration (PostgreSQL)
       - KC_DB=postgres
@@ -34,8 +36,9 @@ services:
       # Falls benötigt, kann mit --health-enabled=true beim Build aktiviert werden
       - KC_HEALTH_ENABLED=true
       - KC_METRICS_ENABLED=true
-    ports:
-      - "61348:8080"
+    # Port-Mapping für Traefik nicht nötig, da über Docker-Netzwerk kommuniziert wird
+    # ports:
+    #   - "61348:8080"
     depends_on:
       database:
         condition: service_healthy
@@ -47,7 +50,23 @@ services:
       start_period: 60s
     networks:
       - keycloak-network
+      - proxy
     restart: unless-stopped
+    labels:
+      traefik.enable: true
+
+      # ====== Normale Keycloak Oberfläche (öffentlich) ======
+      traefik.http.routers.keycloak.rule: Host(`keycloak.nico-steinmueller.de`)"
+      traefik.http.routers.keycloak.entrypoints: websecure
+      traefik.http.routers.keycloak.middlewares: keycloak-headers, crowdsec@file, compress@file
+
+      # ====== Admin Konsole (nur lokales Netzwerk) ======
+      traefik.http.routers.keycloak-admin.rule: Host(`admin.keycloak.nico-steinmueller.de`)
+      traefik.http.routers.keycloak-admin.entrypoints: websecure
+      traefik.http.routers.keycloak-admin.middlewares: local-only@file, keycloak-admin-headers, compress@file"
+
+      # Service Definition (beide Router nutzen denselben Service)
+      traefik.http.services.keycloak.loadbalancer.server.port: 8080
 
   database:
     image: postgres:18.2-alpine3.23@sha256:035b9ab53cfa147d7202b61f5f7782b939ae815b7d6bc81c96b7b42ff1fca950
@@ -70,6 +89,8 @@ services:
 networks:
   keycloak-network:
     driver: bridge
+  proxy:
+    external: true
 
 volumes:
   postgres:
