@@ -143,19 +143,19 @@ services:
       traefik.enable: true
 
       # Router für /admin - nur lokal erreichbar
-      traefik.http.routers.paperless-admin.rule: Host(`paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de`) && PathPrefix(`/admin`)
-      traefik.http.routers.paperless-admin.entrypoints: websecure
-      traefik.http.routers.paperless-admin.priority: 100
-      traefik.http.routers.paperless-admin.middlewares: local-only@file, compress@file
-      traefik.http.routers.paperless-admin.service: paperless
+      traefik.http.routers.paperless-${INSTANCE_NAME:-main}-admin.rule: Host(`paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de`) && PathPrefix(`/admin`)
+      traefik.http.routers.paperless-${INSTANCE_NAME:-main}-admin.entrypoints: websecure
+      traefik.http.routers.paperless-${INSTANCE_NAME:-main}-admin.priority: 100
+      traefik.http.routers.paperless-${INSTANCE_NAME:-main}-admin.middlewares: local-only@file, compress@file
+      traefik.http.routers.paperless-${INSTANCE_NAME:-main}-admin.service: paperless
 
       # Router für alle anderen Pfade - öffentlich erreichbar
-      traefik.http.routers.paperless.rule: Host(`paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de`)
-      traefik.http.routers.paperless.entrypoints: websecure
-      traefik.http.routers.paperless.priority: 50
+      traefik.http.routers.paperless-${INSTANCE_NAME:-main}.rule: Host(`paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de`)
+      traefik.http.routers.paperless-${INSTANCE_NAME:-main}.entrypoints: websecure
+      traefik.http.routers.paperless-${INSTANCE_NAME:-main}.priority: 50
       # TODO: evtl. local-only@file entfernen
-      traefik.http.routers.paperless.middlewares: local-only@file, crowdsec@file, geoblock@file, compress@file
-      traefik.http.routers.paperless-.service: paperless
+      traefik.http.routers.paperless-${INSTANCE_NAME:-main}.middlewares: local-only@file, crowdsec@file, geoblock@file, compress@file
+      traefik.http.routers.paperless-${INSTANCE_NAME:-main}-.service: paperless
 
       # Service Definition (beide Router nutzen denselben Service)
       traefik.http.services.paperless.loadbalancer.server.port: 8000
