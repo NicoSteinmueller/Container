@@ -22,8 +22,8 @@ services:
       - KC_PROXY_HEADERS=xforwarded
       - KC_HTTP_ENABLED=true
       - KC_HOSTNAME_STRICT=true
-      - KC_HOSTNAME=keycloak.nico-steinmueller.de
-      - KC_HOSTNAME_ADMIN=admin.keycloak.nico-steinmueller.de
+      - KC_HOSTNAME=https://keycloak.nico-steinmueller.de
+      - KC_HOSTNAME_ADMIN=https://admin.keycloak.nico-steinmueller.de
 
       # Datenbank-Konfiguration (PostgreSQL)
       - KC_DB=postgres
