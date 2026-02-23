@@ -63,7 +63,7 @@ services:
       # ====== Admin Konsole (nur lokales Netzwerk) ======
       traefik.http.routers.keycloak-admin.rule: Host(`admin.keycloak.nico-steinmueller.de`)
       traefik.http.routers.keycloak-admin.entrypoints: websecure
-      traefik.http.routers.keycloak-admin.middlewares: local-only@file, compress@file"
+      traefik.http.routers.keycloak-admin.middlewares: local-only@file, compress@file
 
       # Service Definition (beide Router nutzen denselben Service)
       traefik.http.services.keycloak.loadbalancer.server.port: 8080
