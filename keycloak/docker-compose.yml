@@ -55,9 +55,19 @@ services:
     labels:
       traefik.enable: true
 
-      traefik.http.routers.keycloak.rule: Host(`keycloak.nico-steinmueller.de`)
-      traefik.http.routers.keycloak.entrypoints: websecure
-      traefik.http.routers.keycloak.middlewares: crowdsec@file, compress@file
+      # Router für administrative Pfade - nur lokal erreichbar
+      traefik.http.routers.keycloak-admin.rule: Host(`keycloak.nico-steinmueller.de`) && (PathPrefix(`/admin`) || PathPrefix(`/realms/master`))
+      traefik.http.routers.keycloak-admin.entrypoints: websecure
+      traefik.http.routers.keycloak-admin.priority: 100
+      traefik.http.routers.keycloak-admin.middlewares: local-only@file, compress@file
+      traefik.http.routers.keycloak-admin.service: keycloak
+
+      # Router für alle anderen Pfade - öffentlich erreichbar
+      traefik.http.routers.keycloak-public.rule: Host(`keycloak.nico-steinmueller.de`)
+      traefik.http.routers.keycloak-public.entrypoints: websecure
+      traefik.http.routers.keycloak-public.priority: 50
+      traefik.http.routers.keycloak-public.middlewares: crowdsec@file, compress@file
+      traefik.http.routers.keycloak-public.service: keycloak
 
       # Service Definition (beide Router nutzen denselben Service)
       traefik.http.services.keycloak.loadbalancer.server.port: 8080
