@@ -22,10 +22,6 @@
 # ├──────────────────────┼──────────────────────────────────────────────────────┤
 # │ SICHERHEIT (für Produktion empfohlen)                                       │
 # ├──────────────────────┼──────────────────────────────────────────────────────┤
-# │ PROXY_ALLOWED        │ Erlaubte Proxy-IPs (kommasepariert)                  │
-# │                      │ Standard: leer (alle IPs - UNSICHER!)                │
-# │                      │ Beispiel: 172.18.0.0/16,10.0.0.0/8                   │
-# ├──────────────────────┼──────────────────────────────────────────────────────┤
 # │ ALLOWED_HOSTS        │ Erlaubte Hostnamen (kommasepariert)                  │
 # │                      │ Standard: leer (alle Hosts erlaubt)                  │
 # │                      │ Beispiel: sftpgo.example.com,files.example.com       │
@@ -76,9 +72,9 @@ services:
     depends_on:
       database:
         condition: service_healthy
-    ports:
-      - "48214:8080"   # WebClient
-      - "48215:2022"   # SFTP
+#    ports:
+#      - "48214:8080"   # WebClient - wird über Traefik geroutet
+#      - "48215:2022"   # SFTP - wird über Traefik geroutet (Port 22 extern)
     volumes:
       - ${DATA_BASE_PATH:-.}/data:/srv/sftpgo/data
       - ${DATA_BASE_PATH:-.}/config:/var/lib/sftpgo
@@ -95,15 +91,15 @@ services:
       #   0 = normal mode (Änderungen werden ausgeführt)
       #   1 = ignore mode (Änderungen werden ignoriert)
       SFTPGO_COMMON__SETSTAT_MODE: 0
-      # Proxy Protocol für Nginx Proxy Manager:
+      # Proxy Protocol:
       #   0 = deaktiviert (Standard)
       #   1 = aktiviert. Proxy Header wird versucht zu lesen, aber ignoriert wenn upstream IP nicht erlaubt ist
       #   2 = erforderlich. Verbindung wird abgelehnt wenn upstream IP nicht erlaubt ist aber Proxy Header gefunden wird
-      # TODO: auf 2 ändern, wenn Proxy es sicher unterstützt
-      SFTPGO_COMMON__PROXY_PROTOCOL: 1
-      # Liste erlaubter Proxy-IPs (Kommasepariert). Leer = alle IPs erlaubt (UNSICHER!)
-      # Beispiel: 172.18.0.0/16,10.0.0.0/8 für Docker-Netzwerke
-      SFTPGO_COMMON__PROXY_ALLOWED: ${PROXY_ALLOWED:-}
+      SFTPGO_COMMON__PROXY_PROTOCOL: 2
+      # Liste erlaubter Proxy-IPs (Kommasepariert).
+      # 172.16.0.0/12 = alle Docker-Standard-Netzwerke (172.16.0.0 bis 172.31.255.255)
+      # Kann überschrieben werden mit PROXY_ALLOWED Umgebungsvariable
+      SFTPGO_COMMON__PROXY_ALLOWED: 172.16.0.0/12
       # IPs, die von Proxy-Checks übersprungen werden sollen (optional)
       # Localhost (::1, 127.0.0.1) überspringen für Healthchecks
       SFTPGO_COMMON__PROXY_SKIPPED: ::1,127.0.0.1
@@ -313,7 +309,7 @@ services:
       # Branding Einstellungen
       # WebAdmin Branding
       # Name
-      SFTPGO_HTTPD__BINDINGS__0__BRANDING__WEB_ADMIN__NAME: SFTPGo'ooo Admin-Server
+      SFTPGO_HTTPD__BINDINGS__0__BRANDING__WEB_ADMIN__NAME: SFTPGo Admin-Server
       # Kurzname
       SFTPGO_HTTPD__BINDINGS__0__BRANDING__WEB_ADMIN__SHORT_NAME: SFTPGo Admin
       # Favicon Datei Pfad (in Static Files Verzeichnis)
@@ -322,7 +318,7 @@ services:
       #SFTPGO_HTTPD__BINDINGS__0__BRANDING__WEB_ADMIN__LOGO_PATH: /var/lib/logo.png
       # WebClient Branding
       # Name
-      SFTPGO_HTTPD__BINDINGS__0__BRANDING__WEB_CLIENT__NAME: SFTPGo'ooo Server
+      SFTPGO_HTTPD__BINDINGS__0__BRANDING__WEB_CLIENT__NAME: SFTPGo Server
       # Kurzname
       SFTPGO_HTTPD__BINDINGS__0__BRANDING__WEB_CLIENT__SHORT_NAME: SFTPGo
       # Favicon Datei Pfad (in Static Files Verzeichnis)
@@ -358,6 +354,7 @@ services:
       SFTPGO_LOG_LEVEL: debug
     networks:
       - sftpgo_network
+      - proxy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
       interval: 30s
@@ -376,6 +373,24 @@ services:
     read_only: false
     tmpfs:
       - /tmp:noexec,nosuid,size=100m
+    labels:
+      traefik.enable: "true"
+
+      # HTTP Router für WebClient
+      traefik.http.routers.sftpgo-web.rule: Host(`sftpgo.nico-steinmueller.de`)
+      traefik.http.routers.sftpgo-web.entrypoints: websecure
+      traefik.http.routers.sftpgo-web.middlewares: crowdsec@file, geoblock@file, compress@file
+      traefik.http.routers.sftpgo-web.service: sftpgo-web
+      traefik.http.services.sftpgo-web.loadbalancer.server.port: 8080
+
+      # TCP Router für SFTP
+      traefik.tcp.routers.sftpgo-sftp.rule: HostSNI(`sftpgo.nico-steinmueller.de`)
+      traefik.tcp.routers.sftpgo-sftp.entrypoints: sftp
+      traefik.tcp.routers.sftpgo-sftp.tls.passthrough: false
+      traefik.tcp.routers.sftpgo-sftp.tls.certresolver: letsencrypt
+      traefik.tcp.routers.sftpgo-sftp.tls.options: modern@file
+      traefik.tcp.routers.sftpgo-sftp.service: sftpgo-sftp
+      traefik.tcp.services.sftpgo-sftp.loadbalancer.server.port: 2022
 
   database:
     image: postgres:18.2-alpine3.23@sha256:035b9ab53cfa147d7202b61f5f7782b939ae815b7d6bc81c96b7b42ff1fca950
@@ -402,6 +417,8 @@ services:
 networks:
   sftpgo_network:
     name: sftpgo_network
+  proxy:
+    external: true
 
 volumes:
   postgres:
