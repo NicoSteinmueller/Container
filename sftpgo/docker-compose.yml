@@ -20,12 +20,6 @@
 # │                      │          ${DATA_BASE_PATH}/config                    │
 # │                      │          ${DATA_BASE_PATH}/backups                   │
 # ├──────────────────────┼──────────────────────────────────────────────────────┤
-# │ SICHERHEIT (für Produktion empfohlen)                                       │
-# ├──────────────────────┼──────────────────────────────────────────────────────┤
-# │ ALLOWED_HOSTS        │ Erlaubte Hostnamen (kommasepariert)                  │
-# │                      │ Standard: leer (alle Hosts erlaubt)                  │
-# │                      │ Beispiel: sftpgo.example.com,files.example.com       │
-# ├──────────────────────┼──────────────────────────────────────────────────────┤
 # │ OIDC/SSO (optional)                                                         │
 # ├──────────────────────┼──────────────────────────────────────────────────────┤
 # │ OIDC_CONFIG_URL      │ OpenID Connect Discovery URL                         │
@@ -50,13 +44,9 @@
 #                DATA_BASE_PATH=/mnt/sftpgo
 #
 # Mit Proxy:    DB_PASSWORD=MeinSicheresPasswort123!
-#               PROXY_ALLOWED=172.18.0.0/16
-#               ALLOWED_HOSTS=sftpgo.example.com
 #               DATA_BASE_PATH=/mnt/sftpgo
 #
 # Mit OIDC:     DB_PASSWORD=MeinSicheresPasswort123!
-#               PROXY_ALLOWED=172.18.0.0/16
-#               ALLOWED_HOSTS=sftpgo.example.com
 #               DATA_BASE_PATH=/mnt/sftpgo
 #               OIDC_CONFIG_URL=https://keycloak.example.com/realms/myrealm
 #               OIDC_CLIENT_ID=sftpgo-webclient
@@ -275,7 +265,7 @@ services:
       SFTPGO_HTTPD__BINDINGS__0__SECURITY__ENABLED: true
       # Erlaubte Hostnamen (leer = alle erlaubt, empfohlen: Ihre Domain angeben)
       # Beispiel: example.com,sftpgo.example.com
-      SFTPGO_HTTPD__BINDINGS__0__SECURITY__ALLOWED_HOSTS: ${ALLOWED_HOSTS:-},localhost:8080
+      SFTPGO_HTTPD__BINDINGS__0__SECURITY__ALLOWED_HOSTS: sftpgo.nico-steinmueller.de
       # Liste an Header Keys, die die tatsächliche Hostname-Information enthalten (z.B. X-Forwarded-Host)
       SFTPGO_HTTPD__BINDINGS__0__SECURITY__HOSTS_PROXY_HEADERS: X-Forwarded-Host
       # HTTPS Redirect aktivieren (nur wenn hinter Reverse Proxy mit HTTPS)
