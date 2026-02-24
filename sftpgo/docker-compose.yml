@@ -265,7 +265,7 @@ services:
       SFTPGO_HTTPD__BINDINGS__0__SECURITY__ENABLED: true
       # Erlaubte Hostnamen (leer = alle erlaubt, empfohlen: Ihre Domain angeben)
       # Beispiel: example.com,sftpgo.example.com
-      SFTPGO_HTTPD__BINDINGS__0__SECURITY__ALLOWED_HOSTS: sftpgo.nico-steinmueller.de
+      SFTPGO_HTTPD__BINDINGS__0__SECURITY__ALLOWED_HOSTS: sftpgo.nico-steinmueller.de, localhost:8080
       # Liste an Header Keys, die die tatsächliche Hostname-Information enthalten (z.B. X-Forwarded-Host)
       SFTPGO_HTTPD__BINDINGS__0__SECURITY__HOSTS_PROXY_HEADERS: X-Forwarded-Host
       # HTTPS Redirect aktivieren (nur wenn hinter Reverse Proxy mit HTTPS)
