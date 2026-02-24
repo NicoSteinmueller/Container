@@ -85,7 +85,8 @@ services:
       #   0 = deaktiviert (Standard)
       #   1 = aktiviert. Proxy Header wird versucht zu lesen, aber ignoriert wenn upstream IP nicht erlaubt ist
       #   2 = erforderlich. Verbindung wird abgelehnt wenn upstream IP nicht erlaubt ist aber Proxy Header gefunden wird
-      SFTPGO_COMMON__PROXY_PROTOCOL: 2
+      # Traefik sendet kein PROXY Protocol über HTTP-Backends
+      SFTPGO_COMMON__PROXY_PROTOCOL: 1
       # Liste erlaubter Proxy-IPs (Kommasepariert).
       # 172.16.0.0/12 = alle Docker-Standard-Netzwerke (172.16.0.0 bis 172.31.255.255)
       # Kann überschrieben werden mit PROXY_ALLOWED Umgebungsvariable
