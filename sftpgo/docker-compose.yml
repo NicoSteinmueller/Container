@@ -383,11 +383,10 @@ services:
       traefik.http.services.sftpgo-web.loadbalancer.server.port: 8080
 
       # TCP Router für SFTP
-      traefik.tcp.routers.sftpgo-sftp.rule: HostSNI(`sftpgo.nico-steinmueller.de`)
+      # SFTP nutzt SSH (eigene Verschlüsselung), daher KEIN TLS auf Traefik-Ebene!
+      # HostSNI(`*`) ist erforderlich, da ohne TLS kein SNI verfügbar ist.
+      traefik.tcp.routers.sftpgo-sftp.rule: HostSNI(`*`)
       traefik.tcp.routers.sftpgo-sftp.entrypoints: sftp
-      traefik.tcp.routers.sftpgo-sftp.tls.passthrough: false
-      traefik.tcp.routers.sftpgo-sftp.tls.certresolver: letsencrypt
-      traefik.tcp.routers.sftpgo-sftp.tls.options: modern@file
       traefik.tcp.routers.sftpgo-sftp.service: sftpgo-sftp
       traefik.tcp.services.sftpgo-sftp.loadbalancer.server.port: 2022
 
