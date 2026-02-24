@@ -56,8 +56,8 @@ entryPoints:
         options: modern@file
       middlewares:
         - secure-headers@file
-  sftp:
-    address: :22
+  sftpgo:
+    address: :2022
 
 ping:
     entryPoint: ping

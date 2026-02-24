@@ -36,7 +36,7 @@ services:
       - "443:443/udp"
       - "443:443/tcp"
       - "8080:8080"
-      - "22:22"
+      - "2022:2022"
 
     environment:
       # IONOS DNS Challenge
