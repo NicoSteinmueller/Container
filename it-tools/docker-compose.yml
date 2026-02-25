@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     labels:
       traefik.enable: true
-      traefik.http.routers.it-tools.rule: Host(`it-tools.local.nico-steinmueller`)
+      traefik.http.routers.it-tools.rule: Host(`it-tools.local.nico-steinmueller.de`)
       traefik.http.routers.it-tools.entrypoints: websecure
       traefik.http.routers.it-tools.middlewares: local-only@file
       traefik.http.routers.it-tools.service: it-tools
