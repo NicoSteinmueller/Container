@@ -9,7 +9,13 @@ services:
       traefik.http.routers.it-tools.entrypoints: websecure
       traefik.http.routers.it-tools.middlewares: local-only@file
       traefik.http.routers.it-tools.service: it-tools
-      traefik.http.services.it-tools.loadbalancer.server.port: 8080
+      traefik.http.services-it-tools.loadbalancer.server.port: 8080
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fS http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - proxy
 
