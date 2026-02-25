@@ -3,6 +3,7 @@
 # ╠═══════════════════════════════════════════════════════════════════════════════╣
 # ║ Variable                  │ Beschreibung                          │ Standard  ║
 # ╠═══════════════════════════════════════════════════════════════════════════════╣
+# ║ INSTANCE                  │ Bezeichnung der Instance              │ main      ║
 # ║ KOPIA_DATA_DIR            │ Hauptverzeichnis für Kopia-Daten      │ ./kopia...║
 # ║ KOPIA_REPOSITORY_DIR      │ Backup-Repository Speicherort         │ ./backup  ║
 # ║ KOPIA_SOURCE_1..20        │ Quellordner Pfad (optional)           │ ./daten   ║
@@ -16,11 +17,11 @@
 services:
   kopia:
     image: kopia/kopia:0.22.3@sha256:4dcc208c1b191770bf4d0854f8deec06b4a16b35be4b63abdcfa9755cee7960e
-    container_name: kopia
-    hostname: kopia
+    container_name: kopia_${INSTANCE:-main}
+    hostname: kopia_${INSTANCE:-main}
     restart: unless-stopped
-    ports:
-      - "${KOPIA_PORT:-51515}:51515"
+    networks:
+      proxy:
     command:
       - server
       - start
@@ -73,3 +74,15 @@ services:
 #      - ${KOPIA_SOURCE_19}:/data/${KOPIA_SOURCE_19_NAME}:ro
 #      - ${KOPIA_SOURCE_20}:/data/${KOPIA_SOURCE_20_NAME}:ro
 
+    labels:
+      traefik.enable: "true"
+      # Host rule configurable via env var KOPIA_HOST (default kopia.local)
+      traefik.http.routers.kopia.rule: "Host(`kopia-${INSTANCE:-main}.local.nico-steinmueller.de`)"
+      traefik.http.routers.kopia.entrypoints: websecure
+      traefik.http.routers.kopia.middlewares: local-only@file
+      traefik.http.services.kopia.loadbalancer.server.port: 51515
+
+
+networks:
+  proxy:
+    external: true
