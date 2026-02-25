@@ -75,12 +75,12 @@ services:
 #      - ${KOPIA_SOURCE_20}:/data/${KOPIA_SOURCE_20_NAME}:ro
 
     labels:
-      traefik.enable: "true"
+      - "traefik.enable=true"
       # Host rule configurable via env var KOPIA_HOST (default kopia.local)
-      traefik.http.routers.kopia.rule: "Host(`kopia-${INSTANCE:-main}.local.nico-steinmueller.de`)"
-      traefik.http.routers.kopia.entrypoints: websecure
-      traefik.http.routers.kopia.middlewares: local-only@file
-      traefik.http.services.kopia.loadbalancer.server.port: 51515
+      - "traefik.http.routers.kopia-${INSTANCE:-main}.rule=Host(`kopia-${INSTANCE:-main}.local.nico-steinmueller.de`)"
+      - "traefik.http.routers.kopia-${INSTANCE:-main}.entrypoints=websecure"
+      - "traefik.http.routers.kopia-${INSTANCE:-main}.middlewares=local-only@file"
+      - "traefik.http.services.kopia-${INSTANCE:-main}.loadbalancer.server.port=51515"
 
 
 networks:
