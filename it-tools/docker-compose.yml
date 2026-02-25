@@ -1,0 +1,18 @@
+services:
+  it-tools:
+    container_name: it-tools
+    image: ghcr.io/sharevb/it-tools:2026.1.4
+    restart: unless-stopped
+    labels:
+      traefik.enable: true
+      traefik.http.routers.it-tools.rule: Host(`it-tools.local.nico-steinmueller`)
+      traefik.http.routers.it-tools.entrypoints: websecure
+      traefik.http.routers.it-tools.middlewares: local-only@file
+      traefik.http.routers.it-tools.service: it-tools
+      traefik.http.services.it-tools.loadbalancer.server.port: 8080
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
