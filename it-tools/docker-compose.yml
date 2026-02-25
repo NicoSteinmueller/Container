@@ -2,6 +2,7 @@ services:
   it-tools:
     container_name: it-tools
     image: ghcr.io/sharevb/it-tools:2026.1.4
+    pull_policy: always
     restart: unless-stopped
     labels:
       traefik.enable: true
@@ -16,9 +17,9 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    networks:
-      - proxy
-
-networks:
-  proxy:
-    external: true
+#    networks:
+#      - proxy
+#
+#networks:
+#  proxy:
+#    external: true
