@@ -1,7 +1,7 @@
 services:
   it-tools:
     container_name: it-tools
-    image: ghcr.io/sharevb/it-tools:2026.1.4
+    image: ghcr.io/sharevb/it-tools:2026.1.4@sha256:6d335b5d6f7d28a540ef36c0ab2e20cbf7df2c0d8b7adb16585ccd3ebcfeed59
     pull_policy: always
     restart: unless-stopped
     labels:
