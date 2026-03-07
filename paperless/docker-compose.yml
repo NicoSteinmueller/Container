@@ -37,7 +37,7 @@
 
 services:
   paperless:
-    image: ghcr.io/paperless-ngx/paperless-ngx:2.20.8@sha256:e231ec11a1907bfdf172b4f120b4ef1994feb71e6cc624e8b88c53e2da3dfb62
+    image: ghcr.io/paperless-ngx/paperless-ngx:2.20.10@sha256:07a0b4ba01ce377c82a0636e16c0c3d931fde5b7e9304de6601986cc42d9b6e6
     container_name: paperless_${INSTANCE_NAME:-main}
     environment:
       # https://docs.paperless-ngx.com/configuration/
@@ -161,7 +161,7 @@ services:
       - "traefik.http.services.paperless-${INSTANCE_NAME:-main}.loadbalancer.server.port=8000"
 
   database:
-    image: postgres:18.2-alpine3.23@sha256:035b9ab53cfa147d7202b61f5f7782b939ae815b7d6bc81c96b7b42ff1fca950
+    image: postgres:18.3-alpine3.23@sha256:4da1a4828be12604092fa55311276f08f9224a74a62dcb4708bd7439e2a03911
     container_name: paperless_${INSTANCE_NAME:-main}_postgres
     environment:
       POSTGRES_DB: paperless
@@ -179,7 +179,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: docker.io/valkey/valkey:9.0.3-alpine3.23@sha256:ad09f25978db13ed3ed7c635a0e43118568deca056ed8f7a5020f40632e2923e
+    image: docker.io/valkey/valkey:9.0.3-alpine3.23@sha256:ad4541b28b017bf4cd83ee057c51aafb21ea32e898e3f3b8b75e268650f2ac20
     container_name: paperless_${INSTANCE_NAME:-main}_redis
     networks:
       - paperless-instance-network
