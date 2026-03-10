@@ -26,17 +26,15 @@ services:
 
     networks:
       proxy:
-      bond0:
-        ipv4_address: 192.168.178.5
 #      monitoring:
 
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-      - "443:443/tcp"
-      - "8080:8080"
-      - "2022:2022"
+      - "192.168.178.5:80:80"
+      - "192.168.178.5:443:443"
+      - "192.168.178.5:443:443/udp"
+      - "192.168.178.5:443:443/tcp"
+      - "192.168.178.5:8080:8080"
+      - "192.168.178.5:2022:2022"
 
     environment:
       # IONOS DNS Challenge
@@ -125,10 +123,5 @@ networks:
   proxy:
     # TODO: evtl. direkt anlegen mit "docker network create proxy" und dann hier "external: true" setzen
     name: proxy
-  bond0:
-    external: true
-    ipam:
-      config:
-        - subnet: 192.168.178.0/24
 #  monitoring:
 #    external: true
