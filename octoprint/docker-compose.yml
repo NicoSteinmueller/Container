@@ -11,7 +11,7 @@
 
 services:
   octoprint:
-    image: octoprint/octoprint:1.11.6
+    image: octoprint/octoprint:1.11.7
     container_name: octoprint
     restart: unless-stopped
     security_opt:
@@ -30,8 +30,8 @@ services:
 
     # USB-Gerät des 3D-Druckers – nur einbinden wenn vorhanden, sonst startet der Container nicht!
     # Gerät prüfen mit: ls /dev/tty{USB,ACM}*
-#    devices:
-#      - /dev/ttyUSB0:/dev/ttyUSB0
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
       # - /dev/ttyACM0:/dev/ttyACM0
 
     labels:
