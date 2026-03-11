@@ -1,0 +1,78 @@
+# Umgebungsvariablen:
+# ┌──────────────────────────┬────────────────────────────────┬──────────────────────────────────────────────────────────┐
+# │ Variable                 │ Beispiel                       │ Erklärung                                                │
+# ├──────────────────────────┼────────────────────────────────┼──────────────────────────────────────────────────────────┤
+# │ ADGUARD_DATA             │ ./data                         │ Pfad für AdGuard-Konfiguration und Work-Daten            │
+# └──────────────────────────┴────────────────────────────────┴──────────────────────────────────────────────────────────┘
+
+
+services:
+  adguard:
+    image: adguard/adguardhome:v0.107.73
+    container_name: AdGuardHome
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+    stop_grace_period: 30s
+
+    networks:
+      proxy:
+      bond0:
+        ipv4_address: 192.168.178.4
+
+    ports:
+      # DNS (UDP + TCP)
+      - "53:53/udp"
+      - "53:53/tcp"
+      # DHCP Server
+      - "67:67/udp"
+      - "68:68/tcp"
+      - "68:68/udp"
+      # Https/DNS-over-HTTPS (DoH)
+#      - "443:443/tcp"
+#      - "443:443/udp"
+      # DNS-over-TLS (DoT)
+      - "853:853/tcp"
+#      # DNS-over-QUIC (DoQ)
+#      - "784:784/udp"
+      - "853:853/udp"
+#      - "8853:8853/udp"
+      # DNSCrypt
+      - "5443:5443/udp"
+      - "5443:5443/tcp"
+      # Zum initialen Einrichten
+      - "3000:3000"
+
+    environment:
+      TZ: Europe/Berlin
+
+    volumes:
+      - ${ADGUARD_DATA:-./data}/conf:/opt/adguardhome/conf
+      - ${ADGUARD_DATA:-./data}/work:/opt/adguardhome/work
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+    labels:
+      traefik.enable: true
+      # Router
+      traefik.http.routers.adguard.rule: Host(`adguard.local.nico-steinmueller.de`)
+      traefik.http.routers.adguard.entrypoints: websecure
+      traefik.http.routers.adguard.middlewares: local-only@file
+      traefik.http.routers.adguard.service: adguard
+      # Service → Web-UI auf Port 80
+      traefik.http.services.adguard.loadbalancer.server.port: 80
+
+networks:
+  proxy:
+    external: true
+  bond0:
+    external: true
+    ipam:
+      config:
+        - subnet: 192.168.178.0/24
