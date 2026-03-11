@@ -1,0 +1,58 @@
+# Umgebungsvariablen:
+# ┌──────────────────────────┬────────────────────────────────┬──────────────────────────────────────────────────────────┐
+# │ Variable                 │ Beispiel                       │ Erklärung                                                │
+# ├──────────────────────────┼────────────────────────────────┼──────────────────────────────────────────────────────────┤
+# │ OCTOPRINT_DATA           │ ./data                         │ Pfad für OctoPrint-Konfiguration und Daten               │
+# └──────────────────────────┴────────────────────────────────┴──────────────────────────────────────────────────────────┘
+#
+# Hinweise:
+# - Drucker-USB-Gerät prüfen: ls /dev/tty{USB,ACM}*
+# - Webcam (optional): ENABLE_MJPG_STREAMER auf "true" setzen, dann Port 8080 für den Stream
+
+services:
+  octoprint:
+    image: octoprint/octoprint:1.11.6
+    container_name: octoprint
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+    # Zugriff auf serielle USB-Geräte (/dev/ttyUSB*, /dev/ttyACM*) ohne Host-Änderungen
+    group_add:
+      - dialout
+
+    environment:
+      TZ: Europe/Berlin
+      ENABLE_MJPG_STREAMER: "false"
+
+    volumes:
+      - ${OCTOPRINT_DATA:-./data}:/octoprint
+
+    # USB-Gerät des 3D-Druckers – nur einbinden wenn vorhanden, sonst startet der Container nicht!
+    # Gerät prüfen mit: ls /dev/tty{USB,ACM}*
+#    devices:
+#      - /dev/ttyUSB0:/dev/ttyUSB0
+      # - /dev/ttyACM0:/dev/ttyACM0
+
+    labels:
+      traefik.enable: true
+      traefik.http.routers.octoprint.rule: Host(`octoprint.local.nico-steinmueller.de`)
+      traefik.http.routers.octoprint.entrypoints: websecure
+      traefik.http.routers.octoprint.middlewares: local-only@file
+      traefik.http.routers.octoprint.service: octoprint
+      traefik.http.services.octoprint.loadbalancer.server.port: 80
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fS http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
+
