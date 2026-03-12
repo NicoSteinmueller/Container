@@ -49,6 +49,15 @@
       automerge: true,
       automergeType: 'pr',
       prCreation: 'immediate',
+      prBodyNotes: [
+        '### 🧾 Versionsdetails',
+        '',
+        '{{#if releases}}',
+        '{{#each releases}}',
+        '- {{#if url}}[{{version}}]({{{url}}}){{else}}{{version}}{{/if}}',
+        '{{/each}}',
+        '{{/if}}',
+      ],
       // In diesem Repo gibt es derzeit keine verlässlichen Status-Checks.
       // Dadurch bleiben Updates nicht mehr in "Pending Branch Automerge" hängen.
       ignoreTests: true,
@@ -179,4 +188,8 @@
   dependencyDashboardTitle: '🔄 Renovate Dashboard - Docker Updates',
   // Release Notes in allen PRs anzeigen
   fetchReleaseNotes: true,
+  // Change-Spalte: Zielversion als Link, Compare-Link in zweiter Zeile
+  prBodyDefinitions: {
+    Change: '{{#if displayFrom}}{{displayFrom}} → {{/if}}{{#if releaseNotesUrl}}[{{displayTo}}]({{{releaseNotesUrl}}}){{else}}{{#if changelogUrl}}[{{displayTo}}]({{{changelogUrl}}}){{else}}{{displayTo}}{{/if}}{{/if}}{{#if compareUrl}}<br/>[Compare]({{{compareUrl}}}){{/if}}',
+  },
 }
