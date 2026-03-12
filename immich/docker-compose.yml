@@ -20,7 +20,7 @@ services:
     # https://github.com/immich-app/immich/pkgs/container/immich-server
     image: ghcr.io/immich-app/immich-server:v2.5.6@sha256:aa163d2e1cc2b16a9515dd1fef901e6f5231befad7024f093d7be1f2da14341a
     volumes:
-      - /mnt/user/data/immich:/data
+      - /mnt/user/data/immich/media:/data
       - /etc/localtime:/etc/localtime:ro
     environment:
       # Please use only the characters `A-Za-z0-9`, without special characters or spaces
@@ -61,7 +61,7 @@ services:
     # https://github.com/immich-app/immich/pkgs/container/immich-machine-learning
     image: ghcr.io/immich-app/immich-machine-learning:v2.5.6@sha256:b213fa3c82d27a21a299c46ffbb38a091f18384db1ad67d409a3b34fe0fce556
     volumes:
-      - model-cache:/cache
+      - /mnt/user/data/immich/model-cache:/cache
     restart: always
     networks:
       internal:
@@ -95,7 +95,6 @@ services:
       internal:
 
 volumes:
-  model-cache:
   postgres:
 
 networks:
