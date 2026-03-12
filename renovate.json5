@@ -50,13 +50,7 @@
       automergeType: 'pr',
       prCreation: 'immediate',
       prBodyNotes: [
-        '### 🧾 Versionsdetails',
-        '',
-        '{{#if releases}}',
-        '{{#each releases}}',
-        '- {{#if url}}[{{version}}]({{{url}}}){{else}}{{version}}{{/if}}',
-        '{{/each}}',
-        '{{/if}}',
+        "{{#if releases}}### 🧾 Versionsdetails\n\n{{#each releases}}- {{#if url}}[{{version}}]({{{url}}}){{else}}{{version}}{{/if}}\n{{/each}}{{/if}}"
       ],
       // In diesem Repo gibt es derzeit keine verlässlichen Status-Checks.
       // Dadurch bleiben Updates nicht mehr in "Pending Branch Automerge" hängen.
