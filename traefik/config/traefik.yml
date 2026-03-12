@@ -121,18 +121,3 @@ experimental:
       version: v1.1.3
       settings:
         useunsafe: true
-
-# TODO: automatischer Update auf neuere Version prüfen, z.B. mit Renovate Bot oder Dependabot
-#  {
-#    "customManagers": [
-#      {
-#        "customType": "regex",
-#        "fileMatch": ["^traefik\\.ya?ml$"],
-#        "matchStrings": [
-#          "moduleName:\\s*[\"'](?<depName>github\\.com\\/[^\"']+)[\"']\\s*version:\\s*[\"'](?<currentValue>v?[^\"']+)[\"']"
-#        ],
-#        "datasourceTemplate": "go",
-#        "versioningTemplate": "semver"
-#      }
-#    ]
-#  }
