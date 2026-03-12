@@ -13,11 +13,12 @@
       '/(^|/)docker-compose\\.ya?ml$/',
     ],
   },
+  // Custom Manager für Traefik Plugins
   customManagers: [
     {
       customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)traefik\\.ya?ml$/',
+      fileMatch: [
+        '(^|/)traefik\\.ya?ml$',
       ],
       matchStrings: [
         'moduleName:\\s*github\\.com\\/(?<depName>[^\\/]+\\/[^\\s]+)\\s+version:\\s*(?<currentValue>v[^\\s]+)',
@@ -25,6 +26,7 @@
       datasourceTemplate: 'github-releases',
     },
   ],
+  // Branch-Naming: Enthält den Ordnernamen (z.B. renovate/immich-postgres-17.x)
   branchPrefix: 'renovate/',
   additionalBranchPrefix: '{{parentDir}}-',
   packageRules: [
@@ -37,7 +39,7 @@
       pinDigests: true,
     },
     {
-      description: 'Alle Non-Major Updates: Automatisches Mergen',
+      description: 'Alle Non-Major Updates: Automatische PRs mit sofortigem Automerge',
       matchUpdateTypes: [
         'patch',
         'minor',
@@ -45,8 +47,11 @@
         'digest',
       ],
       automerge: true,
-      automergeType: 'branch',
-      platformAutomerge: true,
+      automergeType: 'pr',
+      prCreation: 'immediate',
+      // In diesem Repo gibt es derzeit keine verlässlichen Status-Checks.
+      // Dadurch bleiben Updates nicht mehr in "Pending Branch Automerge" hängen.
+      ignoreTests: true,
     },
     {
       description: 'Major-Updates: PR mit Review erforderlich',
@@ -76,6 +81,18 @@
     },
     {
       description: 'Datenbanken Major-Updates: PR mit Review (Kompatibilität prüfen!)',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackagePatterns: [
+        '(?:^|/)postgres$',
+        '(?:^|/)mariadb$',
+        '(?:^|/)mysql$',
+        '(?:^|/)redis$',
+        '(?:^|/)mongo$',
+        '(?:^|/)valkey$',
+        '(?:^|/)memcached$',
+      ],
       matchUpdateTypes: [
         'major',
       ],
@@ -84,7 +101,7 @@
       reviewers: [
         'nico',
       ],
-      groupName: null,
+      groupName: null, // Nicht mit anderen gruppieren
       prBodyNotes: [
         '### 🗄️ Datenbank Major-Update - Kompatibilität prüfen!',
         '',
@@ -105,18 +122,15 @@
         '{{/each}}',
         '{{/if}}',
       ],
-      matchPackageNames: [
-        '/^postgres/',
-        '/^mariadb/',
-        '/^mysql/',
-        '/^redis/',
-        '/^mongo/',
-        '/^valkey/',
-        '/^memcached/',
-      ],
     },
     {
       description: 'Traefik Plugins: IMMER PR (manuelle Deployment erforderlich)',
+      matchManagers: [
+        'custom.regex',
+      ],
+      matchFileNames: [
+        'traefik/config/traefik.yml',
+      ],
       automerge: false,
       prCreation: 'immediate',
       reviewers: [
@@ -145,11 +159,6 @@
         '{{/each}}',
         '{{/if}}',
       ],
-      matchPackageNames: [
-        '/traefik/',
-        '/crowdsec/',
-        '/geoblock/',
-      ],
     },
     {
       description: 'Docker Compose Updates - pro Ordner gruppiert',
@@ -163,9 +172,11 @@
   ],
   prConcurrentLimit: 10,
   prHourlyLimit: 0,
-  platformAutomerge: true,
+  // Renovate merged selbst, statt auf GitHub Auto-Merge / branchbasierte Status-Checks zu warten.
+  platformAutomerge: false,
   semanticCommits: 'enabled',
   dependencyDashboard: true,
   dependencyDashboardTitle: '🔄 Renovate Dashboard - Docker Updates',
-  fetchChangeLogs: 'pr',
+  // Release Notes in allen PRs anzeigen
+  fetchReleaseNotes: true,
 }
