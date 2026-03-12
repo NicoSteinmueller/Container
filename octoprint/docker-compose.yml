@@ -11,7 +11,7 @@
 
 services:
   octoprint:
-    image: octoprint/octoprint:1.11.7
+    image: octoprint/octoprint:1.11.7@sha256:49bea4ebfd0cefa9289f058574e7eda6d2de201f1b74309e0c10019e5ec58f04
     container_name: octoprint
     restart: unless-stopped
     security_opt:
