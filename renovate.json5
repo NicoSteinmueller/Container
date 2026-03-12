@@ -94,8 +94,8 @@
       ],
       groupName: null, // Nicht mit anderen gruppieren
       prBodyNotes: [
-        "### 🗄️ Datenbank Major-Update - Kompatibilität prüfen!\n\n⚠️ **Vor dem Merge prüfen:**\n- Ist diese DB-Version mit der Anwendung kompatibel?\n- Gibt es Breaking Changes im Datenformat?\n- Backup vorhanden?\n\n{{#if releases}}\n{{#each releases}}\n#### Version {{version}}\n{{#if url}}📦 [Release Notes]({{{url}}}){{/if}}\n{{#if body}}\n\n{{{body}}}\n\n{{/if}}\n{{/each}}\n{{/if}}",
-      ],
+        "### ⚠️ Major Update - Breaking Changes möglich\n\n🔗 **Direkt-Links:** {{#if releaseNotesUrl}}[Release Notes]({{{releaseNotesUrl}}}){{/if}}\n\n{{#if changelogUrl}}[Changelog]({{{changelogUrl}}}){{/if}}\n\n{{#if releases}}\n{{#each releases}}\n#### Version {{version}}\n{{#if url}}📦 [Details]({{{url}}}){{/if}}\n{{/each}}\n{{/if}}"
+      ]
     },
     {
       description: 'Traefik Plugins: IMMER PR (manuelle Deployment erforderlich)',
