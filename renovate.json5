@@ -11,6 +11,7 @@
     enabled: true,
     managerFilePatterns: [
       '/(^|/)docker-compose\\.ya?ml$/',
+      '/(^|/)docker-compose\\.shared\\.ya?ml$/',
     ],
   },
   // Custom Manager für Traefik Plugins
@@ -37,6 +38,212 @@
       ],
       enabled: true,
       pinDigests: true,
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'adguard/adguardhome',
+      ],
+      sourceUrl: 'https://github.com/AdguardTeam/AdGuardHome',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'apache/tika',
+      ],
+      sourceUrl: 'https://github.com/apache/tika',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'crowdsecurity/crowdsec',
+      ],
+      sourceUrl: 'https://github.com/crowdsecurity/crowdsec',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'docker.io/valkey/valkey',
+        'valkey/valkey',
+      ],
+      sourceUrl: 'https://github.com/valkey-io/valkey',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'drakkan/sftpgo',
+      ],
+      sourceUrl: 'https://github.com/drakkan/sftpgo',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'ghcr.io/immich-app/immich-machine-learning',
+        'ghcr.io/immich-app/immich-server',
+      ],
+      sourceUrl: 'https://github.com/immich-app/immich',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'ghcr.io/immich-app/postgres',
+      ],
+      sourceUrl: 'https://github.com/immich-app/base-images',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'ghcr.io/paperless-ngx/paperless-ngx',
+      ],
+      sourceUrl: 'https://github.com/paperless-ngx/paperless-ngx',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'ghcr.io/sharevb/it-tools',
+      ],
+      sourceUrl: 'https://github.com/CorentinTh/it-tools',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'gotenberg/gotenberg',
+      ],
+      sourceUrl: 'https://github.com/gotenberg/gotenberg',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'grafana/grafana',
+      ],
+      sourceUrl: 'https://github.com/grafana/grafana',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'grafana/loki',
+        'grafana/promtail',
+      ],
+      sourceUrl: 'https://github.com/grafana/loki',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'itzg/minecraft-server',
+      ],
+      sourceUrl: 'https://github.com/itzg/docker-minecraft-server',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'kopia/kopia',
+      ],
+      sourceUrl: 'https://github.com/kopia/kopia',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'nextcloud',
+        'docker.io/library/nextcloud',
+      ],
+      sourceUrl: 'https://github.com/nextcloud/server',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'octoprint/octoprint',
+      ],
+      sourceUrl: 'https://github.com/OctoPrint/OctoPrint',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'postgres',
+        'docker.io/library/postgres',
+      ],
+      sourceUrl: 'https://github.com/postgres/postgres',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'prom/prometheus',
+      ],
+      sourceUrl: 'https://github.com/prometheus/prometheus',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'quay.io/keycloak/keycloak',
+      ],
+      sourceUrl: 'https://github.com/keycloak/keycloak',
+    },
+    {
+      description: 'Manuelle Quell-URLs für Docker-Images ohne Metadaten',
+      matchDatasources: [
+        'docker',
+      ],
+      matchPackageNames: [
+        'traefik',
+        'docker.io/library/traefik',
+      ],
+      sourceUrl: 'https://github.com/traefik/traefik',
     },
     {
       description: 'Alle Non-Major Updates: Automatische PRs mit sofortigem Automerge',
@@ -94,8 +301,8 @@
       ],
       groupName: null, // Nicht mit anderen gruppieren
       prBodyNotes: [
-        "### ⚠️ Major Update - Breaking Changes möglich\n\n🔗 **Direkt-Links:** {{#if releaseNotesUrl}}[Release Notes]({{{releaseNotesUrl}}}){{/if}}\n\n{{#if changelogUrl}}[Changelog]({{{changelogUrl}}}){{/if}}\n\n{{#if releases}}\n{{#each releases}}\n#### Version {{version}}\n{{#if url}}📦 [Details]({{{url}}}){{/if}}\n{{/each}}\n{{/if}}"
-      ]
+        "### 🗄️ Datenbank Major-Update - Kompatibilität prüfen!\n\n⚠️ **Vor dem Merge prüfen:**\n- Ist diese DB-Version mit der Anwendung kompatibel?\n- Gibt es Breaking Changes im Datenformat?\n- Backup vorhanden?\n\n{{#if releases}}\n{{#each releases}}\n#### Version {{version}}\n{{#if url}}📦 [Release Notes]({{{url}}}){{/if}}\n{{#if body}}\n\n{{{body}}}\n\n{{/if}}\n{{/each}}\n{{/if}}",
+      ],
     },
     {
       description: 'Traefik Plugins: IMMER PR (manuelle Deployment erforderlich)',
