@@ -21,10 +21,9 @@
         '(^|/)traefik\\.ya?ml$',
       ],
       matchStrings: [
-        'moduleName:\\s*(?<depName>github\\.com\\/[^\\s]+)\\s+version:\\s*(?<currentValue>v[^\\s]+)',
+        'moduleName:\\s*github\\.com\\/(?<depName>[^\\/]+\\/[^\\s]+)\\s+version:\\s*(?<currentValue>v[^\\s]+)',
       ],
       datasourceTemplate: 'github-releases',
-      extractVersionTemplate: '^v(?<version>.*)$',
     },
   ],
   // Branch-Naming: Enthält den Ordnernamen (z.B. renovate/immich-postgres-17.x)
@@ -122,9 +121,9 @@
     {
       description: 'Traefik Plugins: IMMER PR (manuelle Deployment erforderlich)',
       matchPackagePatterns: [
-        '^github\\.com\\/.*traefik.*',
-        '^github\\.com\\/.*crowdsec.*',
-        '^github\\.com\\/.*geoblock.*',
+        'traefik',
+        'crowdsec',
+        'geoblock',
       ],
       automerge: false,
       prCreation: 'immediate',
