@@ -199,9 +199,6 @@
       ],
       automerge: false,
       prCreation: 'immediate',
-      reviewers: [
-        'nico'
-      ],
       prBodyNotes: [
         "### ⚠️ Major Update - Breaking Changes möglich\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{#if url}}📦 [Release Notes]({{{url}}}){{/if}}\n{{#if body}}\n\n{{{body}}}\n\n{{/if}}{{/each}}{{else}}Keine detaillierten Release Notes gefunden. Bitte manuell prüfen.{{/if}}"
       ],
@@ -225,9 +222,6 @@
       ],
       automerge: false,
       prCreation: 'immediate',
-      reviewers: [
-        'nico'
-      ],
       groupName: null,
       prBodyNotes: [
         "### 🗄️ Datenbank Major-Update - Kompatibilität prüfen!\n\n⚠️ **Vor dem Merge prüfen:**\n- Backup vorhanden?\n- Breaking Changes im Datenformat?\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{/each}}{{/if}}"
@@ -243,9 +237,6 @@
       ],
       automerge: false,
       prCreation: 'immediate',
-      reviewers: [
-        'nico'
-      ],
       prBodyNotes: [
         "### 🔌 Traefik Plugin Update\n\n⚠️ **WICHTIG: Manuelles Deployment erforderlich!**\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{/each}}{{/if}}"
       ],
