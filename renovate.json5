@@ -13,12 +13,11 @@
       '/(^|/)docker-compose\\.ya?ml$/',
     ],
   },
-  // Custom Manager für Traefik Plugins
   customManagers: [
     {
       customType: 'regex',
-      fileMatch: [
-        '(^|/)traefik\\.ya?ml$',
+      managerFilePatterns: [
+        '/(^|/)traefik\\.ya?ml$/',
       ],
       matchStrings: [
         'moduleName:\\s*github\\.com\\/(?<depName>[^\\/]+\\/[^\\s]+)\\s+version:\\s*(?<currentValue>v[^\\s]+)',
@@ -26,7 +25,6 @@
       datasourceTemplate: 'github-releases',
     },
   ],
-  // Branch-Naming: Enthält den Ordnernamen (z.B. renovate/immich-postgres-17.x)
   branchPrefix: 'renovate/',
   additionalBranchPrefix: '{{parentDir}}-',
   packageRules: [
@@ -48,7 +46,6 @@
       ],
       automerge: true,
       automergeType: 'branch',
-      // Nutzt Platform-Automerge wenn verfügbar, sonst Renovate-eigenes Merging
       platformAutomerge: true,
     },
     {
@@ -79,15 +76,6 @@
     },
     {
       description: 'Datenbanken Major-Updates: PR mit Review (Kompatibilität prüfen!)',
-      matchPackagePatterns: [
-        '^postgres',
-        '^mariadb',
-        '^mysql',
-        '^redis',
-        '^mongo',
-        '^valkey',
-        '^memcached',
-      ],
       matchUpdateTypes: [
         'major',
       ],
@@ -96,7 +84,7 @@
       reviewers: [
         'nico',
       ],
-      groupName: null, // Nicht mit anderen gruppieren
+      groupName: null,
       prBodyNotes: [
         '### 🗄️ Datenbank Major-Update - Kompatibilität prüfen!',
         '',
@@ -117,14 +105,18 @@
         '{{/each}}',
         '{{/if}}',
       ],
+      matchPackageNames: [
+        '/^postgres/',
+        '/^mariadb/',
+        '/^mysql/',
+        '/^redis/',
+        '/^mongo/',
+        '/^valkey/',
+        '/^memcached/',
+      ],
     },
     {
       description: 'Traefik Plugins: IMMER PR (manuelle Deployment erforderlich)',
-      matchPackagePatterns: [
-        'traefik',
-        'crowdsec',
-        'geoblock',
-      ],
       automerge: false,
       prCreation: 'immediate',
       reviewers: [
@@ -153,6 +145,11 @@
         '{{/each}}',
         '{{/if}}',
       ],
+      matchPackageNames: [
+        '/traefik/',
+        '/crowdsec/',
+        '/geoblock/',
+      ],
     },
     {
       description: 'Docker Compose Updates - pro Ordner gruppiert',
@@ -170,6 +167,5 @@
   semanticCommits: 'enabled',
   dependencyDashboard: true,
   dependencyDashboardTitle: '🔄 Renovate Dashboard - Docker Updates',
-  // Release Notes in allen PRs anzeigen
-  fetchReleaseNotes: true,
+  fetchChangeLogs: 'pr',
 }
