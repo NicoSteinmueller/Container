@@ -1,11 +1,3 @@
-# Umgebungsvariablen:
-# ┌──────────────────────────┬────────────────────────────────┬──────────────────────────────────────────────────────────┐
-# │ Variable                 │ Beispiel                       │ Erklärung                                                │
-# ├──────────────────────────┼────────────────────────────────┼──────────────────────────────────────────────────────────┤
-# │ ADGUARD_DATA             │ ./data                         │ Pfad für AdGuard-Konfiguration und Work-Daten            │
-# └──────────────────────────┴────────────────────────────────┴──────────────────────────────────────────────────────────┘
-
-
 services:
   adguard:
     image: adguard/adguardhome:v0.107.73
@@ -48,8 +40,8 @@ services:
       TZ: Europe/Berlin
 
     volumes:
-      - ${ADGUARD_DATA:-./data}/conf:/opt/adguardhome/conf
-      - ${ADGUARD_DATA:-./data}/work:/opt/adguardhome/work
+      - /mnt/user/appdata/adguard:/opt/adguardhome/conf
+      - /mnt/user/logs/adguard:/opt/adguardhome/work
 
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1"]
