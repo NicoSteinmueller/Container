@@ -14,7 +14,7 @@ version: "3.9"
 
 services:
   gotenberg:
-    image: gotenberg/gotenberg:8.27.0@sha256:d71ab8c13b6bd47c7bc81195082005dfb17eaa75e8b1fadd347a64ee66ed98d5
+    image: gotenberg/gotenberg:8.27.0@sha256:fb1dc4ce27a04f1d09826acfad571d6a2b3630b9de9817ebd1dc302f569a8056
     container_name: paperless_shared_gotenberg
     command:
       - "gotenberg"
