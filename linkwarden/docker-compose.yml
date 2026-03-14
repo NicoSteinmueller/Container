@@ -1,0 +1,118 @@
+# ============================================
+# KONFIGURIERBARE VARIABLEN (in Portainer / .env ändern)
+# ============================================
+# NEXTAUTH_SECRET                 - Secret für NextAuth (default: changeme)
+# POSTGRES_PASSWORD               - PostgreSQL Passwort (default: changeme)
+# MEILI_MASTER_KEY                - MeiliSearch Master-Key (default: changeme)
+# KEYCLOAK_ISSUER                 - Keycloak Issuer URL, z.B. https://keycloak.nico-steinmueller.de/realms/homelab
+# KEYCLOAK_CLIENT_ID              - Keycloak Client-ID für Linkwarden
+# KEYCLOAK_CLIENT_SECRET          - Keycloak Client-Secret für Linkwarden
+# ============================================
+
+services:
+  # https://github.com/linkwarden/linkwarden
+  linkwarden:
+    image: ghcr.io/linkwarden/linkwarden:v2.13.5
+    container_name: linkwarden
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+    environment:
+      # https://docs.linkwarden.app/self-hosting/environment-variables
+      TZ: Europe/Berlin
+      DATABASE_URL: postgresql://linkwarden:${POSTGRES_PASSWORD:-changeme}@postgres:5432/linkwarden
+
+      # Reverse Proxy / Auth
+      NEXTAUTH_URL: https://linkwarden.nico-steinmueller.de/api/v1/auth
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-changeme}
+
+      # MeiliSearch
+      MEILI_HOST: http://meilisearch:7700
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-changeme}
+
+      # PDF-Archivierung
+#      PDF_MARGIN_TOP: 0
+#      PDF_MARGIN_BOTTOM: 0
+
+      # Authentifizierung
+      NEXT_PUBLIC_DISABLE_REGISTRATION: true
+      NEXT_PUBLIC_CREDENTIALS_ENABLED: false
+      DISABLE_NEW_SSO_USERS: false
+      NEXT_PUBLIC_KEYCLOAK_ENABLED: true
+      KEYCLOAK_CUSTOM_NAME: Keycloak
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
+
+      # AI für Tags (optional)
+#      NEXT_PUBLIC_OLLAMA_ENDPOINT_URL: http://localhost:11434
+#      OLLAMA_MODEL: phi3:mini-4k
+      # Für OpenAI-API (optional)
+#      CUSTOM_OPENAI_BASE_URL:
+#      OPENAI_MODEL:
+#      OPENAI_API_KEY:
+    volumes:
+      - ./data:/data/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fS http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - linkwarden-network
+      - proxy
+    labels:
+      traefik.enable: true
+      traefik.http.routers.linkwarden.rule: Host(`linkwarden.nico-steinmueller.de`)
+      traefik.http.routers.linkwarden.entrypoints: websecure
+      traefik.http.routers.linkwarden.middlewares: crowdsec@file, geoblock@file, compress@file
+      traefik.http.routers.linkwarden.service: linkwarden
+      traefik.http.services.linkwarden.loadbalancer.server.port: 3000
+
+  postgres:
+    image: postgres:18.3-alpine3.23
+    container_name: linkwarden_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: linkwarden
+      POSTGRES_USER: linkwarden
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
+    volumes:
+      - ./pgdata:/var/lib/postgresql
+    networks:
+      - linkwarden-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U linkwarden -d linkwarden"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+# https://www.meilisearch.com/docs/guides/docker
+  meilisearch:
+    image: getmeili/meilisearch:v1.38.2
+    container_name: linkwarden_meilisearch
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-changeme}
+      MEILI_NO_ANALYTICS: true
+    volumes:
+      - ./meili_data:/meili_data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fS http://localhost:7700/health | grep -q '\"available\"' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - linkwarden-network
+
+networks:
+  linkwarden-network:
+  proxy:
+    external: true
