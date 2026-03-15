@@ -4,7 +4,6 @@
 # | Variable                   | Beschreibung                    | Default       |
 # |----------------------------|---------------------------------|---------------|
 # | POSTGRES_PASSWORD          | Datenbank-Passwort              | changeme      |
-# | NEXTCLOUD_DATA             | Pfad für Nextcloud-Daten        | ./data        |
 # | PAPERLESS_DATA             | Pfad für Paperless-Daten        | ./data        |
 # ============================================
 
@@ -44,10 +43,12 @@ services:
     volumes:
       # gleiche wie cron Container, damit die Cron-Jobs Zugriff auf die gleichen Daten haben
       - nextcloud:/var/www/html # Main folder, needed for updating
-      - ${NEXTCLOUD_DATA:-./data}/apps:/var/www/html/custom_apps # installed / modified apps
-      - ${NEXTCLOUD_DATA:-./data}/config:/var/www/html/config # local configuration
-      - ${NEXTCLOUD_DATA:-./data}/themes:/var/www/html/themes # theming/branding
-      - ${NEXTCLOUD_DATA:-./data}/data:/var/www/html/data # the actual data of your Nextcloud
+      - /mnt/user/appdata/nextcloud/apps:/var/www/html/custom_apps # installed / modified apps
+      - /mnt/user/appdata/nextcloud/config:/var/www/html/config # local configuration
+      - /mnt/user/appdata/nextcloud/themes:/var/www/html/themes # theming/branding
+      - /mnt/user/data/nextcloud/data:/var/www/html/data # the actual data of your Nextcloud
+      # Log Datei muss existieren, sonst könnte Order nicht gemounted werden, da Docker sonst einen Ordner erstellt
+      - /mnt/user/logs/nextcloud/nextcloud.log:/var/www/html/data/nextcloud.log # separates Nextcloud-Logfile
       - ${PAPERLESS_DATA:-./paperless}:/paperless-consume
     depends_on:
       database:
@@ -78,10 +79,12 @@ services:
     volumes:
       # gleiche wie nextcloud Container, damit die Cron-Jobs Zugriff auf die gleichen Daten haben
       - nextcloud:/var/www/html # Main folder, needed for updating
-      - ${NEXTCLOUD_DATA:-./data}/apps:/var/www/html/custom_apps # installed / modified apps
-      - ${NEXTCLOUD_DATA:-./data}/config:/var/www/html/config # local configuration
-      - ${NEXTCLOUD_DATA:-./data}/themes:/var/www/html/themes # theming/branding
-      - ${NEXTCLOUD_DATA:-./data}/data:/var/www/html/data # the actual data of your Nextcloud
+      - /mnt/user/appdata/nextcloud/apps:/var/www/html/custom_apps # installed / modified apps
+      - /mnt/user/appdata/nextcloud/config:/var/www/html/config # local configuration
+      - /mnt/user/appdata/nextcloud/themes:/var/www/html/themes # theming/branding
+      - /mnt/user/data/nextcloud/data:/var/www/html/data # the actual data of your Nextcloud
+      # Log Datei muss existieren, sonst könnte Order nicht gemounted werden, da Docker sonst einen Ordner erstellt
+      - /mnt/user/logs/nextcloud/nextcloud.log:/var/www/html/data/nextcloud.log # separates Nextcloud-Logfile
       - ${PAPERLESS_DATA:-./paperless}:/paperless-consume
     entrypoint: /cron.sh
     depends_on:
