@@ -1,5 +1,15 @@
 # Nextcloud Docker Setup
 
+Dateiberechtigungen müssen auf 33 liegen
+# www-data hat UID 33 im Nextcloud-Container
+sudo chown -R 33:33 /mnt/user/data/nextcloud/data
+sudo chmod -R 0770 /mnt/user/data/nextcloud/data
+
+# Log-Datei ebenfalls
+sudo chown 33:33 /mnt/user/logs/nextcloud/nextcloud.log
+
+
+
 ## Beschreibung
 Dieses Setup enthält eine vollständige Nextcloud-Installation mit:
 - **Nextcloud** (Apache-basiert)
