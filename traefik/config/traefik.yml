@@ -8,10 +8,10 @@ global:
 
 api:
   dashboard: true
-  # TODO prüfen
+  disabledashboardad: true
+  # TODO
   insecure: true
-  # TODO prüfen
-  debug: true
+  debug: false
 
 providers:
   docker:
@@ -67,13 +67,15 @@ log:
   level: INFO
   filePath: /logs/traefik.log
   format: json
-  maxSize: 10
+  maxSize: 20
   maxBackups: 10
-  maxAge: 14
+  maxAge: 21
 
 accessLog:
   filePath: /logs/access.log
   format: json
+  # Rotation & 14-Tage-Retention ueber logrotate-Sidecar in docker-compose.yml.
+  # Traefik oeffnet die Datei nach USR1 sauber neu (kill -USR1 1 im Sidecar).
 #  filters:
 #    statusCodes:
 #      - "200"

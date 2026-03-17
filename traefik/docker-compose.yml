@@ -8,7 +8,6 @@
 # │ CROWDSEC_ENROLL_KEY      │ abc123def456ghi789...          │ Enrollment Key für CrowdSec Console (optional)           │
 # │                          │                                │ Erstellen : https://app.crowdsec.net/security-engines    │
 # │                          │                                │ Entspricht: cscli console enroll <KEY>                   │
-# │ TRAEFIK_LOCATION         │ ./config                       │ Pfad zur Traefik-Hauptkonfiguration                      │
 # └──────────────────────────┴────────────────────────────────┴──────────────────────────────────────────────────────────┘
 #
 # CrowdSec Bouncer API Key Setup:
@@ -55,9 +54,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - letsencrypt:/letsencrypt
       - geoblock:/data/geoblock
-      - ${TRAEFIK_LOCATION:-./config}/traefik.yml:/traefik.yml:ro
-      - ${TRAEFIK_LOCATION:-./config}/dynamic:/config/dynamic:ro
-      - ${TRAEFIK_LOCATION:-.}/logs:/logs
+      - /mnt/user/appdata/traefik/traefik.yml:/traefik.yml:ro
+      - /mnt/user/appdata/traefik/dynamic:/config/dynamic:ro
+      - /mnt/user/logs/traefik:/logs
 
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping"]
@@ -80,6 +79,58 @@ services:
       # Service → internes Dashboard API
       traefik.http.routers.traefik-dashboard.service: api@internal
       traefik.http.services.traefik-dashboard.loadbalancer.server.port: 8080
+
+
+  traefik-logrotate:
+    # Kein eigenes Image – direkt alpine; logrotate wird beim Start einmalig installiert.
+    image: alpine:3.22
+    container_name: traefik-logrotate
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    network_mode: none
+    # Gemeinsamer PID-Namespace mit traefik → Traefik laeuft als PID 1 → kill -USR1 1 moeglich,
+    # ohne Docker-Socket im Sidecar zu benoetigen.
+    pid: "service:traefik"
+
+    depends_on:
+      traefik:
+        condition: service_started
+
+    environment:
+      TZ: Europe/Berlin
+
+    volumes:
+      - /mnt/user/logs/traefik:/logs
+      - traefik-logrotate-state:/state
+
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        apk add --no-cache logrotate --quiet
+        cat > /tmp/access.logrotate <<'EOF'
+        /logs/access.log {
+            daily
+            rotate 21
+            missingok
+            notifempty
+            compress
+            delaycompress
+            sharedscripts
+            postrotate
+                kill -USR1 1 || true
+            endscript
+        }
+        EOF
+        while true; do
+          logrotate -s /state/status /tmp/access.logrotate
+          sleep 86400
+        done
 
 
   crowdsec:
@@ -108,8 +159,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - crowdsec-data:/var/lib/crowdsec/data/
       - crowdsec-config:/etc/crowdsec/
-      - ${TRAEFIK_LOCATION:-.}/logs:/var/log/traefik:ro
-      - ${TRAEFIK_LOCATION:-./config}/crowdsec:/etc/crowdsec/acquis.d:ro
+      - /mnt/user/logs/traefik:/var/log/traefik:ro
+      - /mnt/user/appdata/traefik/crowdsec:/etc/crowdsec/acquis.d:ro
 
     healthcheck:
       test: ["CMD", "sh", "-c", "cscli version && wget -q --spider http://localhost:8080/health || exit 1"]
@@ -124,6 +175,7 @@ volumes:
   geoblock:
   crowdsec-data:
   crowdsec-config:
+  traefik-logrotate-state:
 
 networks:
   proxy:
