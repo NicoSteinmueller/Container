@@ -5,54 +5,10 @@
 # ┌──────────────────────┬──────────────────────────────────────────────────────┐
 # │ Variable             │ Beschreibung & Beispiele                             │
 # ├──────────────────────┼──────────────────────────────────────────────────────┤
-# │ PFLICHT-VARIABLEN                                                           │
-# ├──────────────────────┼──────────────────────────────────────────────────────┤
 # │ DB_PASSWORD          │ PostgreSQL Datenbank-Passwort                        │
-# │                      │ Standard: changeme (UNSICHER!)                       │
-# │                      │ Beispiel: MySecureP@ssw0rd!2024                      │
 # ├──────────────────────┼──────────────────────────────────────────────────────┤
-# │ DATA-VERWALTUNG                                                             │
-# ├──────────────────────┼──────────────────────────────────────────────────────┤
-# │ DATA_BASE_PATH       │ Basis-Pfad für lokale Volumes (data, config, backups)│
-# │                      │ Standard: . (aktuelles Verzeichnis)                  │
-# │                      │ Beispiel: /mnt/sftpgo oder C:\SFTPGo-Data            │
-# │                      │ Struktur: ${DATA_BASE_PATH}/data                     │
-# │                      │          ${DATA_BASE_PATH}/config                    │
-# │                      │          ${DATA_BASE_PATH}/backups                   │
-# ├──────────────────────┼──────────────────────────────────────────────────────┤
-# │ OIDC/SSO (optional)                                                         │
-# ├──────────────────────┼──────────────────────────────────────────────────────┤
-# │ OIDC_CONFIG_URL      │ OpenID Connect Discovery URL                         │
-# │                      │ Beispiel: https://keycloak.example.com/realms/       │
-# │                      │           myrealm                                    │
-# ├──────────────────────┼──────────────────────────────────────────────────────┤
-# │ OIDC_CLIENT_ID       │ OIDC Client ID                                       │
-# │                      │ Beispiel: sftpgo-webclient                           │
-# ├──────────────────────┼──────────────────────────────────────────────────────┤
-# │ OIDC_CLIENT_SECRET   │ OIDC Client Secret (sicher aufbewahren!)             │
-# │                      │ Beispiel: abc123-xyz789-secret                       │
-# ├──────────────────────┼──────────────────────────────────────────────────────┤
-# │ OIDC_REDIRECT_BASE   │ Basis-URL für OIDC (ohne /web/oidc/redirect)         │
-# │ _URL                 │ Beispiel: https://sftpgo.example.com                 │
+# │ OIDC_CLIENT_SECRET   │ OIDC Client Secret                                   │
 # └──────────────────────┴──────────────────────────────────────────────────────┘
-#
-# BEISPIEL .env DATEIEN:
-# ──────────────────────────────────────────────────────────────────────────────
-# Minimal:      DB_PASSWORD=MeinSicheresPasswort123!
-#
-# Mit Datenpfad: DB_PASSWORD=MeinSicheresPasswort123!
-#                DATA_BASE_PATH=/mnt/sftpgo
-#
-# Mit Proxy:    DB_PASSWORD=MeinSicheresPasswort123!
-#               DATA_BASE_PATH=/mnt/sftpgo
-#
-# Mit OIDC:     DB_PASSWORD=MeinSicheresPasswort123!
-#               DATA_BASE_PATH=/mnt/sftpgo
-#               OIDC_CONFIG_URL=https://keycloak.example.com/realms/myrealm
-#               OIDC_CLIENT_ID=sftpgo-webclient
-#               OIDC_CLIENT_SECRET=geheimer-schluessel
-#               OIDC_REDIRECT_BASE_URL=https://sftpgo.example.com
-# ═══════════════════════════════════════════════════════════════════════════════
 
 services:
   sftpgo:
@@ -62,13 +18,10 @@ services:
     depends_on:
       database:
         condition: service_healthy
-#    ports:
-#      - "48214:8080"   # WebClient - wird über Traefik geroutet
-#      - "48215:2022"   # SFTP - wird über Traefik geroutet (Port 22 extern)
     volumes:
-      - ${DATA_BASE_PATH:-.}/data:/srv/sftpgo/data
-      - ${DATA_BASE_PATH:-.}/config:/var/lib/sftpgo
-      - ${DATA_BASE_PATH:-.}/backups:/srv/sftpgo/backups
+      - /mnt/user/appdata/sftpgo/config:/var/lib/sftpgo
+      - /mnt/user/data/sftpgo/data:/srv/sftpgo/data
+      - /mnt/user/data/sftpgo/backups:/srv/sftpgo/backups
     environment:
       # Zeit nach der ein inaktiver Benutzer automatisch abgemeldet wird (in Minuten, 0 = deaktiviert)
       SFTPGO_COMMON__IDLE_TIMEOUT: 15
@@ -247,13 +200,13 @@ services:
       # OpenID Einstellungen (optional - bei Bedarf aktivieren)
       # OIDC URL (z.B. Keycloak, Google, etc.)
       # https://keycloak.example.com/realms/myrealm + automatisch hinzugefügt ".well-known/openid-configuration"
-      SFTPGO_HTTPD__BINDINGS__0__OIDC__CONFIG_URL: ${OIDC_CONFIG_URL:-}
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__CONFIG_URL: https://keycloak.nico-steinmueller.de/realms/mein-realm
       # OIDC Client ID
-      SFTPGO_HTTPD__BINDINGS__0__OIDC__CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__CLIENT_ID: sftpgo
       # OIDC Client Secret
       SFTPGO_HTTPD__BINDINGS__0__OIDC__CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       # SFTPGo Redirect URL (suffix /web/oidc/redirect wird automatisch hinzugefügt)
-      SFTPGO_HTTPD__BINDINGS__0__OIDC__REDIRECT_BASE_URL: ${OIDC_REDIRECT_BASE_URL:-}
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__REDIRECT_BASE_URL: https://sftpgo.nico-steinmueller.de
       # OIDC Username Feld im ID Token
       SFTPGO_HTTPD__BINDINGS__0__OIDC__USERNAME_FIELD: preferred_username
       # OIDC Scopes, die angefordert werden
