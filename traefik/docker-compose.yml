@@ -132,6 +132,14 @@ services:
           sleep 86400
         done
 
+    healthcheck:
+      # Gesund wenn Traefik im geteilten PID-NS erreichbar ist und logrotate kuerzlich lief.
+      test: ["CMD-SHELL", "kill -0 1 && test -f /state/status && find /state/status -mtime -2 | grep -q /state/status"]
+      interval: 30m
+      timeout: 10s
+      retries: 3
+      start_period: 2m
+
 
   crowdsec:
     image: crowdsecurity/crowdsec:v1.7.6@sha256:63b595fef92de1778573b375897a45dd226637ee9a3d3db9f57ac7355c369493
