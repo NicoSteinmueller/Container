@@ -228,6 +228,20 @@
       ],
     },
     {
+      description: 'OctoPrint: IMMER PR mit Review (manuelle Prüfung erforderlich)',
+      matchDatasources: [
+        'docker'
+      ],
+      matchPackageNames: [
+        'octoprint/octoprint'
+      ],
+      automerge: false,
+      prCreation: 'immediate',
+      prBodyNotes: [
+        "### 🖨️ OctoPrint Update - Manuelle Prüfung erforderlich!\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{/each}}{{/if}}"
+      ],
+    },
+    {
       description: 'Traefik Plugins: IMMER PR (manuelle Deployment erforderlich)',
       matchManagers: [
         'custom.regex'
