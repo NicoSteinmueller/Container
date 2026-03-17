@@ -4,7 +4,6 @@
 # | Variable                   | Beschreibung                    | Default       |
 # |----------------------------|---------------------------------|---------------|
 # | POSTGRES_PASSWORD          | Datenbank-Passwort              | changeme      |
-# | PAPERLESS_DATA             | Pfad für Paperless-Daten        | ./data        |
 # ============================================
 
 services:
@@ -49,7 +48,7 @@ services:
       - /mnt/user/data/nextcloud/data:/var/www/html/data # the actual data of your Nextcloud
       # Log Datei muss existieren, sonst könnte Order nicht gemounted werden, da Docker sonst einen Ordner erstellt
       - /mnt/user/logs/nextcloud/nextcloud.log:/var/www/html/data/nextcloud.log # separates Nextcloud-Logfile
-      - ${PAPERLESS_DATA:-./paperless}:/paperless-consume
+      - /mnt/user/data/paperless/consume:/paperless-consume
     depends_on:
       database:
         condition: service_healthy
@@ -85,7 +84,7 @@ services:
       - /mnt/user/data/nextcloud/data:/var/www/html/data # the actual data of your Nextcloud
       # Log Datei muss existieren, sonst könnte Order nicht gemounted werden, da Docker sonst einen Ordner erstellt
       - /mnt/user/logs/nextcloud/nextcloud.log:/var/www/html/data/nextcloud.log # separates Nextcloud-Logfile
-      - ${PAPERLESS_DATA:-./paperless}:/paperless-consume
+      - /mnt/user/data/paperless/consume:/paperless-consume
     entrypoint: /cron.sh
     depends_on:
       database:
