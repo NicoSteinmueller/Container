@@ -48,7 +48,7 @@ services:
       # Basis-Konfiguration
       PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:-changeme}
       # URL ohe path, z.B. paperless.deine-domain.de
-      PAPERLESS_URL: paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de
+      PAPERLESS_URL: https://paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de
       # Bei Einsatz hinter Reverse Proxy, um korrekte Host-Header zu verwenden
       PAPERLESS_USE_X_FORWARD_HOST: true
       PAPERLESS_USE_X_FORWARD_PORT: true
