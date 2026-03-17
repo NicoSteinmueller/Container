@@ -1,10 +1,3 @@
-# Umgebungsvariablen:
-# ┌──────────────────────────┬────────────────────────────────┬──────────────────────────────────────────────────────────┐
-# │ Variable                 │ Beispiel                       │ Erklärung                                                │
-# ├──────────────────────────┼────────────────────────────────┼──────────────────────────────────────────────────────────┤
-# │ OCTOPRINT_DATA           │ ./data                         │ Pfad für OctoPrint-Konfiguration und Daten               │
-# └──────────────────────────┴────────────────────────────────┴──────────────────────────────────────────────────────────┘
-#
 # Hinweise:
 # - Drucker-USB-Gerät prüfen: ls /dev/tty{USB,ACM}*
 # - Webcam (optional): ENABLE_MJPG_STREAMER auf "true" setzen, dann Port 8080 für den Stream
@@ -26,7 +19,7 @@ services:
       ENABLE_MJPG_STREAMER: "false"
 
     volumes:
-      - ${OCTOPRINT_DATA:-./data}:/octoprint
+      - /mnt/user/appdata/octoprint:/octoprint
 
     # USB-Gerät des 3D-Druckers – nur einbinden wenn vorhanden, sonst startet der Container nicht!
     # Gerät prüfen mit: ls /dev/tty{USB,ACM}*
