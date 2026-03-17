@@ -9,25 +9,11 @@
 # DB_PASSWORD                  - PostgreSQL Datenbank-Passwort (default: changeme)
 # PAPERLESS_SECRET_KEY         - Django Secret Key mindestens 50 Zeichen (AlphaNum + Sonderzeichen)
 #
-# === HOST PATH MOUNTS (Consume/Export/Media) ===
-# PAPERLESS_DATA_BASE_PATH     - Grundpfad auf dem Host für Instanz-Daten.
-#                                Struktur: ${PAPERLESS_DATA_BASE_PATH}/${INSTANCE_NAME}/(consume|export|media)
-#                                (Default: ./data)
-#                                Beispiel: /mnt/paperless → /mnt/paperless/main/consume
-#
-# === URL (für Deployment hinter Reverse Proxy) ===
-# PAPERLESS_URL                - Externe Basis-URL (z.B. https://docs.example.com)
-#                                (Default: leer)
-#
 # === KEYCLOAK / OIDC INTEGRATION ===
-# KEYCLOAK_CONFIG              - JSON-Konfiguration für OpenID Connect Provider
-#                                Format: {"openid_connect":{"APPS":[{"provider_id":"keycloak","name":"Keycloak","client_id":"paperless-main","secret":"CLIENT_SECRET","settings":{"server_url":"https://keycloak.example.com/realms/homelab/.well-known/openid-configuration"}}],"OAUTH_PKCE_ENABLED":true}}
-#                                (Default: leer)
+# KEYCLOAK_SECRET              - Client Secret fuer Keycloak OIDC (kein Default, nur bei OIDC noetig)
+#                              - client_id=paperless_${INSTANCE_NAME:-main}
 # PAPERLESS_ALLOW_SIGNUPS      - Automatisches Anlegen von Usern bei erstem SSO-Login (default: false)
 # PAPERLESS_DISABLE_REGULAR_LOGIN - Deaktiviert Login-Formular, erzwingt SSO (default: true)
-# PAPERLESS_LOGOUT_REDIRECT_URL - URL für Single Logout mit Keycloak
-#                                Format: https://keycloak.example.com/realms/homelab/protocol/openid-connect/logout?post_logout_redirect_uri=https://docs.example.com/paperless-main&client_id=paperless-main
-#                                (Default: leer)
 #
 # === ERWEITERTE KONFIGURATION ===
 # PAPERLESS_IGNORE_DATES       - Komma-getrennte Liste von Daten, die bei Erkennung ignoriert werden
@@ -62,7 +48,7 @@ services:
       # Basis-Konfiguration
       PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:-changeme}
       # URL ohe path, z.B. paperless.deine-domain.de
-      PAPERLESS_URL: ${PAPERLESS_URL:-}
+      PAPERLESS_URL: paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de
       # Bei Einsatz hinter Reverse Proxy, um korrekte Host-Header zu verwenden
       PAPERLESS_USE_X_FORWARD_HOST: true
       PAPERLESS_USE_X_FORWARD_PORT: true
@@ -71,14 +57,13 @@ services:
 
       # OpenID Connect für Keycloak SSO
       PAPERLESS_APPS: allauth.socialaccount.providers.openid_connect
-      # z.B.: {"openid_connect":{"APPS":[{"provider_id":"keycloak","name":"Keycloak","client_id":"paperless-main","secret":"SECRET_MAIN","settings":{"server_url":"https://keycloak.example.com/realms/homelab/.well-known/openid-configuration"}}],"OAUTH_PKCE_ENABLED":true}}
-      PAPERLESS_SOCIALACCOUNT_PROVIDERS: ${KEYCLOAK_CONFIG:-}
+      PAPERLESS_SOCIALACCOUNT_PROVIDERS: '{"openid_connect":{"APPS":[{"provider_id":"keycloak","name":"Keycloak","client_id":"paperless_${INSTANCE_NAME:-main}","secret":"${KEYCLOAK_SECRET}","settings":{"server_url":"https://keycloak.nico-steinmueller.de/realms/mein-realm"}}],"OAUTH_PKCE_ENABLED":true}}'
       # Automatisches Anlegen von Usern bei erstem Login mit Keycloak
       PAPERLESS_SOCIALACCOUNT_ALLOW_SIGNUPS: ${PAPERLESS_ALLOW_SIGNUPS:-false}
       # Deaktiviere regulären Login
       PAPERLESS_DISABLE_REGULAR_LOGIN: ${PAPERLESS_DISABLE_REGULAR_LOGIN:-true}
       # Single Logout URL für Keycloak
-      PAPERLESS_LOGOUT_REDIRECT_URL: ${PAPERLESS_LOGOUT_REDIRECT_URL:-}
+      PAPERLESS_LOGOUT_REDIRECT_URL: https://keycloak.nico-steinmueller.de/realms/mein-realm/protocol/openid-connect/logout?post_logout_redirect_uri=https://paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de&&client_id=paperless_${INSTANCE_NAME:-main}
       PAPERLESS_SESSION_COOKIE_AGE: 86400  # 1 Tag
 
       # OCR Sprachen
@@ -120,9 +105,9 @@ services:
       # data bleibt als named volume (Container-intern)
       - data:/usr/src/paperless/data
       # consume/export/media werden vom Host gemappt: <BASE>/<INSTANCE>/<ordner>
-      - ${PAPERLESS_DATA_BASE_PATH:-./data}/media/${INSTANCE_NAME:-main}:/usr/src/paperless/media
-      - ${PAPERLESS_DATA_BASE_PATH:-./data}/export/${INSTANCE_NAME:-main}:/usr/src/paperless/export
-      - ${PAPERLESS_DATA_BASE_PATH:-./data}/consume/${INSTANCE_NAME:-main}:/usr/src/paperless/consume
+      - /mnt/user/data/paperless/media/${INSTANCE_NAME:-main}:/usr/src/paperless/media
+      - /mnt/user/data/paperless/export/${INSTANCE_NAME:-main}:/usr/src/paperless/export
+      - /mnt/user/data/paperless/consume/${INSTANCE_NAME:-main}:/usr/src/paperless/consume
     depends_on:
       database:
         condition: service_healthy
