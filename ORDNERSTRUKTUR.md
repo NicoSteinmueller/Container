@@ -26,8 +26,8 @@
 /mnt/cache/appdata/                         ← SSD (schnell, Backup via Kopia)
 ├── adguard/
 │   └── conf/                               ✅ Backup (DNS-Config, Filterlisten)
-├── ftb-skies-2/ #TODO alle Minecraft Sachen 
-│   └── data/                               ✅ Backup (Server-Config, Mods, Player-Data)
+├── ftb-skies-2/
+│   └── data/                               ✅ Backup (Server-Config, Mods, Player-Daten, aktive Welt)
 ├── immich/
 │   └── db/                                 ✅ Backup (Postgres-Datenbank)
 ├── keycloak/
@@ -57,7 +57,8 @@
 
 /mnt/user/data/                             ← HDD-Array (Nutzerdaten, wird gesichert)
 ├── ftb-skies-2/
-│   └── worlds/                             ✅ Backup (Welt-Daten)
+│   ├── worlds/                             ✅ Backup (Welt-Importe / Seed-ZIPs)
+│   └── backups/                            ✅ Backup (FTB Ingame-Backups / Snapshots)
 ├── immich/
 │   ├── media/                              ✅ Backup (Originalfotos/-videos)
 │   └── model-cache/                        ❌ Kein Backup (ML-Modelle – auto-download)
@@ -94,6 +95,7 @@
 /mnt/user/data/nextcloud/data/
 /mnt/user/data/sftpgo/data/
 /mnt/user/data/ftb-skies-2/worlds/
+/mnt/user/data/ftb-skies-2/backups/
 /mnt/user/data/immich/media/        # nur wenn Immich die einzige Kopie ist
 ```
 
@@ -117,6 +119,7 @@ ADGUARD_DATA=/mnt/cache/appdata/adguard
 
 ```env
 DATA_DIR=/mnt/cache/appdata/ftb-skies-2/data
+BACKUPS_DIR=/mnt/user/data/ftb-skies-2/backups
 WORLDS_DIR=/mnt/user/data/ftb-skies-2/worlds
 ```
 
@@ -170,9 +173,11 @@ KOPIA_SOURCE_5=/mnt/user/data/sftpgo/data
 KOPIA_SOURCE_5_NAME=sftpgo-data
 KOPIA_SOURCE_6=/mnt/user/data/ftb-skies-2/worlds
 KOPIA_SOURCE_6_NAME=ftb-worlds
+KOPIA_SOURCE_7=/mnt/user/data/ftb-skies-2/backups
+KOPIA_SOURCE_7_NAME=ftb-backups
 # Nur wenn Immich die einzige Kopie der Fotos ist:
-# KOPIA_SOURCE_7=/mnt/user/data/immich/media
-# KOPIA_SOURCE_7_NAME=immich-media
+# KOPIA_SOURCE_8=/mnt/user/data/immich/media
+# KOPIA_SOURCE_8_NAME=immich-media
 ```
 
 ---

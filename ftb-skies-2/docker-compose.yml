@@ -1,7 +1,5 @@
 # Hinweise:
-# - DATA_DIR: Speicherort für Server-Daten, Konfigurationen, Mods
-# - WORLDS_DIR: Speicherort für importiertende Welte
-# - WORLD_NAME: Pfad zur Welt-Datei (ZIP)
+# - WORLD_NAME: Name der Welt-Datei (ZIP)
 # - FORCE_WORLD_COPY: true = Welt bei jedem Start neu kopieren, false = nur beim ersten Start
 
 services:
@@ -16,8 +14,9 @@ services:
     ports:
       - "55485:25565"
     volumes:
-      - ${DATA_DIR:-./data}:/data
-      - ${WORLDS_DIR:-./worlds}:/worlds
+      - /mnt/user/appdata/minecraft/ftb_skies_2:/data
+      - /mnt/user/data/minecraft/ftb_skies_2/backups:/data/ftbbackups3
+      - /mnt/user/data/minecraft/ftb_skies_2/worlds:/worlds
     environment:
       EULA: "TRUE"
       TYPE: "FTBA"
@@ -30,7 +29,7 @@ services:
       TZ: "Europe/Berlin"
       ONLINE_MODE: "true"
       FORCE_WORLD_COPY: ${FORCE_WORLD_COPY:-false}
-      WORLD: ${WORLD_NAME:-/worlds/world.zip}
+      WORLD: /worlds/${WORLD_NAME:-world.zip}
       OPS: |-
         44b03ad5-bdea-4578-b500-7ea9916c611d
       ENABLE_WHITELIST: "true"
