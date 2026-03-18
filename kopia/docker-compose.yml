@@ -4,14 +4,10 @@
 # ║ Variable                  │ Beschreibung                          │ Standard  ║
 # ╠═══════════════════════════════════════════════════════════════════════════════╣
 # ║ INSTANCE                  │ Bezeichnung der Instance              │ main      ║
-# ║ KOPIA_DATA_DIR            │ Hauptverzeichnis für Kopia-Daten      │ ./kopia...║
 # ║ KOPIA_REPOSITORY_DIR      │ Backup-Repository Speicherort         │ ./backup  ║
-# ║ KOPIA_SOURCE_1..20        │ Quellordner Pfad (optional)           │ ./daten   ║
-# ║ KOPIA_SOURCE_1..20_NAME   │ Quellordner Name in /data (optional)  │ daten     ║
 # ║ KOPIA_REPOSITORY_PASSWORD │ Repository-Verschlüsselungspasswort   │ kopia1#   ║
 # ║ KOPIA_SERVER_USERNAME     │ Web-UI Benutzername                   │ admin     ║
 # ║ KOPIA_SERVER_PASSWORD     │ Web-UI Passwort                       │ kopia123  ║
-# ║ KOPIA_PORT                │ Web-UI Port                           │ 51515     ║
 # ╚═══════════════════════════════════════════════════════════════════════════════╝
 
 services:
@@ -40,12 +36,12 @@ services:
       retries: 3
     volumes:
       # Kopia Konfiguration und Cache
-      - ${KOPIA_DATA_DIR:-./kopia-data}/config:/app/config
-      - ${KOPIA_DATA_DIR:-./kopia-data}/cache:/app/cache
-      - ${KOPIA_DATA_DIR:-./kopia-data}/logs:/app/logs
+      - /mnt/user/appdata/kopia/${INSTANCE:-main}/config:/app/config
+      - /mnt/user/appdata/kopia/${INSTANCE:-main}/cache:/app/cache
+      - /mnt/user/logs/kopia/${INSTANCE:-main}:/app/logs
 
       # Zugriff auf eingebundene Snapshots
-      - ${KOPIA_DATA_DIR:-./kopia-data}/snapshot:/tmp:shared
+      - /mnt/user/data/kopia/${INSTANCE:-main}:/tmp:shared
 
       # Backup-Zielordner (Repository)
       - ${KOPIA_REPOSITORY_DIR:-./backup}:/repository
@@ -53,26 +49,109 @@ services:
       # Quellordner - hier die Daten die gesichert werden sollen
       # Jeder Ordner wird in /data/<name> gemappt
       # Produziert Fehler, wenn env nicht gesetzt ist
-      - ${KOPIA_SOURCE_1:-./daten}:/data/${KOPIA_SOURCE_1_NAME:-daten}:ro
-      - ${KOPIA_SOURCE_2}:/data/${KOPIA_SOURCE_2_NAME}:ro
-      - ${KOPIA_SOURCE_3}:/data/${KOPIA_SOURCE_3_NAME}:ro
-      - ${KOPIA_SOURCE_4}:/data/${KOPIA_SOURCE_4_NAME}:ro
-      - ${KOPIA_SOURCE_5}:/data/${KOPIA_SOURCE_5_NAME}:ro
-      - ${KOPIA_SOURCE_6}:/data/${KOPIA_SOURCE_6_NAME}:ro
-#      - ${KOPIA_SOURCE_7}:/data/${KOPIA_SOURCE_7_NAME}:ro
-#      - ${KOPIA_SOURCE_8}:/data/${KOPIA_SOURCE_8_NAME}:ro
-#      - ${KOPIA_SOURCE_9}:/data/${KOPIA_SOURCE_9_NAME}:ro
-#      - ${KOPIA_SOURCE_10}:/data/${KOPIA_SOURCE_10_NAME}:ro
-#      - ${KOPIA_SOURCE_11}:/data/${KOPIA_SOURCE_11_NAME}:ro
-#      - ${KOPIA_SOURCE_12}:/data/${KOPIA_SOURCE_12_NAME}:ro
-#      - ${KOPIA_SOURCE_13}:/data/${KOPIA_SOURCE_13_NAME}:ro
-#      - ${KOPIA_SOURCE_14}:/data/${KOPIA_SOURCE_14_NAME}:ro
-#      - ${KOPIA_SOURCE_15}:/data/${KOPIA_SOURCE_15_NAME}:ro
-#      - ${KOPIA_SOURCE_16}:/data/${KOPIA_SOURCE_16_NAME}:ro
-#      - ${KOPIA_SOURCE_17}:/data/${KOPIA_SOURCE_17_NAME}:ro
-#      - ${KOPIA_SOURCE_18}:/data/${KOPIA_SOURCE_18_NAME}:ro
-#      - ${KOPIA_SOURCE_19}:/data/${KOPIA_SOURCE_19_NAME}:ro
-#      - ${KOPIA_SOURCE_20}:/data/${KOPIA_SOURCE_20_NAME}:ro
+      - type: bind
+        source: /mnt/user/Bilder
+        target: /data/bilder
+        read_only: true
+
+      # Apps
+      # Adguard
+      - type: bind
+        source: /mnt/user/appdata/adguard
+        target: /data/adguard
+        read_only: true
+
+      # Immich
+      - type: bind
+        source: /mnt/user/data/immich/media
+        target: /data/immich/media
+        read_only: true
+
+      # Keycloak
+      - type: bind
+        source: /mnt/user/data/keycloak/db-backup
+        target: /data/keycloak/db-backup
+        read_only: true
+
+      # Minecraft
+      - type: bind
+        source: /mnt/user/appdata/minecraft
+        target: /data/minecraft/appdata
+        read_only: true
+      - type: bind
+        source: /mnt/user/data/minecraft
+        target: /data/minecraft/data
+        read_only: true
+
+      # Nextcloud
+      - type: bind
+        source: /mnt/user/appdata/nextcloud/apps
+        target: /data/nextcloud/apps
+        read_only: true
+      - type: bind
+        source: /mnt/user/appdata/nextcloud/config
+        target: /data/nextcloud/config
+        read_only: true
+      - type: bind
+        source: /mnt/user/appdata/nextcloud/themes
+        target: /data/nextcloud/themes
+        read_only: true
+      - type: bind
+        source: /mnt/user/data/nextcloud/data
+        target: /data/nextcloud/data
+        read_only: true
+      - type: bind
+        source: /mnt/user/data/nextcloud/db-backup
+        target: /data/nextcloud/db-backup
+        read_only: true
+
+      # Octoprint
+      - type: bind
+        source: /mnt/user/appdata/octoprint/octoprint
+        target: /data/octoprint/octoprint
+        read_only: true
+      - type: bind
+        source: /mnt/user/appdata/octoprint/plugins
+        target: /data/octoprint/plugins
+        read_only: true
+
+      # Paperless
+      - type: bind
+        source: /mnt/user/appdata/paperless/data
+        target: /data/paperless/data
+        read_only: true
+      - type: bind
+        source: /mnt/user/data/paperless/consume
+        target: /data/paperless/consume
+        read_only: true
+      - type: bind
+        source: /mnt/user/data/paperless/export
+        target: /data/paperless/export
+        read_only: true
+      - type: bind
+        source: /mnt/user/data/paperless/media
+        target: /data/paperless/media
+        read_only: true
+
+      # SFTPGo
+      - type: bind
+        source: /mnt/user/appdata/sftpgo/config
+        target: /data/sftpgo/config
+        read_only: true
+      - type: bind
+        source: /mnt/user/data/sftpgo/backups
+        target: /data/sftpgo/backups
+        read_only: true
+      - type: bind
+        source: /mnt/user/data/sftpgo/data
+        target: /data/sftpgo/data
+        read_only: true
+
+      # Traefik
+      - type: bind
+        source: /mnt/user/appdata/traefik
+        target: /data/traefik
+        read_only: true
 
     labels:
       - "traefik.enable=true"
