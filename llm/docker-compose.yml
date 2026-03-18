@@ -11,7 +11,7 @@ services:
     volumes:
       - ollama:/root/.ollama
     networks:
-      - llm
+      - ollama
       - proxy
     labels:
       traefik.enable: true
@@ -35,21 +35,21 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - /mnt/user/appdata/llm/open-webui:/app/backend/data
+      - /mnt/user/appdata/ollama/open-webui:/app/backend/data
     networks:
-      - llm
+      - ollama
       - proxy
     labels:
       traefik.enable: true
-      traefik.http.routers.open-webui.rule: Host(`llm.local.nico-steinmueller.de`)
+      traefik.http.routers.open-webui.rule: Host(`ollama.local.nico-steinmueller.de`)
       traefik.http.routers.open-webui.entrypoints: websecure
       traefik.http.routers.open-webui.middlewares: local-only@file
       traefik.http.routers.open-webui.service: open-webui
       traefik.http.services.open-webui.loadbalancer.server.port: 8080
 
 networks:
-  llm:
-     name: llm
+  ollama:
+     name: ollama
   proxy:
     external: true
 
