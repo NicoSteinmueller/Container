@@ -102,9 +102,8 @@ services:
       PAPERLESS_APP_TITLE: Paperless-ngx ${INSTANCE_NAME:-main}
 
     volumes:
-      # data bleibt als named volume (Container-intern)
-      - data:/usr/src/paperless/data
-      # consume/export/media werden vom Host gemappt: <BASE>/<INSTANCE>/<ordner>
+      - /mnt/user/appdata/paperless/data/${INSTANCE_NAME:-main}:/usr/src/paperless/data
+      - /mnt/user/logs/paperless/${INSTANCE_NAME:-main}:/usr/src/paperless/data/log
       - /mnt/user/data/paperless/media/${INSTANCE_NAME:-main}:/usr/src/paperless/media
       - /mnt/user/data/paperless/export/${INSTANCE_NAME:-main}:/usr/src/paperless/export
       - /mnt/user/data/paperless/consume/${INSTANCE_NAME:-main}:/usr/src/paperless/consume
@@ -193,5 +192,3 @@ networks:
 volumes:
   postgres:
     name: paperless_${INSTANCE_NAME:-main}_postgres
-  data:
-    name: paperless_${INSTANCE_NAME:-main}_data
