@@ -82,8 +82,11 @@ services:
 
 
   traefik-logrotate:
-    # Kein eigenes Image – direkt alpine; logrotate wird beim Start einmalig installiert.
-    image: alpine:3.23@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
+    # Eigenes Mini-Image mit vorinstalliertem logrotate (kein Paketdownload zur Laufzeit).
+    build:
+      context: ./logrotate
+      dockerfile: Dockerfile
+    image: traefik-logrotate:local
     container_name: traefik-logrotate
     restart: unless-stopped
     security_opt:
@@ -112,23 +115,8 @@ services:
       - -c
       - |
         set -eu
-        apk add --no-cache logrotate --quiet
-        cat > /tmp/access.logrotate <<'EOF'
-        /logs/access.log {
-            daily
-            rotate 21
-            missingok
-            notifempty
-            compress
-            delaycompress
-            sharedscripts
-            postrotate
-                kill -USR1 1 || true
-            endscript
-        }
-        EOF
         while true; do
-          logrotate -s /state/status /tmp/access.logrotate
+          logrotate -s /state/status /etc/logrotate.d/access.logrotate
           sleep 86400
         done
 

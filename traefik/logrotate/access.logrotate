@@ -1,0 +1,13 @@
+/logs/access.log {
+    daily
+    rotate 21
+    missingok
+    notifempty
+    compress
+    delaycompress
+    sharedscripts
+    postrotate
+        kill -USR1 1 || true
+    endscript
+}
+
