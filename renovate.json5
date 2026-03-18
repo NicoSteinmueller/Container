@@ -14,6 +14,12 @@
       '(^|/)docker-compose\\.shared\\.ya?ml$'
     ],
   },
+  dockerfile: {
+    enabled: true,
+    managerFilePatterns: [
+      '(^|/)Dockerfile$'
+    ],
+  },
   // Custom Manager für Traefik Plugins
   customManagers: [
     {
