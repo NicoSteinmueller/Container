@@ -39,6 +39,7 @@ services:
       - ollama
     environment:
       TZ: Europe/Berlin
+      # https://docs.openwebui.com/reference/env-configuration
       OLLAMA_BASE_URL: http://ollama:11434
       WEBUI_AUTH: "True"
       ENABLE_LOGIN_FORM: false
