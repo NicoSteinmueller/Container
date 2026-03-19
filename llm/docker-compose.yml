@@ -57,6 +57,8 @@ services:
       OAUTH_PROVIDER_NAME: Keycloak
       # (Optional) OAuth Callback URL
       OPENID_REDIRECT_URI: https://open-webui.local.nico-steinmueller.de/oauth/oidc/callback
+      # Activate Role Management with Keycloak
+      ENABLE_OAUTH_ROLE_MANAGEMENT: true
       # (Optional) Map Keycloak Realm Roles to Open-WebUI Roles (comma-separated)
       OAUTH_ROLES_CLAIM: realm_access.roles
       # Roles that are allowed to log in
