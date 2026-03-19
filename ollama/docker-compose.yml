@@ -11,7 +11,7 @@ services:
     volumes:
       - ollama:/root/.ollama
     networks:
-      - ollama
+      - llm
       - proxy
     labels:
       traefik.enable: true
@@ -35,9 +35,9 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - /mnt/user/appdata/ollama/open-webui:/app/backend/data
+      - /mnt/user/appdata/llm/open-webui:/app/backend/data
     networks:
-      - ollama
+      - llm
       - proxy
     labels:
       traefik.enable: true
@@ -48,8 +48,8 @@ services:
       traefik.http.services.open-webui.loadbalancer.server.port: 8080
 
 networks:
-  ollama:
-     name: ollama
+  llm:
+     name: llm
   proxy:
     external: true
 
