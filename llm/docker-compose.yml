@@ -15,7 +15,7 @@ services:
 #    ports:
 #      - "11434:11434"
     volumes:
-      - ollama:/root/.ollama
+      - /mnt/user/appdata/llm/ollama:/root/.ollama
     networks:
       - llm
       - proxy
