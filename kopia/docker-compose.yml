@@ -153,6 +153,13 @@ services:
         target: /data/traefik
         read_only: true
 
+      # Linkwarden
+      - type: bind
+        source: /mnt/user/data/linkwarden/data
+        target: /data/linkwarden/data
+        read_only: true
+
+
     labels:
       - "traefik.enable=true"
       # Host rule configurable via env var KOPIA_HOST (default kopia.local)
