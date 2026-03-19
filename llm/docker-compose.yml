@@ -6,8 +6,8 @@ services:
     restart: unless-stopped
     environment:
       TZ: Europe/Berlin
-#    ports:
-#      - "11434:11434"
+    ports:
+      - "11434:11434"
     volumes:
       - ollama:/root/.ollama
     networks:
@@ -32,8 +32,8 @@ services:
       TZ: Europe/Berlin
       OLLAMA_BASE_URL: http://ollama:11434
       WEBUI_AUTH: "True"
-#    ports:
-#      - "8080:8080"
+    ports:
+      - "8080:8080"
     volumes:
       - /mnt/user/appdata/llm/open-webui:/app/backend/data
     networks:
