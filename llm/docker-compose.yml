@@ -57,12 +57,12 @@ services:
       OAUTH_PROVIDER_NAME: Keycloak
       # (Optional) OAuth Callback URL
       OPENID_REDIRECT_URI: https://open-webui.local.nico-steinmueller.de/oauth/oidc/callback
-      # Enable group synchronization
-      ENABLE_OAUTH_GROUP_MANAGEMENT: true
-      # (Optional) Enable Just-In-Time group creation
-      ENABLE_OAUTH_GROUP_CREATION: true
-      # The claim key for groups in the token
-      OAUTH_GROUP_CLAIM: groups
+      # (Optional) Map Keycloak Realm Roles to Open-WebUI Roles (comma-separated)
+      OAUTH_ROLES_CLAIM: realm_access.roles
+      # Roles that are allowed to log in
+      OAUTH_ALLOWED_ROLES: user
+      # Roles that are allowed to log in as an admin
+      OAUTH_ADMIN_ROLES: admin
 
 #    ports:
 #      - "8080:8080"
