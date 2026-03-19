@@ -47,7 +47,7 @@ services:
 #      OLLAMA_MODEL: phi3:mini-4k
 
     volumes:
-      - /mnt/user/appdata/linkwarden/linkwarden:/data/data
+      - /mnt/user/data/linkwarden/data:/data/data
     healthcheck:
       test: ["CMD-SHELL", "curl -fS http://localhost:3000/ || exit 1"]
       interval: 30s
