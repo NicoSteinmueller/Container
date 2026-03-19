@@ -56,7 +56,7 @@ services:
       # (Optional) SSO Button Label
       OAUTH_PROVIDER_NAME: Keycloak
       # (Optional) OAuth Callback URL
-      OPENID_REDIRECT_URI: https://open-webui.local.nico-steinmueller.de//oauth/oidc/callback
+      OPENID_REDIRECT_URI: https://open-webui.local.nico-steinmueller.de/oauth/oidc/callback
       # Enable group synchronization
       ENABLE_OAUTH_GROUP_MANAGEMENT: true
       # (Optional) Enable Just-In-Time group creation
