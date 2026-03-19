@@ -1,3 +1,6 @@
+# Umgebungsvariablen
+# OAUTH_CLIENT_SECRET: Keycloak Client Secret für Open-WebUI
+
 services:
   ollama:
     container_name: ollama
@@ -38,7 +41,29 @@ services:
       TZ: Europe/Berlin
       OLLAMA_BASE_URL: http://ollama:11434
       WEBUI_AUTH: "True"
-      CORS_ALLOW_ORIGIN: https://llm-chat.local.nico-steinmueller.de
+      CORS_ALLOW_ORIGIN: https://open-webui.local.nico-steinmueller.de
+      WEBUI_URL: https://open-webui.local.nico-steinmueller.de
+
+      # https://docs.openwebui.com/features/access-security/auth/sso/keycloak
+      ENABLE_OAUTH_PERSISTENT_CONFIG: false
+      # Enable OAuth2/OIDC Login
+      ENABLE_OAUTH_SIGNUP: true
+      # Keycloak Client Information
+      OAUTH_CLIENT_ID: open-webui
+      OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET}
+      # OIDC Discovery Document URL
+      OPENID_PROVIDER_URL: https://keycloak.nico-steinmueller.de/realms/mein-realm/.well-known/openid-configuration
+      # (Optional) SSO Button Label
+      OAUTH_PROVIDER_NAME: Keycloak
+      # (Optional) OAuth Callback URL
+      OPENID_REDIRECT_URI: https://open-webui.local.nico-steinmueller.de//oauth/oidc/callback
+      # Enable group synchronization
+      ENABLE_OAUTH_GROUP_MANAGEMENT: true
+      # (Optional) Enable Just-In-Time group creation
+      ENABLE_OAUTH_GROUP_CREATION: true
+      # The claim key for groups in the token
+      OAUTH_GROUP_CLAIM: groups
+
 #    ports:
 #      - "8080:8080"
     volumes:
@@ -48,7 +73,7 @@ services:
       - proxy
     labels:
       traefik.enable: true
-      traefik.http.routers.open-webui.rule: Host(`llm-chat.local.nico-steinmueller.de`)
+      traefik.http.routers.open-webui.rule: Host(`open-webui.local.nico-steinmueller.de`)
       traefik.http.routers.open-webui.entrypoints: websecure
       traefik.http.routers.open-webui.middlewares: local-only@file
       traefik.http.routers.open-webui.service: open-webui
