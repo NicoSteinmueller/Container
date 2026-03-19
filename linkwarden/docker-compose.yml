@@ -12,7 +12,7 @@
 services:
   # https://github.com/linkwarden/linkwarden
   linkwarden:
-    image: ghcr.io/linkwarden/linkwarden:v2.13.5
+    image: ghcr.io/linkwarden/linkwarden:v2.13.5@sha256:1588811d7b7d249d387782bb94c7eb189082b82b542ac1667d2ac3d7e7f70ce6
     container_name: linkwarden
     restart: unless-stopped
     depends_on:
@@ -74,7 +74,7 @@ services:
       traefik.http.services.linkwarden.loadbalancer.server.port: 3000
 
   postgres:
-    image: postgres:18.3-alpine3.23
+    image: postgres:18.3-alpine3.23@sha256:4da1a4828be12604092fa55311276f08f9224a74a62dcb4708bd7439e2a03911
     container_name: linkwarden_postgres
     restart: unless-stopped
     environment:
