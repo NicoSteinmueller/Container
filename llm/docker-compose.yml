@@ -38,6 +38,7 @@ services:
       TZ: Europe/Berlin
       OLLAMA_BASE_URL: http://ollama:11434
       WEBUI_AUTH: "True"
+      CORS_ALLOW_ORIGIN: https://llm-chat.local.nico-steinmueller.de
 #    ports:
 #      - "8080:8080"
     volumes:
@@ -47,7 +48,7 @@ services:
       - proxy
     labels:
       traefik.enable: true
-      traefik.http.routers.open-webui.rule: Host(`ollama.local.nico-steinmueller.de`)
+      traefik.http.routers.open-webui.rule: Host(`llm-chat.local.nico-steinmueller.de`)
       traefik.http.routers.open-webui.entrypoints: websecure
       traefik.http.routers.open-webui.middlewares: local-only@file
       traefik.http.routers.open-webui.service: open-webui
