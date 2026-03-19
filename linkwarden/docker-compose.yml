@@ -1,12 +1,10 @@
 # ============================================
-# KONFIGURIERBARE VARIABLEN (in Portainer / .env ändern)
+# KONFIGURIERBARE VARIABLEN
 # ============================================
 # NEXTAUTH_SECRET                 - Secret für NextAuth (default: changeme)
 # POSTGRES_PASSWORD               - PostgreSQL Passwort (default: changeme)
 # MEILI_MASTER_KEY                - MeiliSearch Master-Key (default: changeme)
-# KEYCLOAK_ISSUER                 - Keycloak Issuer URL, z.B. https://keycloak.nico-steinmueller.de/realms/homelab
-# KEYCLOAK_CLIENT_ID              - Keycloak Client-ID für Linkwarden
-# KEYCLOAK_CLIENT_SECRET          - Keycloak Client-Secret für Linkwarden
+# KEYCLOAK_CLIENT_SECRET          - Keycloak Client-Secret für Linkwarden (default: leer)
 # ============================================
 
 services:
@@ -33,29 +31,23 @@ services:
       MEILI_HOST: http://meilisearch:7700
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-changeme}
 
-      # PDF-Archivierung
-#      PDF_MARGIN_TOP: 0
-#      PDF_MARGIN_BOTTOM: 0
-
       # Authentifizierung
       NEXT_PUBLIC_DISABLE_REGISTRATION: true
       NEXT_PUBLIC_CREDENTIALS_ENABLED: false
       DISABLE_NEW_SSO_USERS: false
+      # SSO (Keycloak)
       NEXT_PUBLIC_KEYCLOAK_ENABLED: true
       KEYCLOAK_CUSTOM_NAME: Keycloak
-      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-}
-      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-}
+      KEYCLOAK_ISSUER: https://keycloak.nico-steinmueller.de/realms/mein-realm
+      KEYCLOAK_CLIENT_ID: linkwarden
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
 
       # AI für Tags (optional)
 #      NEXT_PUBLIC_OLLAMA_ENDPOINT_URL: http://localhost:11434
 #      OLLAMA_MODEL: phi3:mini-4k
-      # Für OpenAI-API (optional)
-#      CUSTOM_OPENAI_BASE_URL:
-#      OPENAI_MODEL:
-#      OPENAI_API_KEY:
+
     volumes:
-      - ./data:/data/data
+      - /mnt/user/appdata/linkwarden/linkwarden:/data/data
     healthcheck:
       test: ["CMD-SHELL", "curl -fS http://localhost:3000/ || exit 1"]
       interval: 30s
@@ -63,13 +55,13 @@ services:
       retries: 3
       start_period: 60s
     networks:
-      - linkwarden-network
+      - linkwarden
       - proxy
     labels:
       traefik.enable: true
       traefik.http.routers.linkwarden.rule: Host(`linkwarden.nico-steinmueller.de`)
       traefik.http.routers.linkwarden.entrypoints: websecure
-      traefik.http.routers.linkwarden.middlewares: crowdsec@file, geoblock@file, compress@file
+      traefik.http.routers.linkwarden.middlewares: crowdsec@file, geoblock@file, compress@file, local-only@file # TODO
       traefik.http.routers.linkwarden.service: linkwarden
       traefik.http.services.linkwarden.loadbalancer.server.port: 3000
 
@@ -83,9 +75,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
     volumes:
-      - ./pgdata:/var/lib/postgresql
+      - postgres:/var/lib/postgresql
     networks:
-      - linkwarden-network
+      - linkwarden
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U linkwarden -d linkwarden"]
       interval: 10s
@@ -99,10 +91,11 @@ services:
     container_name: linkwarden_meilisearch
     restart: unless-stopped
     environment:
+      MEILI_ENV: production
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-changeme}
       MEILI_NO_ANALYTICS: true
     volumes:
-      - ./meili_data:/meili_data
+      - /mnt/user/appdata/linkwarden/meilisearch:/meili_data
     healthcheck:
       test: ["CMD-SHELL", "curl -fS http://localhost:7700/health | grep -q '\"available\"' || exit 1"]
       interval: 30s
@@ -110,9 +103,12 @@ services:
       retries: 3
       start_period: 15s
     networks:
-      - linkwarden-network
+      - linkwarden
 
 networks:
-  linkwarden-network:
+  linkwarden:
   proxy:
     external: true
+
+volumes:
+  postgres:
