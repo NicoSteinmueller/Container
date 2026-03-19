@@ -4,10 +4,16 @@ services:
     image: ollama/ollama:0.18.2@sha256:5a5d014aa774f78ebe1340c0d4afc2e35afc12a2c3b34c84e71f78ea20af4ba3
     pull_policy: always
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     environment:
       TZ: Europe/Berlin
-    ports:
-      - "11434:11434"
+#    ports:
+#      - "11434:11434"
     volumes:
       - ollama:/root/.ollama
     networks:
@@ -32,8 +38,8 @@ services:
       TZ: Europe/Berlin
       OLLAMA_BASE_URL: http://ollama:11434
       WEBUI_AUTH: "True"
-    ports:
-      - "8080:8080"
+#    ports:
+#      - "8080:8080"
     volumes:
       - /mnt/user/appdata/llm/open-webui:/app/backend/data
     networks:
