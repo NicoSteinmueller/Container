@@ -9,7 +9,7 @@
 services:
   # https://github.com/docker-library/docs/blob/master/nextcloud/README.md
   nextcloud:
-    image: nextcloud:32.0.6-apache@sha256:354fdbaac7be46c59ee426858dabbbd5e9e337a2b5b38127ba75d248a7edbbe4
+    image: nextcloud:32.0.6-apache@sha256:297c6ecc0a94a4bb6e55f12d693a1cf3e5ca24797f70f8570d18cf784f757792
     container_name: nextcloud
     restart: unless-stopped
 #    ports:
@@ -72,7 +72,7 @@ services:
       traefik.http.services.nextcloud.loadbalancer.server.port: 80
 
   cron:
-    image: nextcloud:32.0.6-apache@sha256:354fdbaac7be46c59ee426858dabbbd5e9e337a2b5b38127ba75d248a7edbbe4
+    image: nextcloud:32.0.6-apache@sha256:297c6ecc0a94a4bb6e55f12d693a1cf3e5ca24797f70f8570d18cf784f757792
     container_name: nextcloud_cron
     restart: unless-stopped
     volumes:
