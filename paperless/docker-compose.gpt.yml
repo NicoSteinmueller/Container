@@ -39,7 +39,7 @@ services:
       OCR_PROVIDER: "llm" # Default OCR provider
       OCR_PROCESS_MODE: "image" # Optional, default: image, other options: pdf, whole_pdf
       VISION_LLM_PROVIDER: "ollama" # openai, ollama, mistral, or anthropic
-      VISION_LLM_MODEL: "mistral:7b" # minicpm-v (ollama) or gpt-4o (openai) or claude-sonnet-4-5 (anthropic/claude)
+      VISION_LLM_MODEL: "qwen3.5:9b" # minicpm-v (ollama) or gpt-4o (openai) or claude-sonnet-4-5 (anthropic/claude)
       OCR_LIMIT_PAGES: "5" # TODO: Optional, default: 5. Set to 0 for no limit.minicpm-v
       # OCR Processing Mode
       PDF_SKIP_EXISTING_OCR: "false" # Optional, skip OCR for PDFs with existing OCR
