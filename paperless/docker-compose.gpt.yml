@@ -10,8 +10,8 @@ services:
     # image: ghcr.io/icereed/paperless-gpt:latest  # GitHub Container Registry
     environment:
       # Direkte interne Verbindung zur passenden Paperless-Instanz.
-      PAPERLESS_BASE_URL: https://paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de
-#      PAPERLESS_PUBLIC_URL: https://paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de
+      PAPERLESS_BASE_URL: http://paperless_${INSTANCE_NAME:-main}:8000
+      PAPERLESS_PUBLIC_URL: https://paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de
       PAPERLESS_API_TOKEN: ${PAPERLESS_API_TOKEN} # Required
 
       MANUAL_TAG: "paperless-gpt" # Optional, default: paperless-gpt
