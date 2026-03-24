@@ -9,8 +9,8 @@ services:
     image: icereed/paperless-gpt:v0.25.1 # Docker Hub
     # image: ghcr.io/icereed/paperless-gpt:latest  # GitHub Container Registry
     environment:
-      # Direkte interne Verbindung zur passenden Paperless-Instanz.
-      PAPERLESS_BASE_URL: http://paperless_${INSTANCE_NAME:-main}:8000
+      # Direkte interne Verbindung zur passenden Paperless-Instanz via Netzwerk-Alias.
+      PAPERLESS_BASE_URL: http://paperless:8000
       PAPERLESS_PUBLIC_URL: https://paperless-${INSTANCE_NAME:-main}.nico-steinmueller.de
       PAPERLESS_API_TOKEN: ${PAPERLESS_API_TOKEN} # Required
 
