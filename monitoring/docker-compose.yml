@@ -22,7 +22,7 @@ services:
       - prometheus-data:/prometheus
 
   loki:
-    image: grafana/loki:3.6.7@sha256:13e00a4f6aa64db624e78365d11ce2ee868cf49e202e511cadbd6fbc6c8b0e3a
+    image: grafana/loki:3.6.8@sha256:9b6b43f12310b10cb03de65bd45ac039366a78e31e89fa03f2eab2f699d227b3
     container_name: loki
     restart: unless-stopped
     command: -config.file=/etc/loki/local-config.yml
@@ -35,7 +35,7 @@ services:
       - loki-data:/loki
 
   promtail:
-    image: grafana/promtail:3.6.7@sha256:d5c160912b35cd658b82bff2d06554e38f868fd46141562b9b4da7a7408cc179
+    image: grafana/promtail:3.6.8@sha256:238d8562dc29ec83d2f5933c7fd6e9469a90ea316a04f160dcc7cf842910ca94
     container_name: promtail
     restart: unless-stopped
     command: -config.file=/etc/promtail/config.yml
