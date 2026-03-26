@@ -10,8 +10,7 @@
   'docker-compose': {
     enabled: true,
     managerFilePatterns: [
-      '(^|/)docker-compose\\.ya?ml$',
-      '(^|/)docker-compose\\.shared\\.ya?ml$'
+      '(^|/)[^/]*compose[^/]*\\.ya?ml$'
     ],
   },
   dockerfile: {
@@ -50,8 +49,8 @@
       matchDatasources: [
         'docker'
       ],
-      // Extrahiert nur die Versionsnummer (z.B. 17.2) und ignoriert -alpine, -apache etc.
-      extractVersion: '^(?<version>[0-9]+\\.[0-9]+(\\.[0-9]+)?)',
+      // Extrahiert nur die Versionsnummer (z.B. v2.6.2, 17.2, 3.2.3.0) und ignoriert Suffixe wie -alpine/-apache.
+      extractVersion: '^v?(?<version>[0-9]+(?:\\.[0-9]+){1,3})',
       packageRules: [
         {
           matchPackageNames: [
