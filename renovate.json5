@@ -58,126 +58,126 @@
 //          ],
 //          sourceUrl: 'https://github.com/AdguardTeam/AdGuardHome'
 //        },
-        {
-          matchPackageNames: [
-            'apache/tika'
-          ],
-          sourceUrl: 'https://github.com/apache/tika'
-        },
-        {
-          matchPackageNames: [
-            'crowdsecurity/crowdsec'
-          ],
-          sourceUrl: 'https://github.com/crowdsecurity/crowdsec'
-        },
-        {
-          matchPackageNames: [
-            'docker.io/valkey/valkey',
-            'valkey/valkey'
-          ],
-          sourceUrl: 'https://github.com/valkey-io/valkey'
-        },
-        {
-          matchPackageNames: [
-            'drakkan/sftpgo'
-          ],
-          sourceUrl: 'https://github.com/drakkan/sftpgo'
-        },
-        {
-          matchPackageNames: [
-            'ghcr.io/immich-app/immich-machine-learning',
-            'ghcr.io/immich-app/immich-server'
-          ],
-          sourceUrl: 'https://github.com/immich-app/immich'
-        },
-        {
-          matchPackageNames: [
-            'ghcr.io/immich-app/postgres'
-          ],
-          sourceUrl: 'https://github.com/immich-app/base-images'
-        },
-        {
-          matchPackageNames: [
-            'ghcr.io/paperless-ngx/paperless-ngx'
-          ],
-          sourceUrl: 'https://github.com/paperless-ngx/paperless-ngx'
-        },
-        {
-          matchPackageNames: [
-            'ghcr.io/sharevb/it-tools'
-          ],
-          sourceUrl: 'https://github.com/CorentinTh/it-tools'
-        },
-        {
-          matchPackageNames: [
-            'gotenberg/gotenberg'
-          ],
-          sourceUrl: 'https://github.com/gotenberg/gotenberg'
-        },
-        {
-          matchPackageNames: [
-            'grafana/grafana'
-          ],
-          sourceUrl: 'https://github.com/grafana/grafana'
-        },
-        {
-          matchPackageNames: [
-            'grafana/loki',
-            'grafana/promtail'
-          ],
-          sourceUrl: 'https://github.com/grafana/loki'
-        },
-        {
-          matchPackageNames: [
-            'itzg/minecraft-server'
-          ],
-          sourceUrl: 'https://github.com/itzg/docker-minecraft-server'
-        },
-        {
-          matchPackageNames: [
-            'kopia/kopia'
-          ],
-          sourceUrl: 'https://github.com/kopia/kopia'
-        },
-        {
-          matchPackageNames: [
-            'nextcloud',
-            'docker.io/library/nextcloud'
-          ],
-          sourceUrl: 'https://github.com/nextcloud/server'
-        },
-        {
-          matchPackageNames: [
-            'octoprint/octoprint'
-          ],
-          sourceUrl: 'https://github.com/OctoPrint/OctoPrint'
-        },
-        {
-          matchPackageNames: [
-            'postgres',
-            'docker.io/library/postgres'
-          ],
-          sourceUrl: 'https://github.com/postgres/postgres'
-        },
-        {
-          matchPackageNames: [
-            'prom/prometheus'
-          ],
-          sourceUrl: 'https://github.com/prometheus/prometheus'
-        },
-        {
-          matchPackageNames: [
-            'quay.io/keycloak/keycloak'
-          ],
-          sourceUrl: 'https://github.com/keycloak/keycloak'
-        },
-        {
-          matchPackageNames: [
-            'traefik',
-            'docker.io/library/traefik'
-          ],
-          sourceUrl: 'https://github.com/traefik/traefik'
-        }
+//        {
+//          matchPackageNames: [
+//            'apache/tika'
+//          ],
+//          sourceUrl: 'https://github.com/apache/tika'
+//        },
+//        {
+//          matchPackageNames: [
+//            'crowdsecurity/crowdsec'
+//          ],
+//          sourceUrl: 'https://github.com/crowdsecurity/crowdsec'
+//        },
+//        {
+//          matchPackageNames: [
+//            'docker.io/valkey/valkey',
+//            'valkey/valkey'
+//          ],
+//          sourceUrl: 'https://github.com/valkey-io/valkey'
+//        },
+//        {
+//          matchPackageNames: [
+//            'drakkan/sftpgo'
+//          ],
+//          sourceUrl: 'https://github.com/drakkan/sftpgo'
+//        },
+//        {
+//          matchPackageNames: [
+//            'ghcr.io/immich-app/immich-machine-learning',
+//            'ghcr.io/immich-app/immich-server'
+//          ],
+//          sourceUrl: 'https://github.com/immich-app/immich'
+//        },
+//        {
+//          matchPackageNames: [
+//            'ghcr.io/immich-app/postgres'
+//          ],
+//          sourceUrl: 'https://github.com/immich-app/base-images'
+//        },
+//        {
+//          matchPackageNames: [
+//            'ghcr.io/paperless-ngx/paperless-ngx'
+//          ],
+//          sourceUrl: 'https://github.com/paperless-ngx/paperless-ngx'
+//        },
+//        {
+//          matchPackageNames: [
+//            'ghcr.io/sharevb/it-tools'
+//          ],
+//          sourceUrl: 'https://github.com/CorentinTh/it-tools'
+//        },
+//        {
+//          matchPackageNames: [
+//            'gotenberg/gotenberg'
+//          ],
+//          sourceUrl: 'https://github.com/gotenberg/gotenberg'
+//        },
+//        {
+//          matchPackageNames: [
+//            'grafana/grafana'
+//          ],
+//          sourceUrl: 'https://github.com/grafana/grafana'
+//        },
+//        {
+//          matchPackageNames: [
+//            'grafana/loki',
+//            'grafana/promtail'
+//          ],
+//          sourceUrl: 'https://github.com/grafana/loki'
+//        },
+//        {
+//          matchPackageNames: [
+//            'itzg/minecraft-server'
+//          ],
+//          sourceUrl: 'https://github.com/itzg/docker-minecraft-server'
+//        },
+//        {
+//          matchPackageNames: [
+//            'kopia/kopia'
+//          ],
+//          sourceUrl: 'https://github.com/kopia/kopia'
+//        },
+//        {
+//          matchPackageNames: [
+//            'nextcloud',
+//            'docker.io/library/nextcloud'
+//          ],
+//          sourceUrl: 'https://github.com/nextcloud/server'
+//        },
+//        {
+//          matchPackageNames: [
+//            'octoprint/octoprint'
+//          ],
+//          sourceUrl: 'https://github.com/OctoPrint/OctoPrint'
+//        },
+//        {
+//          matchPackageNames: [
+//            'postgres',
+//            'docker.io/library/postgres'
+//          ],
+//          sourceUrl: 'https://github.com/postgres/postgres'
+//        },
+//        {
+//          matchPackageNames: [
+//            'prom/prometheus'
+//          ],
+//          sourceUrl: 'https://github.com/prometheus/prometheus'
+//        },
+//        {
+//          matchPackageNames: [
+//            'quay.io/keycloak/keycloak'
+//          ],
+//          sourceUrl: 'https://github.com/keycloak/keycloak'
+//        },
+//        {
+//          matchPackageNames: [
+//            'traefik',
+//            'docker.io/library/traefik'
+//          ],
+//          sourceUrl: 'https://github.com/traefik/traefik'
+//        }
       ]
     },
     // --- UPDATES LOGIK ---
