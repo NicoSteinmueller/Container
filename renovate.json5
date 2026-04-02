@@ -3,6 +3,7 @@
   extends: [
     'config:recommended'
   ],
+  mode: 'full',
   timezone: 'Europe/Berlin',
   schedule: [
     'after 2am and before 6am'
