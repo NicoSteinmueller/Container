@@ -52,12 +52,12 @@
       // Extrahiert nur die Versionsnummer (z.B. v2.6.2, 17.2, 3.2.3.0) und ignoriert Suffixe wie -alpine/-apache.
       extractVersion: '^v?(?<version>[0-9]+(?:\\.[0-9]+){1,3})',
       packageRules: [
-        {
-          matchPackageNames: [
-            'adguard/adguardhome'
-          ],
-          sourceUrl: 'https://github.com/AdguardTeam/AdGuardHome'
-        },
+//        {
+//          matchPackageNames: [
+//            'adguard/adguardhome'
+//          ],
+//          sourceUrl: 'https://github.com/AdguardTeam/AdGuardHome'
+//        },
         {
           matchPackageNames: [
             'apache/tika'
