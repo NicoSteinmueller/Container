@@ -114,12 +114,12 @@
 //          ],
 //          sourceUrl: 'https://github.com/gotenberg/gotenberg'
 //        },
-//        {
-//          matchPackageNames: [
-//            'grafana/grafana'
-//          ],
-//          sourceUrl: 'https://github.com/grafana/grafana'
-//        },
+        {
+          matchPackageNames: [
+            'grafana/grafana'
+          ],
+          sourceUrl: 'https://github.com/grafana/grafana'
+        },
 //        {
 //          matchPackageNames: [
 //            'grafana/loki',
@@ -171,13 +171,13 @@
 //          ],
 //          sourceUrl: 'https://github.com/keycloak/keycloak'
 //        },
-//        {
-//          matchPackageNames: [
-//            'traefik',
-//            'docker.io/library/traefik'
-//          ],
-//          sourceUrl: 'https://github.com/traefik/traefik'
-//        }
+        {
+          matchPackageNames: [
+            'traefik',
+            'docker.io/library/traefik'
+          ],
+          sourceUrl: 'https://github.com/traefik/traefik'
+        }
       ]
     },
     // --- UPDATES LOGIK ---
