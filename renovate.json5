@@ -1,31 +1,30 @@
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [
-    'config:recommended'
+    'config:recommended',
   ],
   mode: 'full',
   timezone: 'Europe/Berlin',
   schedule: [
-    'after 2am and before 6am'
+    'after 2am and before 6am',
   ],
   'docker-compose': {
     enabled: true,
     managerFilePatterns: [
-      '(^|/)[^/]*compose[^/]*\\.ya?ml$'
+      '(^|/)[^/]*compose[^/]*\\.ya?ml$',
     ],
   },
   dockerfile: {
     enabled: true,
     managerFilePatterns: [
-      '(^|/)Dockerfile$'
+      '(^|/)Dockerfile$',
     ],
   },
-  // Custom Manager für Traefik Plugins
   customManagers: [
     {
       customType: 'regex',
-      fileMatch: [
-        '(^|/)traefik\\.ya?ml$'
+      managerFilePatterns: [
+        '/(^|/)traefik\\.ya?ml$/',
       ],
       matchStrings: [
         'moduleName:\\s*github\\.com\\/(?<depName>[^\\/]+\\/[^\\s]+)\\s+version:\\s*(?<currentValue>v[^\\s]+)',
@@ -39,232 +38,117 @@
     {
       description: 'Docker: Aktiviert und Digest-Pinning',
       matchCategories: [
-        'docker'
+        'docker',
       ],
       enabled: true,
       pinDigests: true,
     },
-    // --- MANUELLE QUELL-URLS & VERSION EXTRACTION ---
     {
       description: 'Metadaten-Fix für Docker Images',
       matchDatasources: [
-        'docker'
+        'docker',
       ],
-      // Extrahiert nur die Versionsnummer (z.B. v2.6.2, 17.2, 3.2.3.0) und ignoriert Suffixe wie -alpine/-apache.
       extractVersion: '^v?(?<version>[0-9]+(?:\\.[0-9]+){1,3})',
-      packageRules: [
-//        {
-//          matchPackageNames: [
-//            'adguard/adguardhome'
-//          ],
-//          sourceUrl: 'https://github.com/AdguardTeam/AdGuardHome'
-//        },
-//        {
-//          matchPackageNames: [
-//            'apache/tika'
-//          ],
-//          sourceUrl: 'https://github.com/apache/tika'
-//        },
-//        {
-//          matchPackageNames: [
-//            'crowdsecurity/crowdsec'
-//          ],
-//          sourceUrl: 'https://github.com/crowdsecurity/crowdsec'
-//        },
-//        {
-//          matchPackageNames: [
-//            'docker.io/valkey/valkey',
-//            'valkey/valkey'
-//          ],
-//          sourceUrl: 'https://github.com/valkey-io/valkey'
-//        },
-//        {
-//          matchPackageNames: [
-//            'drakkan/sftpgo'
-//          ],
-//          sourceUrl: 'https://github.com/drakkan/sftpgo'
-//        },
-//        {
-//          matchPackageNames: [
-//            'ghcr.io/immich-app/immich-machine-learning',
-//            'ghcr.io/immich-app/immich-server'
-//          ],
-//          sourceUrl: 'https://github.com/immich-app/immich'
-//        },
-//        {
-//          matchPackageNames: [
-//            'ghcr.io/immich-app/postgres'
-//          ],
-//          sourceUrl: 'https://github.com/immich-app/base-images'
-//        },
-//        {
-//          matchPackageNames: [
-//            'ghcr.io/paperless-ngx/paperless-ngx'
-//          ],
-//          sourceUrl: 'https://github.com/paperless-ngx/paperless-ngx'
-//        },
-//        {
-//          matchPackageNames: [
-//            'ghcr.io/sharevb/it-tools'
-//          ],
-//          sourceUrl: 'https://github.com/CorentinTh/it-tools'
-//        },
-//        {
-//          matchPackageNames: [
-//            'gotenberg/gotenberg'
-//          ],
-//          sourceUrl: 'https://github.com/gotenberg/gotenberg'
-//        },
-        {
-          matchPackageNames: [
-            'grafana/grafana'
-          ],
-          sourceUrl: 'https://github.com/grafana/grafana'
-        },
-//        {
-//          matchPackageNames: [
-//            'grafana/loki',
-//            'grafana/promtail'
-//          ],
-//          sourceUrl: 'https://github.com/grafana/loki'
-//        },
-//        {
-//          matchPackageNames: [
-//            'itzg/minecraft-server'
-//          ],
-//          sourceUrl: 'https://github.com/itzg/docker-minecraft-server'
-//        },
-//        {
-//          matchPackageNames: [
-//            'kopia/kopia'
-//          ],
-//          sourceUrl: 'https://github.com/kopia/kopia'
-//        },
-//        {
-//          matchPackageNames: [
-//            'nextcloud',
-//            'docker.io/library/nextcloud'
-//          ],
-//          sourceUrl: 'https://github.com/nextcloud/server'
-//        },
-//        {
-//          matchPackageNames: [
-//            'octoprint/octoprint'
-//          ],
-//          sourceUrl: 'https://github.com/OctoPrint/OctoPrint'
-//        },
-//        {
-//          matchPackageNames: [
-//            'postgres',
-//            'docker.io/library/postgres'
-//          ],
-//          sourceUrl: 'https://github.com/postgres/postgres'
-//        },
-//        {
-//          matchPackageNames: [
-//            'prom/prometheus'
-//          ],
-//          sourceUrl: 'https://github.com/prometheus/prometheus'
-//        },
-//        {
-//          matchPackageNames: [
-//            'quay.io/keycloak/keycloak'
-//          ],
-//          sourceUrl: 'https://github.com/keycloak/keycloak'
-//        },
-        {
-          matchPackageNames: [
-            'traefik',
-            'docker.io/library/traefik'
-          ],
-          sourceUrl: 'https://github.com/traefik/traefik'
-        }
-      ]
+      matchPackageNames: [
+        'grafana/grafana',
+      ],
+      sourceUrl: 'https://github.com/grafana/grafana',
     },
-    // --- UPDATES LOGIK ---
+    {
+      description: 'Metadaten-Fix für Docker Images',
+      matchDatasources: [
+        'docker',
+      ],
+      extractVersion: '^v?(?<version>[0-9]+(?:\\.[0-9]+){1,3})',
+      matchPackageNames: [
+        'traefik',
+        'docker.io/library/traefik',
+      ],
+      sourceUrl: 'https://github.com/traefik/traefik',
+    },
     {
       description: 'Alle Non-Major Updates: Automatische PRs mit sofortigem Automerge',
       matchUpdateTypes: [
         'patch',
         'minor',
         'pin',
-        'digest'
+        'digest',
       ],
       automerge: true,
       automergeType: 'pr',
       prCreation: 'immediate',
       ignoreTests: true,
       prBodyNotes: [
-        "{{#if releases}}### 🧾 Versionsdetails\n\n{{#each releases}}- {{#if url}}[{{version}}]({{{url}}}){{else}}{{version}}{{/if}}\n{{/each}}{{/if}}"
+        '{{#if releases}}### 🧾 Versionsdetails\n\n{{#each releases}}- {{#if url}}[{{version}}]({{{url}}}){{else}}{{version}}{{/if}}\n{{/each}}{{/if}}',
       ],
     },
     {
       description: 'Major-Updates: PR mit Review erforderlich',
       matchUpdateTypes: [
-        'major'
+        'major',
       ],
       automerge: false,
       prCreation: 'immediate',
       prBodyNotes: [
-        "### ⚠️ Major Update - Breaking Changes möglich\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{#if url}}📦 [Release Notes]({{{url}}}){{/if}}\n{{#if body}}\n\n{{{body}}}\n\n{{/if}}{{/each}}{{else}}Keine detaillierten Release Notes gefunden. Bitte manuell prüfen.{{/if}}"
+        '### ⚠️ Major Update - Breaking Changes möglich\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{#if url}}📦 [Release Notes]({{{url}}}){{/if}}\n{{#if body}}\n\n{{{body}}}\n\n{{/if}}{{/each}}{{else}}Keine detaillierten Release Notes gefunden. Bitte manuell prüfen.{{/if}}',
       ],
     },
     {
       description: 'Datenbanken Major-Updates: PR mit Review (Kompatibilität prüfen!)',
       matchDatasources: [
-        'docker'
-      ],
-      matchPackagePatterns: [
-        '(?:^|/)postgres$',
-        '(?:^|/)mariadb$',
-        '(?:^|/)mysql$',
-        '(?:^|/)redis$',
-        '(?:^|/)mongo$',
-        '(?:^|/)valkey$',
-        '(?:^|/)memcached$'
+        'docker',
       ],
       matchUpdateTypes: [
-        'major'
+        'major',
       ],
       automerge: false,
       prCreation: 'immediate',
       groupName: null,
       prBodyNotes: [
-        "### 🗄️ Datenbank Major-Update - Kompatibilität prüfen!\n\n⚠️ **Vor dem Merge prüfen:**\n- Backup vorhanden?\n- Breaking Changes im Datenformat?\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{/each}}{{/if}}"
+        '### 🗄️ Datenbank Major-Update - Kompatibilität prüfen!\n\n⚠️ **Vor dem Merge prüfen:**\n- Backup vorhanden?\n- Breaking Changes im Datenformat?\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{/each}}{{/if}}',
+      ],
+      matchPackageNames: [
+        '/(?:^|/)postgres$/',
+        '/(?:^|/)mariadb$/',
+        '/(?:^|/)mysql$/',
+        '/(?:^|/)redis$/',
+        '/(?:^|/)mongo$/',
+        '/(?:^|/)valkey$/',
+        '/(?:^|/)memcached$/',
       ],
     },
     {
       description: 'OctoPrint: IMMER PR mit Review (manuelle Prüfung erforderlich)',
       matchDatasources: [
-        'docker'
+        'docker',
       ],
       matchPackageNames: [
-        'octoprint/octoprint'
+        'octoprint/octoprint',
       ],
       automerge: false,
       prCreation: 'immediate',
       prBodyNotes: [
-        "### 🖨️ OctoPrint Update - Manuelle Prüfung erforderlich!\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{/each}}{{/if}}"
+        '### 🖨️ OctoPrint Update - Manuelle Prüfung erforderlich!\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{/each}}{{/if}}',
       ],
     },
     {
       description: 'Traefik Plugins: IMMER PR (manuelle Deployment erforderlich)',
       matchManagers: [
-        'custom.regex'
+        'custom.regex',
       ],
       matchFileNames: [
-        'traefik/config/traefik.yml'
+        'traefik/config/traefik.yml',
       ],
       automerge: false,
       prCreation: 'immediate',
       prBodyNotes: [
-        "### 🔌 Traefik Plugin Update\n\n⚠️ **WICHTIG: Manuelles Deployment erforderlich!**\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{/each}}{{/if}}"
+        '### 🔌 Traefik Plugin Update\n\n⚠️ **WICHTIG: Manuelles Deployment erforderlich!**\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{/each}}{{/if}}',
       ],
     },
     {
       description: 'Docker Compose Updates - Gruppierung',
       matchManagers: [
-        'docker-compose'
+        'docker-compose',
       ],
       groupName: '{{parentDir}}',
       additionalBranchPrefix: '{{parentDir}}-',
@@ -277,7 +161,7 @@
   semanticCommits: 'enabled',
   dependencyDashboard: true,
   dependencyDashboardTitle: '🔄 Renovate Dashboard - Docker Updates',
-  fetchReleaseNotes: true,
+  fetchChangeLogs: 'pr',
   prBodyDefinitions: {
     Change: '{{#if displayFrom}}{{displayFrom}} → {{/if}}{{#if releaseNotesUrl}}[{{displayTo}}]({{{releaseNotesUrl}}}){{else}}{{#if changelogUrl}}[{{displayTo}}]({{{changelogUrl}}}){{else}}{{#if sourceUrl}}[{{displayTo}}]({{{sourceUrl}}}/releases){{else}}{{displayTo}}{{/if}}{{/if}}{{/if}}{{#if compareUrl}}<br/>[Compare]({{{compareUrl}}}){{/if}}',
   },
