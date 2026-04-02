@@ -1,0 +1,70 @@
+# Lokaler LLM-Stack fuer Paperless-GPT ausserhalb des Server-Netzwerks.
+# Ziel: Ollama + paperless-gpt auf dem PC, Verbindung zu Remote-Paperless per HTTPS.
+services:
+  ollama:
+    container_name: ollama
+    image: ollama/ollama:0.18.2@sha256:5a5d014aa774f78ebe1340c0d4afc2e35afc12a2c3b34c84e71f78ea20af4ba3
+    pull_policy: always
+    gpus: all
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./ollama:/root/.ollama
+
+  paperless-gpt:
+    container_name: paperless_gpt
+    # Use one of these image sources:
+    image: icereed/paperless-gpt:v0.25.1 # Docker Hub
+    # image: ghcr.io/icereed/paperless-gpt:latest  # GitHub Container Registry
+    environment:
+      # Direkte interne Verbindung zur passenden Paperless-Instanz via Netzwerk-Alias.
+      PAPERLESS_BASE_URL: https://paperless-nico.nico-steinmueller.de
+      PAPERLESS_PUBLIC_URL: https://paperless-nico.nico-steinmueller.de
+      PAPERLESS_API_TOKEN: #TODO Required
+
+      MANUAL_TAG: "paperless-gpt" # Optional, default: paperless-gpt
+      AUTO_TAG: "paperless-gpt-auto" # Optional, default: paperless-gpt-auto
+      AUTO_GENERATE_TITLE: "true" # Optional, default: true
+      AUTO_GENERATE_TAGS: "true" # Optional, default: true
+      AUTO_GENERATE_CORRESPONDENTS: "true" # Optional, default: true
+      #      CORRESPONDENT_BLACK_LIST: # Optional, comma-separated list of blacklisted correspondents for auto-generation
+      AUTO_GENERATE_DOCUMENT_TYPE: "true" # Optional, default: truels -la "/run/user/$(id -u)/gvfs"ls -la "/run/user/$(id -u)/gvfs"
+      AUTO_GENERATE_CREATED_DATE: "true" # Optional, default: true
+      AUTO_OCR_TAG: "paperless-gpt-ocr-auto" # Optional, default: paperless-gpt-ocr-auto
+      PDF_OCR_TAGGING: "true" # Optional, add tag to processed documents
+      PDF_OCR_COMPLETE_TAG: "paperless-gpt-ocr-complete" # Optional, tag name
+
+      # LLM Configuration - Ollama (Local)
+      LLM_PROVIDER: "ollama"
+      LLM_MODEL: "qwen3.5:9b"
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_CONTEXT_LENGTH: "8192" # Sets Ollama NumCtx (context window)
+      TOKEN_LIMIT: 0 # Recommended for smaller models, 0 for no limit
+      LLM_LANGUAGE: "German" # Optional, default: English
+      LLM_REQUESTS_PER_MINUTE: "120" # Optional, Max requests per minute to LLM provider, default: 120
+
+      # OCR Configuration - LLM-based OCR
+      OCR_PROVIDER: "llm" # Default OCR provider
+      OCR_PROCESS_MODE: "image" # Optional, default: image, other options: pdf, whole_pdf
+      VISION_LLM_PROVIDER: "ollama" # openai, ollama, mistral, or anthropic
+      VISION_LLM_MODEL: "qwen3.5:4b" # minicpm-v (ollama) or gpt-4o (openai) or claude-sonnet-4-5 (anthropic/claude)
+
+      VISION_LLM_MAX_TOKENS: "10240"
+      VISION_LLM_TEMPERATURE: "0.1"
+
+      OCR_LIMIT_PAGES: "0" # TODO: Optional, default: 5. Set to 0 for no limit.minicpm-v
+      # OCR Processing Mode
+      PDF_SKIP_EXISTING_OCR: "false" # Optional, skip OCR for PDFs with existing OCR
+
+      # Enhanced OCR Features
+      PDF_UPLOAD: "false" # Optional, upload enhanced PDFs to paperless-ngx
+      PDF_REPLACE: "false" # Optional and DANGEROUS, delete original after upload
+
+      TZ: Europe/Berlin
+      LOG_LEVEL: "info" # Optional: debug, warn, error
+    volumes:
+      - ./gpt:/app/prompts
+    ports:
+      - "8080:8080"
+
+

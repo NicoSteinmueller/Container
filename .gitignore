@@ -43,3 +43,5 @@ build/
 !**/.env.example
 /traefik/logs/access.log
 /traefik/logs/traefik.log
+/paperless/gpt/
+/paperless/ollama/
