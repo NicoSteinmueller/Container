@@ -14,7 +14,7 @@ services:
   paperless-gpt:
     container_name: paperless_gpt
     # Use one of these image sources:
-    image: icereed/paperless-gpt:v0.25.1 # Docker Hub
+    image: icereed/paperless-gpt:v0.25.1@sha256:c0ce6186028911101a2cfe68353f14a9dbb2653596f3f1cff94de4b6db3114ff # Docker Hub
     # image: ghcr.io/icereed/paperless-gpt:latest  # GitHub Container Registry
     environment:
       # Direkte interne Verbindung zur passenden Paperless-Instanz via Netzwerk-Alias.
