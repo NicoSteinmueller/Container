@@ -4,7 +4,7 @@
 
 services:
   ftb-skies-2:
-    image: itzg/minecraft-server:2026.3.3-java25@sha256:5c813f495447977bb3bc2bf40691d4f9a855b6b70141aa7edfb7864133ef3342
+    image: itzg/minecraft-server:2026.4.0-java25@sha256:4c41842edcb721ffae73138756636e0c1ed5cff1d4b7c2b4fe371f9b832254ab
     container_name: ftb-skies-2
     hostname: ftb-skies-2
     pull_policy: daily
