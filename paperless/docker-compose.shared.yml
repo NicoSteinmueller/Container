@@ -14,7 +14,7 @@ version: "3.9"
 
 services:
   gotenberg:
-    image: gotenberg/gotenberg:8.28.0@sha256:c2290b09cf9bc3d4a3b099d007557ac57a5c7f654637a290bb05a8e5f66179dc
+    image: gotenberg/gotenberg:8.29.1@sha256:36c925776fa0db0fd1030408d131fde7ac3453027a559883555155b72adb16a7
     container_name: paperless_shared_gotenberg
     command:
       - "gotenberg"
@@ -31,7 +31,7 @@ services:
     restart: unless-stopped
 
   tika:
-    image: apache/tika:3.2.3.0-full@sha256:21d8052de04e491ccf66e8680ade4da6f3d453a56d59f740b4167e54167219b7
+    image: apache/tika:3.3.0.0-full@sha256:ecdd37e204308266b1f8e28569f8516ebd5b96d7a4518a71d3904710b20c03b3
     container_name: paperless_shared_tika
     networks:
       - paperless-shared
