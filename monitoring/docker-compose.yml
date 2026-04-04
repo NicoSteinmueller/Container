@@ -2,7 +2,7 @@
 # Überwacht Traefik Metriken und Logs
 services:
   prometheus:
-    image: prom/prometheus:v3.10.0@sha256:4a61322ac1103a0e3aea2a61ef1718422a48fa046441f299d71e660a3bc71ae9
+    image: prom/prometheus:v3.11.0@sha256:dda13e28bf95a5e5ca5b8ed56852006094c1c8e8871d9c9dbeed30aa6e55271f
     container_name: prometheus
     restart: unless-stopped
     command:
@@ -22,7 +22,7 @@ services:
       - prometheus-data:/prometheus
 
   loki:
-    image: grafana/loki:3.6.8@sha256:9b6b43f12310b10cb03de65bd45ac039366a78e31e89fa03f2eab2f699d227b3
+    image: grafana/loki:3.7.1@sha256:73e905b51a7f917f7a1075e4be68759df30226e03dcb3cd2213b989cc0dc8eb4
     container_name: loki
     restart: unless-stopped
     command: -config.file=/etc/loki/local-config.yml
@@ -35,7 +35,7 @@ services:
       - loki-data:/loki
 
   promtail:
-    image: grafana/promtail:3.6.8@sha256:238d8562dc29ec83d2f5933c7fd6e9469a90ea316a04f160dcc7cf842910ca94
+    image: grafana/promtail:3.6.10@sha256:2a0f5e3e160ee5d549c585f6cc4f4e1c566ff783324a424bd75bc16503fc660e
     container_name: promtail
     restart: unless-stopped
     command: -config.file=/etc/promtail/config.yml
