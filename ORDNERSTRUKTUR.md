@@ -23,7 +23,7 @@
 ## Ordnerstruktur
 
 ```
-/mnt/cache/appdata/                         ← SSD (schnell, Backup via Kopia)
+/mnt/user/appdata/                         ← SSD (schnell, Backup via Kopia)
 ├── adguard/
 │   └── conf/                               ✅ Backup (DNS-Config, Filterlisten)
 ├── ftb-skies-2/
