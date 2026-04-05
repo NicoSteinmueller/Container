@@ -43,7 +43,7 @@ services:
       - monitoring
     volumes:
       - ./promtail/promtail-config.yml:/etc/promtail/config.yml:ro
-      - ../traefik/logs:/var/log/traefik:ro
+      - ${TRAEFIK_LOGS_PATH:-/mnt/user/logs/traefik}:/var/log/traefik:ro
     depends_on:
       - loki
 
@@ -76,4 +76,7 @@ volumes:
 
 networks:
   monitoring:
+  proxy:
+    external: true
+    name: proxy
 

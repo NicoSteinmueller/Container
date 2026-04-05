@@ -42,32 +42,16 @@ docker-compose restart
 - **Prometheus**: http://localhost:9090
 - **Loki**: http://localhost:3100
 
-## 📊 Dashboards importieren
+## 📊 Dashboards
 
-Nach dem ersten Login in Grafana:
+Die wichtigsten Log-Dashboards werden automatisch bereitgestellt (Provisioning):
 
-### Empfohlene Dashboards
+- `Traefik Logs Overview`
+- `Traefik Log Drilldown`
 
-1. **Traefik Official Dashboard**
-   - ID: `17346`
-   - Import: Dashboards → New → Import → ID eingeben
-   - Datasource: Prometheus auswählen
+Pfad im Repo: `monitoring/grafana/provisioning/dashboards/traefik`
 
-2. **Traefik v2 Dashboard (funktioniert auch mit v3)**
-   - ID: `11462`
-   - Alternative mit mehr Details
-   - Datasource: Prometheus
-
-3. **Loki Dashboard (für Log-Analyse)**
-   - ID: `13639`
-   - Datasource: Loki
-
-### Import-Anleitung
-1. Grafana öffnen → Linkes Menü → Dashboards → New → Import
-2. Dashboard-ID eingeben (z.B. `17346`)
-3. Load klicken
-4. Datasource auswählen (Prometheus/Loki)
-5. Import klicken
+Zusätzliche Community-Dashboards kannst du weiterhin manuell importieren (z. B. IDs `17346`, `11462`, `13639`).
 
 ## 📁 Verzeichnisstruktur
 
@@ -102,6 +86,9 @@ monitoring/
 ### Logs (Loki/Promtail)
 - **Access Logs**: Alle HTTP-Requests mit Details (IP, Method, Path, Status, Duration)
 - **Application Logs**: Traefik-interne Logs (Fehler, Warnungen, Config-Änderungen)
+
+Standardmäßig liest Promtail die Logs aus `${TRAEFIK_LOGS_PATH:-/mnt/user/logs/traefik}`.
+Wenn dein Traefik-Hostpfad abweicht, setze `TRAEFIK_LOGS_PATH` in der `.env` für `monitoring`.
 
 ## 🔧 Anpassungen
 

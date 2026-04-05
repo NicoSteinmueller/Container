@@ -4,6 +4,7 @@ apiVersion: 1
 datasources:
   # Prometheus Datasource
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
@@ -15,6 +16,7 @@ datasources:
 
   # Loki Datasource (für Logs)
   - name: Loki
+    uid: loki
     type: loki
     access: proxy
     url: http://loki:3100
@@ -23,7 +25,7 @@ datasources:
     jsonData:
       maxLines: 1000
       derivedFields:
-        - datasourceUid: Prometheus
+        - datasourceUid: prometheus
           matcherRegex: "traceID=(\\w+)"
           name: TraceID
           url: "$${__value.raw}"
