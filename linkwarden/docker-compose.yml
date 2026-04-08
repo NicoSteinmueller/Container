@@ -94,8 +94,6 @@ services:
       MEILI_ENV: production
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-changeme}
       MEILI_NO_ANALYTICS: true
-    volumes:
-      - /mnt/user/appdata/linkwarden/meilisearch:/meili_data
     healthcheck:
       test: ["CMD-SHELL", "curl -fS http://localhost:7700/health | grep -q '\"available\"' || exit 1"]
       interval: 30s
