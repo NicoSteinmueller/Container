@@ -2,7 +2,7 @@
 # Überwacht Traefik Metriken und Logs
 services:
   prometheus:
-    image: prom/prometheus:v3.11.0@sha256:dda13e28bf95a5e5ca5b8ed56852006094c1c8e8871d9c9dbeed30aa6e55271f
+    image: prom/prometheus:v3.11.1@sha256:759ea6db49103737f2a6f420b0d1632062d8ad99dec086c76db605fd0bf23e15
     container_name: prometheus
     restart: unless-stopped
     command:
@@ -48,7 +48,7 @@ services:
       - loki
 
   grafana:
-    image: grafana/grafana:13.0.0@sha256:95c1d725c9be089f7db623f7284395a7c1b7843da7027319f8b2a3eeb0ce68bf
+    image: grafana/grafana:13.1.0@sha256:eee9924b40da0a2c0e3174d164baa5a63a48c9ff10bac3eb02b7d6d7cb274968
     container_name: grafana
     restart: unless-stopped
     networks:
