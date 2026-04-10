@@ -18,7 +18,7 @@ services:
   immich-server:
     container_name: immich_server
     # https://github.com/immich-app/immich/pkgs/container/immich-server
-    image: ghcr.io/immich-app/immich-server:v2.6.3@sha256:0cc1f82953d9598eb9e9dd11cbde1f50fe54f9c46c4506b089e8ad7bfc9d1f0c
+    image: ghcr.io/immich-app/immich-server:v2.7.3@sha256:00cd2d57e4d9310a4aeac3c23f249af1eadbc1802746e1178589ef0a49374cef
     volumes:
       - /mnt/user/data/immich/media:/data
       - /etc/localtime:/etc/localtime:ro
@@ -59,7 +59,7 @@ services:
   immich-machine-learning:
     container_name: immich_machine_learning
     # https://github.com/immich-app/immich/pkgs/container/immich-machine-learning
-    image: ghcr.io/immich-app/immich-machine-learning:v2.6.3@sha256:33b17015c3d14f2565e9b8cd36b48a70027b14b5cd20da7fbfff21a370b0309c
+    image: ghcr.io/immich-app/immich-machine-learning:v2.7.3@sha256:ccea091ea02086bb9a4712497a6db945a10548f7817101fa18e9b20fdb4f746f
     volumes:
       - /mnt/user/appdata/immich/model-cache:/cache
     restart: always
@@ -81,7 +81,7 @@ services:
   database:
     container_name: immich_postgres
     # https://github.com/immich-app/base-images/pkgs/container/postgres/versions?filters%5Bversion_type%5D=tagged
-    image: ghcr.io/immich-app/postgres:18-vectorchord0.5.3-pgvector0.8.1@sha256:25bccbafc0354f53f9b9228be9ca18f015b58ba5593d117c2b9a270f333b170b
+    image: ghcr.io/immich-app/postgres:18-vectorchord0.5.3-pgvector0.8.1@sha256:115130d0dbada418430f33f798fe8b9dbb8e98f54def25d06d671da795c2e7ce
     environment:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_USER: postgres
