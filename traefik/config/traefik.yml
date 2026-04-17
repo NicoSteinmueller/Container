@@ -128,8 +128,3 @@ experimental:
       moduleName: github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
       version: v1.5.1
     # https://plugins.traefik.io/plugins/67f17dc768f0062a5d501e5e/LICENSE
-    geoblock:
-      moduleName: github.com/david-garcia-garcia/traefik-geoblock
-      version: v1.1.4
-      settings:
-        useunsafe: true

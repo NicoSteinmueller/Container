@@ -29,11 +29,11 @@ services:
     environment:
       KOPIA_PASSWORD: ${KOPIA_REPOSITORY_PASSWORD:-kopia1#}
       TZ: Europe/Berlin
-#    healthcheck:
-#      test: ["CMD", "kopia", "repository", "status"]
-#      interval: 30s
-#      timeout: 10s
-#      retries: 3
+    healthcheck:
+      test: ["CMD", "kopia", "repository", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     volumes:
       # Kopia Konfiguration und Cache
       - /mnt/user/appdata/kopia/${INSTANCE:-main}/config:/app/config

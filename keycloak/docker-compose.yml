@@ -66,7 +66,7 @@ services:
       traefik.http.routers.keycloak-public.rule: Host(`keycloak.nico-steinmueller.de`)
       traefik.http.routers.keycloak-public.entrypoints: websecure
       traefik.http.routers.keycloak-public.priority: 50
-      traefik.http.routers.keycloak-public.middlewares: crowdsec@file, geoblock@file, compress@file
+      traefik.http.routers.keycloak-public.middlewares: crowdsec@file, compress@file
       traefik.http.routers.keycloak-public.service: keycloak
 
       # Service Definition (beide Router nutzen denselben Service)

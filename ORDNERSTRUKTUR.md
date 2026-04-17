@@ -271,7 +271,6 @@ TRAEFIK_LOCATION=/mnt/cache/appdata/traefik
 > - `letsencrypt` → `/mnt/cache/appdata/traefik/letsencrypt:/letsencrypt`
 > - `crowdsec-data` → `/mnt/cache/appdata/traefik/crowdsec-data:/var/lib/crowdsec/data`
 > - `crowdsec-config` → `/mnt/cache/appdata/traefik/crowdsec-config:/etc/crowdsec`
-> - `geoblock` → `/mnt/cache/appdata/traefik/geoblock:/data/geoblock` ❌ kein Backup (auto-download)
 >
 > **Logs-Pfad** – Traefik und CrowdSec schreiben Logs in den Logs-Share:
 > - `${TRAEFIK_LOCATION:-.}/logs` → `/mnt/user/logs/traefik`

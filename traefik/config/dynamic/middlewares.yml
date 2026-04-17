@@ -37,47 +37,6 @@ http:
             - "192.168.178.0/24"
           logLevel: INFO
 
-    geoblock:
-      plugin:
-        geoblock:
-          enabled: true
-          # Alle Länder blockieren, außer den explizit erlaubten
-          defaultAllow: false
-          allowedCountries:
-            - DE # Deutschland
-
-          # Sicherheit & Performance Einstellungen
-          allowPrivate: true # Erlaubt interne Zugriffe (RFC 1918), z.B. Health-Checks
-
-          # IP Extraktion
-          ipHeaders:
-            - x-forwarded-for           # check X-Forwarded-For header first
-            - x-real-ip                 # check X-Real-IP header second
-          ipHeaderStrategy: CheckAll
-
-          # Blockiert bei Fehlern in der Geoblock-Überprüfung (z.B. Datenbankfehler)
-          banIfError: true
-          disallowedStatusCode: 403
-
-          # Log Configuration
-          logLevel: info
-          logFormat: json
-          logPath: # leer für Standard-Logging von Traefik, oder Pfad für eigenes Logfile (z.B. /logs/geoblock.log)
-          logBannedRequests: false # logStatusHeader + logStatusDetailHeader nutzen
-
-          # Hält die Länderdatenbank automatisch aktuell
-          databaseAutoUpdate: true
-          databaseAutoUpdateToken: # TODO Token hinzufügen bevor auf Server laden
-          databaseAutoUpdateCode: DB1.LITE
-          # Directory to store updated databases. This must be a persistent volume in the traefik pod.
-          databaseAutoUpdateDir: /data/geoblock
-          databaseFilePath: /data/geoblock
-
-          # Observability: Status in die Traefik Access Logs schreiben
-          countryHeader: X-IPCountry
-          logStatusHeader: X-Geoblock-Status
-          logStatusDetailHeader: X-Geoblock-Detail
-
     # Middleware für lokale IP-Beschränkung
     local-only:
       ipAllowList:

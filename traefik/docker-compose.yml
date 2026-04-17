@@ -53,7 +53,6 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - letsencrypt:/letsencrypt
-      - geoblock:/data/geoblock
       - /mnt/user/appdata/traefik/traefik.yml:/traefik.yml:ro
       - /mnt/user/appdata/traefik/dynamic:/config/dynamic:ro
       - /mnt/user/logs/traefik:/logs
@@ -168,7 +167,6 @@ services:
 
 volumes:
   letsencrypt:
-  geoblock:
   crowdsec-data:
   crowdsec-config:
   traefik-logrotate-state:
