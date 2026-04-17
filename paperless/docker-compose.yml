@@ -23,7 +23,7 @@
 
 services:
   paperless:
-    image: ghcr.io/paperless-ngx/paperless-ngx:2.20.13@sha256:4b05bcd28e6923768000b5d247cbf2c66fd49bdc3f3b05955bd4f6790a638b01
+    image: ghcr.io/paperless-ngx/paperless-ngx:2.20.14@sha256:b89f83345532cfba72690185257eb6c4f92fc2a782332a42abe19c07b7a6595f
     container_name: paperless_${INSTANCE_NAME:-main}
     environment:
       # https://docs.paperless-ngx.com/configuration/
@@ -148,7 +148,7 @@ services:
       - "traefik.http.services.paperless-${INSTANCE_NAME:-main}.loadbalancer.server.port=8000"
 
   database:
-    image: postgres:18.3-alpine3.23@sha256:4da1a4828be12604092fa55311276f08f9224a74a62dcb4708bd7439e2a03911
+    image: postgres:18.3-alpine3.23@sha256:52098013b4b64a746626437d38afc03cabff6cdeb4d3d92e2342aa95f0ce56ea
     container_name: paperless_${INSTANCE_NAME:-main}_postgres
     environment:
       POSTGRES_DB: paperless
