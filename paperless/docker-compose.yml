@@ -77,6 +77,13 @@ services:
       # Entfernt digitale Signaturen aus PDFs während der OCR-Verarbeitung.
       PAPERLESS_OCR_USER_ARGS: '{"invalidate_digital_signatures": true}'
 
+      # Anzahl der Worker-Prozesse für die Hintergrundverarbeitung (z.B. OCR, Datenextraktion).
+      PAPERLESS_TASK_WORKERS: 1
+      # Anzahl der Threads pro Worker, z.B. für OCR oder Datenextraktion. Bei Verwendung von Tesseract OCR kann dies die Leistung verbessern, wenn mehrere CPU-Kerne verfügbar sind.
+      PAPERLESS_THREADS_PER_WORKER: 4
+      # Timeout in Sekunden für die Verarbeitung von Dokumenten durch die Worker. Wenn ein Dokument länger als diese Zeit benötigt, wird die Verarbeitung abgebrochen und als Fehler markiert. Bei komplexen Dokumenten oder langsamer Hardware kann es sinnvoll sein, diesen Wert zu erhöhen.
+      PAPERLESS_WORKER_TIMEOUT: 1800
+
       # Zeitzone
       PAPERLESS_TIME_ZONE: Europe/Berlin
 
