@@ -160,7 +160,7 @@ services:
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
-      - /:/rootfs:ro,rslave # Erlaubt Zugriff auf die Festplatten des Hosts
+      - /:/rootfs:ro # Erlaubt Zugriff auf die Festplatten des Hosts
     command:
       - '--path.procfs=/host/proc'
       - '--path.sysfs=/host/sys'
