@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 15s # Nur als Fallback
+
+scrape_configs:
+  # Leer lassen oder nur Prometheus selbst überwachen
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
