@@ -48,7 +48,8 @@ services:
       GF_AUTH_GENERIC_OAUTH_TOKEN_URL: https://keycloak.nico-steinmueller.de/realms/mein-realm/protocol/openid-connect/token
       # Optional, falls alle User-Infos über das ID-Token kommen, ansonsten wird die Userinfo-URL benötigt (kann latency beim Login erhöhen)
       GF_AUTH_GENERIC_OAUTH_API_URL: https://keycloak.nico-steinmueller.de/realms/mein-realm/protocol/openid-connect/userinfo
-      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: contains(roles[*], 'admin') && 'Admin' || contains(roles[*], 'editor') && 'Editor' || 'Viewer'
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: contains(realm_access.roles[*], 'admin') && 'GrafanaAdmin' || contains(realm_access.roles[*], 'editor') && 'Editor' || 'Viewer'
+      GF_AUTH_GENERIC_OAUTH_ALLOW_ASSIGN_GRAFANA_ADMIN: true
 
       # smtp
 
