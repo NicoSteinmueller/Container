@@ -137,11 +137,11 @@ services:
     networks:
       - monitoring
     healthcheck:
-      test: wget --quiet --tries=1 --output-document=- http://localhost:3100/ready | grep -q -w ready || exit 1
+      test: [ "CMD", "/usr/bin/loki", "-health" ]
+      start_period: 30s
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
 
   # Der Sammler: Grafana Alloy
   alloy:
