@@ -1,82 +1,180 @@
-# Monitoring Stack: Prometheus + Grafana + Loki + Promtail
-# Überwacht Traefik Metriken und Logs
+#https://signoz.io/guides/how-to-install-prometheus-and-grafana-on-docker/
+# https://last9.io/blog/grafana-and-docker/
+# https://grafana.com/oss/alloy-opentelemetry-collector/
+
+# DB_PASSWORD
+# KEYCLOAK_SECRET
+
 services:
+  # Das Gehirn: Visualisierung
+  # https://grafana.com/docs/grafana/latest/setup-grafana/installation/docker/
+  grafana:
+    image: grafana/grafana:13.0.1
+    container_name: grafana
+    restart: unless-stopped
+    volumes:
+      # https://grafana.com/docs/grafana/latest/setup-grafana/configure-docker/
+      - /mnt/user/appdata/monitoring/grafana:/var/lib/grafana
+    environment:
+      # https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/
+      # https://grafana.com/grafana/plugins
+      GF_PLUGINS_PREINSTALL: grafana-clock-panel
+#      GF_SERVER_ROOT_URL:
+      GF_DATABASE_TYPE: postgres
+      GF_DATABASE_HOST: postgres:5432
+      GF_DATABASE_NAME: grafana
+      GF_DATABASE_USER: grafana
+      GF_DATABASE_PASSWORD: ${DB_PASSWORD:-changeme}
+      GF_ANALYTICS_REPORTING_ENABLED: false # Telemetrie deaktivieren
+      GF_ANALYTICS_CHECK_FOR_UPDATES: false # Update-Checks deaktivieren
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: false # Plugin-Update-Checks deaktivieren
+      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: true # Admin-User wird über Umgebungsvariablen erstellt
+      # GF_SECURITY_ADMIN_PASSWORD: admin # Bitte später ändern
+      GF_USERS_DEFAULT_LANGUAGE: de
+      GF_AUTH_DISABLE_LOGIN_FORM: true # Login-Formular deaktivieren
+      GF_AUTH_SIGNOUT_REDIRECT_URL: https://keycloak.nico-steinmueller.de/realms/mein-realm/protocol/openid-connect/logout?post_logout_redirect_uri=https://grafana.local.nico-steinmueller.de/login
+
+      # oauth2: https://grafana.com/docs/grafana/latest/setup-grafana/configure-access/configure-authentication/keycloak/
+      GF_AUTH_GENERIC_OAUTH_ENABLED: true
+      GF_AUTH_GENERIC_OAUTH_NAME: Keycloak
+      GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: true
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: grafana
+      GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: ${KEYCLOAK_SECRET}
+      GF_AUTH_GENERIC_OAUTH_SCOPES: openid email profile offline_access roles
+      GF_AUTH_GENERIC_OAUTH_EMAIL_ATTRIBUTE_NAME: email
+      GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_NAME: username
+      GF_AUTH_GENERIC_OAUTH_NAME_ATTRIBUTE_NAME: full_name
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: https://keycloak.nico-steinmueller.de/realms/mein-realm/protocol/openid-connect/auth
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: https://keycloak.nico-steinmueller.de/realms/mein-realm/protocol/openid-connect/token
+      # Optional, falls alle User-Infos über das ID-Token kommen, ansonsten wird die Userinfo-URL benötigt (kann latency beim Login erhöhen)
+      GF_AUTH_GENERIC_OAUTH_API_URL: https://keycloak.nico-steinmueller.de/realms/mein-realm/protocol/openid-connect/userinfo
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: contains(roles[*], 'admin') && 'Admin' || contains(roles[*], 'editor') && 'Editor' || 'Viewer'
+
+      # smtp
+
+      GF_DATE_FORMATS_FULL_DATE: DD.MM.YYYY HH:mm:ss
+      GF_DATE_FORMATS_INTERVAL_SECOND: HH:mm:ss
+      GF_DATE_FORMATS_INTERVAL_MINUTE: HH:mm
+      GF_DATE_FORMATS_INTERVAL_HOUR: DD.MM. HH:mm
+      GF_DATE_FORMATS_INTERVAL_DAY: DD.MM.
+      GF_DATE_FORMATS_INTERVAL_MONTH: MM.YYYY
+      GF_DATE_FORMATS_INTERVAL_YEAR: YYYY
+      GF_DATE_FORMATS_DEFAULT_TIMEZONE: Europe/Berlin
+
+    networks:
+      - monitoring
+      - proxy
+
+    labels:
+      traefik.enable: true
+      traefik.http.routers.grafana.rule: Host(`grafana.local.nico-steinmueller.de`)
+      traefik.http.routers.grafana.entrypoints: websecure
+      traefik.http.routers.grafana.middlewares: local-only@file, compress@file
+      traefik.http.routers.grafana.service: grafana
+      traefik.http.services.grafana.loadbalancer.server.port: 3000
+
+  database:
+    image: postgres:18.3-alpine3.23@sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7
+    container_name: grafana_postgres
+    environment:
+      POSTGRES_DB: grafana
+      POSTGRES_USER: grafana
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - postgres:/var/lib/postgresql
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U grafana -d grafana"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+
+  # Die Datenbank für Metriken (Performance)
   prometheus:
-    image: prom/prometheus:v3.11.2@sha256:5550dc63da361dc30f6fe02ac0e4dfc736ededfef3c8d12a634db04a67824d78
+    image: prom/prometheus:v3.11.2
     container_name: prometheus
     restart: unless-stopped
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-remote-write-receiver' # WICHTIG: Damit Alloy Daten schicken darf
+      - '--storage.tsdb.retention.time=30d' # Speicherzeit der Metriken (hier 30 Tage)
+      - '--storage.tsdb.retention.size=10GB' # Optional: Maximale Größe der Datenbank (hier 10GB)
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
-      - '--web.enable-lifecycle'
+    volumes:
+      - /mnt/user/appdata/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /mnt/user/data/monitoring/prometheus:/prometheus
     networks:
       - monitoring
-      - proxy
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
 
+  # Die Datenbank für Logs
   loki:
-    image: grafana/loki:3.7.1@sha256:73e905b51a7f917f7a1075e4be68759df30226e03dcb3cd2213b989cc0dc8eb4
+    image: grafana/loki:3.7.1
     container_name: loki
     restart: unless-stopped
-    command: -config.file=/etc/loki/local-config.yml
+    volumes:
+      - /mnt/user/data/monitoring/loki:/loki
+#      - ./loki-config.yaml:/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml
     networks:
       - monitoring
-    ports:
-      - "3100:3100"
-    volumes:
-      - ./loki/loki-config.yml:/etc/loki/local-config.yml:ro
-      - loki-data:/loki
+    healthcheck:
+      test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
-  promtail:
-    image: grafana/promtail:3.6.10@sha256:2a0f5e3e160ee5d549c585f6cc4f4e1c566ff783324a424bd75bc16503fc660e
-    container_name: promtail
+  # Der Sammler: Grafana Alloy
+  alloy:
+    image: grafana/alloy:v1.16.0 # Version 1.6+ ist aktuell (2026)
+    container_name: alloy
     restart: unless-stopped
-    command: -config.file=/etc/promtail/config.yml
+    # WICHTIG: Alloy läuft standardmäßig als User "alloy".
+    # Damit er den Docker-Socket und die Logs lesen kann,
+    # muss er oft als root laufen oder der Gruppe "docker" angehören.
+    user: root
+    volumes:
+      - /mnt/user/appdata/monitoring/alloy:/etc/alloy:ro
+      # Standard Docker-Pfad für Container-Logs
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      # Hier alle Host-Pfade, in die Apps Logs schreiben.
+      - /mnt/user/logs:/var/host_logs:ro
+    command:
+      - run
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/
     networks:
       - monitoring
-    volumes:
-      - ./promtail/promtail-config.yml:/etc/promtail/config.yml:ro
-      - ${TRAEFIK_LOGS_PATH:-/mnt/user/logs/traefik}:/var/log/traefik:ro
-    depends_on:
-      - loki
 
-  grafana:
-    image: grafana/grafana:13.1.0@sha256:eee9924b40da0a2c0e3174d164baa5a63a48c9ff10bac3eb02b7d6d7cb274968
-    container_name: grafana
+  # Liefert Hardware-Daten (CPU, RAM) vom Host
+  node-exporter:
+    image: prom/node-exporter:v1.11.1
+    container_name: node-exporter
     restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro,rslave # Erlaubt Zugriff auf die Festplatten des Hosts
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      # Schließt Docker-interne Mounts aus, um die Übersicht zu behalten:
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/plugins)($$|/)'
     networks:
       - monitoring
-      - proxy
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
-      - GF_INSTALL_PLUGINS=
-      - GF_SERVER_ROOT_URL=http://localhost:3000
-      - GF_USERS_ALLOW_SIGN_UP=false
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-    depends_on:
-      - prometheus
-      - loki
 
 volumes:
-  prometheus-data:
-  loki-data:
   grafana-data:
+  postgres:
 
 networks:
   monitoring:
   proxy:
     external: true
-    name: proxy
-
