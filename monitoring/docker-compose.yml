@@ -21,7 +21,7 @@ services:
       GF_PLUGINS_PREINSTALL: grafana-clock-panel
 #      GF_SERVER_ROOT_URL:
       GF_DATABASE_TYPE: postgres
-      GF_DATABASE_HOST: postgres:5432
+      GF_DATABASE_HOST: grafana_postgres:5432
       GF_DATABASE_NAME: grafana
       GF_DATABASE_USER: grafana
       GF_DATABASE_PASSWORD: ${DB_PASSWORD:-changeme}
