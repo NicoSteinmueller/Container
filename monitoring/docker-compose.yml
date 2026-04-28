@@ -153,14 +153,6 @@ services:
       timeout: 5s
       retries: 5
 
-    labels:
-      traefik.enable: true
-      traefik.http.routers.loki.rule: Host(`loki.local.nico-steinmueller.de`)
-      traefik.http.routers.loki.entrypoints: websecure
-      traefik.http.routers.loki.middlewares: local-only@file, compress@file
-      traefik.http.routers.loki.service: loki
-      traefik.http.services.loki.loadbalancer.server.port: 3100
-
   # Der Sammler: Grafana Alloy
   alloy:
     image: grafana/alloy:v1.16.0 # Version 1.6+ ist aktuell (2026)
@@ -224,14 +216,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-
-    labels:
-      traefik.enable: true
-      traefik.http.routers.node-exporter.rule: Host(`node-exporter.local.nico-steinmueller.de`)
-      traefik.http.routers.node-exporter.entrypoints: websecure
-      traefik.http.routers.node-exporter.middlewares: local-only@file, compress@file
-      traefik.http.routers.node-exporter.service: node-exporter
-      traefik.http.services.node-exporter.loadbalancer.server.port: 9100
 
 volumes:
   grafana-data:
