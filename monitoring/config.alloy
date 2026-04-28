@@ -10,6 +10,21 @@ prometheus.scrape "scrape_metrics" {
   forward_to = [prometheus.remote_write.local.receiver]
 }
 
+// --- NEU FÜR DASHBOARD 13639: Container-Metriken ---
+prometheus.exporter.cadvisor "docker" {
+  docker_host = "unix:///var/run/docker.sock"
+
+  // Diese Einstellungen helfen, dass die Labels im Dashboard
+  // sauber erkannt werden (Name des Containers statt ID)
+  storage_duration = "5m"
+}
+
+prometheus.scrape "cadvisor" {
+  targets    = prometheus.exporter.cadvisor.docker.targets
+  forward_to = [prometheus.remote_write.local.receiver]
+}
+// ---------------------------------------------------
+
 // 2. LOGS: Docker-Container finden und Logs lesen
 discovery.docker "docker_containers" {
   host = "unix:///var/run/docker.sock"
