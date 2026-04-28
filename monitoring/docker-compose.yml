@@ -118,12 +118,21 @@ services:
       - /mnt/user/data/monitoring/prometheus:/prometheus
     networks:
       - monitoring
+      - proxy
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9090/-/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
+
+    labels:
+      traefik.enable: true
+      traefik.http.routers.prometheus.rule: Host(`prometheus.local.nico-steinmueller.de`)
+      traefik.http.routers.prometheus.entrypoints: websecure
+      traefik.http.routers.prometheus.middlewares: local-only@file, compress@file
+      traefik.http.routers.prometheus.service: prometheus
+      traefik.http.services.prometheus.loadbalancer.server.port: 9090
 
   # Die Datenbank für Logs
   loki:
@@ -136,12 +145,21 @@ services:
     command: -config.file=/etc/loki/local-config.yaml
     networks:
       - monitoring
+      - proxy
     healthcheck:
       test: [ "CMD", "/usr/bin/loki", "-health" ]
       start_period: 30s
       interval: 10s
       timeout: 5s
       retries: 5
+
+    labels:
+      traefik.enable: true
+      traefik.http.routers.loki.rule: Host(`loki.local.nico-steinmueller.de`)
+      traefik.http.routers.loki.entrypoints: websecure
+      traefik.http.routers.loki.middlewares: local-only@file, compress@file
+      traefik.http.routers.loki.service: loki
+      traefik.http.services.loki.loadbalancer.server.port: 3100
 
   # Der Sammler: Grafana Alloy
   alloy:
@@ -165,12 +183,21 @@ services:
       - /etc/alloy/
     networks:
       - monitoring
+      - proxy
     healthcheck:
       test: "bash -c '(exec 3<>/dev/tcp/localhost/12345 && printf \"HEAD /-/healthy HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n\" >&3 && timeout 2 head -1 <&3 | grep -q \"200\") && exit 0 || exit 1'"
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
+
+    labels:
+      traefik.enable: true
+      traefik.http.routers.alloy.rule: Host(`alloy.local.nico-steinmueller.de`)
+      traefik.http.routers.alloy.entrypoints: websecure
+      traefik.http.routers.alloy.middlewares: local-only@file, compress@file
+      traefik.http.routers.alloy.service: alloy
+      traefik.http.services.alloy.loadbalancer.server.port: 12345
 
   # Liefert Hardware-Daten (CPU, RAM) vom Host
   node-exporter:
@@ -189,12 +216,21 @@ services:
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/plugins)($$|/)'
     networks:
       - monitoring
+      - proxy
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9100/metrics || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
+
+    labels:
+      traefik.enable: true
+      traefik.http.routers.node-exporter.rule: Host(`node-exporter.local.nico-steinmueller.de`)
+      traefik.http.routers.node-exporter.entrypoints: websecure
+      traefik.http.routers.node-exporter.middlewares: local-only@file, compress@file
+      traefik.http.routers.node-exporter.service: node-exporter
+      traefik.http.services.node-exporter.loadbalancer.server.port: 9100
 
 volumes:
   grafana-data:
