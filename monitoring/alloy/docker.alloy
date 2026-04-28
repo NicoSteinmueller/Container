@@ -1,0 +1,52 @@
+// Metriken von Docker-Containern mit cAdvisor sammeln und an Prometheus weiterleiten
+prometheus.exporter.cadvisor "docker" {
+  docker_host = "unix:///var/run/docker.sock"
+  docker_only = true
+  // Diese Einstellungen helfen, dass die Labels im Dashboard
+  // sauber erkannt werden (Name des Containers statt ID)
+  storage_duration = "5m"
+}
+
+discovery.relabel "docker" {
+    targets = prometheus.exporter.cadvisor.docker.targets
+
+    rule {
+        target_label = "job"
+        replacement  = "integrations/docker"
+    }
+
+    rule {
+        target_label = "instance"
+        replacement  = constants.hostname
+    }
+}
+
+prometheus.scrape "cadvisor" {
+  targets    = discovery.relabel.docker.output
+  forward_to = [prometheus.remote_write.local.receiver]
+
+  scrape_interval = "10s"
+}
+
+// Logs von Docker-Containern an Loki weiterleiten
+discovery.docker "linux" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "logs_integrations_docker" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex = "/(.*)"
+    target_label = "service_name"
+  }
+}
+
+loki.source.docker "default" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.docker.linux.targets
+  labels     = {"platform" = "docker"}
+  relabel_rules = discovery.relabel.logs_integrations_docker.rules
+  forward_to = [loki.write.local.receiver]
+}
