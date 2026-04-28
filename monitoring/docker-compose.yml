@@ -164,9 +164,13 @@ services:
     user: root
     volumes:
       - /mnt/user/appdata/monitoring/alloy:/etc/alloy:ro
-      # Standard Docker-Pfad für Container-Logs
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      # System-Metriken/Infos vom Host (CPU, RAM, Netzwerk, Prozesse, Docker-Stats, etc.)
+      - /proc:/rootproc:ro # Host-Prozesse/Metriken
+      - /var/run/docker.sock:/var/run/docker.sock # Docker-API
+      - /sys:/sys:ro # Kernel-/HW-Infos
+      - /:/rootfs:ro # Host-Dateisystem
+      - /dev/disk/:/dev/disk:ro # Disk-IDs/Devices
+      - /var/lib/docker/:/var/lib/docker:ro # Docker-Daten/Logs
       # Hier alle Host-Pfade, in die Apps Logs schreiben.
       - /mnt/user/logs:/var/host_logs:ro
     command:
