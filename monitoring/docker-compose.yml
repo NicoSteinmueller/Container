@@ -9,7 +9,7 @@ services:
   # Das Gehirn: Visualisierung
   # https://grafana.com/docs/grafana/latest/setup-grafana/installation/docker/
   grafana:
-    image: grafana/grafana:13.0.1
+    image: grafana/grafana:13.1.0@sha256:eee9924b40da0a2c0e3174d164baa5a63a48c9ff10bac3eb02b7d6d7cb274968
     container_name: grafana
     restart: unless-stopped
     volumes:
@@ -102,7 +102,7 @@ services:
 
   # Die Datenbank für Metriken (Performance)
   prometheus:
-    image: prom/prometheus:v3.11.2
+    image: prom/prometheus:v3.11.3@sha256:e4254400b85610324913f0dc4acf92603d9984e7519414c5a12811aa6146acc3
     container_name: prometheus
     restart: unless-stopped
     command:
