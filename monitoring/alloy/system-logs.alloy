@@ -18,7 +18,7 @@ local.file_match "logs_integrations_integrations_node_exporter_direct_scrape" {
     // Add instance label with hostname
     instance    = constants.hostname,
     // Add job label for logs
-    job         = "integrations/node_exporter",
+    job         = "unraid-logs",
   }]
 }
 
