@@ -1,0 +1,19 @@
+local.file_match "traefiklogs" {
+    path_targets = [
+        {
+            __path__="/var/docker_logs/traefik/traefik.log",
+            job = "traefik",
+            service="traefik",
+        },
+        {
+             __path__="/var/docker_logs/traefik/access*.log",
+             job = "traefik_access",
+             service="traefik",
+        },
+    ]
+}
+
+loki.source.file "traefiklogs" {
+    targets = local.file_match.traefiklogs.targets
+    forward_to = [loki.write.local.receiver]
+}
