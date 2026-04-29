@@ -14,7 +14,7 @@ local.file_match "logs_integrations_integrations_node_exporter_direct_scrape" {
     // Target localhost for log collection
     __address__ = "localhost",
     // Collect standard system logs
-    __path__    = "/var/log/{syslog,messages,*.log}",
+    __path__    = "/var/host-log/{syslog,messages,*.log}",
     // Add instance label with hostname
     instance    = constants.hostname,
     // Add job label for logs

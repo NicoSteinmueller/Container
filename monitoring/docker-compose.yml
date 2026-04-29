@@ -171,8 +171,9 @@ services:
       - /:/rootfs:ro # Host-Dateisystem
       - /dev/disk/:/dev/disk:ro # Disk-IDs/Devices
       - /var/lib/docker/:/var/lib/docker:ro # Docker-Daten/Logs
+      - /var/log:/var/host-log:ro # Host-Logs (z.B. Syslog, Auth, etc.)
       # Hier alle Host-Pfade, in die Apps Logs schreiben.
-      - /mnt/user/logs:/var/host_logs:ro
+      - /mnt/user/logs:/var/docker_logs:ro
     command:
       - run
       - --server.http.listen-addr=0.0.0.0:12345
