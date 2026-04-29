@@ -1,0 +1,70 @@
+// Collect logs from systemd journal for node_exporter integration
+loki.source.journal "logs_integrations_integrations_node_exporter_journal_scrape" {
+  // Only collect logs from the last 24 hours
+  max_age       = "24h0m0s"
+  // Apply relabeling rules to the logs
+  relabel_rules = discovery.relabel.logs_integrations_integrations_node_exporter_journal_scrape.rules
+  // Send logs to the local Loki instance
+  forward_to    = [loki.write.local.receiver]
+}
+
+// Define which log files to collect for node_exporter
+local.file_match "logs_integrations_integrations_node_exporter_direct_scrape" {
+  path_targets = [{
+    // Target localhost for log collection
+    __address__ = "localhost",
+    // Collect standard system logs
+    __path__    = "/var/log/{syslog,messages,*.log}",
+    // Add instance label with hostname
+    instance    = constants.hostname,
+    // Add job label for logs
+    job         = "integrations/node_exporter",
+  }]
+}
+
+// Define relabeling rules for systemd journal logs
+discovery.relabel "logs_integrations_integrations_node_exporter_journal_scrape" {
+  targets = []
+
+  rule {
+    // Extract systemd unit information into a label
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+
+  rule {
+    // Extract boot ID information into a label
+    source_labels = ["__journal__boot_id"]
+    target_label  = "boot_id"
+  }
+
+  rule {
+    // Extract the hostname of the machine into a label
+    source_labels = ["__journal__hostname"]
+    target_label  = "instance"
+  }
+
+  rule {
+    // Extract the machine id into a label
+    source_labels = ["__journal__machine_id"]
+    target_label  = "machine_id"
+  }
+
+  rule {
+    // Extract transport information into a label
+    source_labels = ["__journal__transport"]
+    target_label  = "transport"
+  }
+
+  rule {
+    // Extract log priority into a level label
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
+  }
+}
+
+// Collect logs from files for node_exporter
+loki.source.file "logs_integrations_integrations_node_exporter_direct_scrape" {
+  targets    = local.file_match.logs_integrations_integrations_node_exporter_direct_scrape.targets
+  forward_to = [loki.write.local.receiver]
+}

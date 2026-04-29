@@ -196,31 +196,6 @@ services:
       traefik.http.routers.alloy.service: alloy
       traefik.http.services.alloy.loadbalancer.server.port: 12345
 
-  # Liefert Hardware-Daten (CPU, RAM) vom Host
-  node-exporter:
-    image: prom/node-exporter:v1.11.1
-    container_name: node-exporter
-    restart: unless-stopped
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro # Erlaubt Zugriff auf die Festplatten des Hosts
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--path.rootfs=/rootfs'
-      # Schließt Docker-interne Mounts aus, um die Übersicht zu behalten:
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/plugins)($$|/)'
-    networks:
-      - monitoring
-      - proxy
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:9100/metrics || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
 volumes:
   grafana-data:
   postgres:
