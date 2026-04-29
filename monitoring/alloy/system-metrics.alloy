@@ -1,7 +1,9 @@
 // Configure the node_exporter integration to collect system metrics
 prometheus.exporter.unix "integrations_node_exporter" {
+  // Use host /proc so mdadm reads the real /proc/mdstat from the host.
+  procfs_path = "/rootproc"
   // Disable unnecessary collectors to reduce overhead
-  disable_collectors = ["ipvs", "btrfs", "infiniband", "xfs", "zfs"]
+  disable_collectors = ["ipvs", "btrfs", "infiniband", "xfs", "zfs", "mdadm"]
   enable_collectors = ["meminfo"]
 
   filesystem {
