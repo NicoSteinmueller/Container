@@ -1,0 +1,104 @@
+// 1. Dateien finden
+local.file_match "nextcloud_logs" {
+    path_targets = [
+        {
+            __path__="/var/docker_logs/nextcloud/nextcloud.log",
+            service="nextcloud_logs",
+        },
+    ]
+}
+
+// 2. Logs aus den gefundenen Dateien einlesen
+loki.source.file "read_nextcloud_logs" {
+    targets = local.file_match.nextcloud_logs.targets
+    forward_to = [loki.process.process_nextcloud_logs.receiver]
+}
+
+// 3. Verarbeitung (Parsing & Labels setzen)
+loki.process "process_nextcloud_logs" {
+    // Das JSON parsen
+    stage.json {
+        expressions = {
+            "requestId"   = "reqId",
+            "level"       = "",
+            "time"        = "",
+            "remoteAddr"  = "",
+            "user"        = "",
+            "app"         = "",
+            "method"      = "",
+            "url"         = "",
+            "scriptName"  = "",
+            "message"     = "",
+            "userAgent"   = "",
+            "exception"   = "",
+            "version"     = "",
+            "occ_command" = "",
+            "data"        = "",
+        }
+    }
+
+    // Den Zeitstempel der Logzeile setzen (optional, aber empfohlen)
+    stage.timestamp {
+        source = "time"
+        format = "RFC3339"
+    }
+
+    // Ersetzung per RegEx für jedes Level
+    // Wir suchen nach der exakten Zahl und ersetzen sie durch den Text
+    stage.replace {
+        expression = "0"
+        source     = "level"
+        replace    = "DEBUG"
+    }
+    stage.replace {
+        expression = "1"
+        source     = "level"
+        replace    = "INFO"
+    }
+    stage.replace {
+        expression = "2"
+        source     = "level"
+        replace    = "WARN"
+    }
+    stage.replace {
+        expression = "3"
+        source     = "level"
+        replace    = "ERROR"
+    }
+    stage.replace {
+        expression = "4"
+        source     = "level"
+        replace    = "FATAL"
+    }
+
+    // Die extrahierten Werte als Loki-Labels setzen
+    stage.labels {
+        values = {
+            "level"       = "",
+            "user"        = "",
+            "app"         = "",
+            "method"      = "",
+            "scriptName"  = "",
+        }
+    }
+
+    stage.structured_metadata {
+        values = {
+            "requestId"   = "",
+            "remoteAddr"  = "",
+            "url"         = "",
+            "userAgent"   = "",
+            "exception"   = "",
+            "version"     = "",
+            "occ_command" = "",
+            "data"        = "",
+        }
+      }
+
+    // Den Inhalt der Logzeile auf die reine Nachricht kürzen (optional)
+    stage.output {
+        source = "message"
+    }
+
+    forward_to = [loki.write.local.receiver]
+}
