@@ -20,20 +20,20 @@ loki.process "process_nextcloud_logs" {
     stage.json {
         expressions = {
             "requestId"   = "reqId",
-            "level"       = "",
-            "time"        = "",
-            "remoteAddr"  = "",
-            "user"        = "",
-            "app"         = "",
-            "method"      = "",
-            "url"         = "",
-            "scriptName"  = "",
-            "message"     = "",
-            "userAgent"   = "",
-            "exception"   = "",
-            "version"     = "",
-            "occ_command" = "",
-            "data"        = "",
+            "level"       = "level",
+            "time"        = "time",
+            "remoteAddr"  = "remoteAddr",
+            "user"        = "user",
+            "app"         = "app",
+            "method"      = "method",
+            "url"         = "url",
+            "scriptName"  = "scriptName",
+            "message"     = "message",
+            "userAgent"   = "userAgent",
+            "exception"   = "exception",
+            "version"     = "version",
+            "occ_command" = "occ_command",
+            "data"        = "data",
         }
     }
 
@@ -74,24 +74,24 @@ loki.process "process_nextcloud_logs" {
     // Die extrahierten Werte als Loki-Labels setzen
     stage.labels {
         values = {
-            "level"       = "",
-            "user"        = "",
-            "app"         = "",
-            "method"      = "",
-            "scriptName"  = "",
+            "level"       = "level",
+            "user"        = "user",
+            "app"         = "app",
+            "method"      = "method",
+            "scriptName"  = "scriptName",
         }
     }
 
     stage.structured_metadata {
         values = {
-            "requestId"   = "",
-            "remoteAddr"  = "",
-            "url"         = "",
-            "userAgent"   = "",
-            "exception"   = "",
-            "version"     = "",
-            "occ_command" = "",
-            "data"        = "",
+            "requestId"   = "requestId",
+            "remoteAddr"  = "remoteAddr",
+            "url"         = "url",
+            "userAgent"   = "userAgent",
+            "exception"   = "exception",
+            "version"     = "version",
+            "occ_command" = "occ_command",
+            "data"        = "data",
         }
       }
 
