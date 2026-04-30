@@ -1,0 +1,45 @@
+local.file_match "paperless_logs" {
+    path_targets = [
+        {
+            __path__="/var/docker_logs/paperless/nico/paperless.log",
+            instance = "nico",
+            job = "paperless",
+            service="paperless",
+        },
+        {
+             __path__="/var/docker_logs/paperless/nico/celery.log",
+             instance = "nico",
+             job = "celery",
+             service="paperless",
+        },
+        {
+            __path__="/var/docker_logs/paperless/ilka/paperless.log",
+            instance = "ilka",
+            job = "paperless",
+            service="paperless",
+        },
+        {
+             __path__="/var/docker_logs/paperless/ilka/celery.log",
+             instance = "ilka",
+             job = "celery",
+             service="paperless",
+        },
+        {
+            __path__="/var/docker_logs/paperless/hannelore/paperless.log",
+            instance = "hannelore",
+            job = "paperless",
+            service="paperless",
+        },
+        {
+             __path__="/var/docker_logs/paperless/hannelore/celery.log",
+             instance = "hannelore",
+             job = "celery",
+             service="paperless",
+        },
+    ]
+}
+
+loki.source.file "paperless_logs" {
+    targets = local.file_match.paperless_logs.targets
+    forward_to = [loki.write.local.receiver]
+}
