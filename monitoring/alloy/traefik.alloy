@@ -13,7 +13,33 @@ local.file_match "traefik_logs" {
     ]
 }
 
-loki.source.file "traefik_logs" {
+loki.source.file "read_traefik_logs" {
     targets = local.file_match.traefik_logs.targets
+    forward_to = [loki.process.process_traefik_logs.receiver]
+}
+
+// 3. Verarbeitung (Parsing & Labels setzen)
+loki.process "process_traefik_logs" {
+    // Das JSON parsen
+    stage.json {
+        expressions = {
+            "level"       = "level",
+            "time"        = "time",
+        }
+    }
+
+    // Den Zeitstempel der Logzeile setzen (optional, aber empfohlen)
+    stage.timestamp {
+        source = "time"
+        format = "RFC3339"
+    }
+
+    // Die extrahierten Werte als Loki-Labels setzen
+    stage.labels {
+        values = {
+            "level" = "level",
+        }
+    }
+
     forward_to = [loki.write.local.receiver]
 }
