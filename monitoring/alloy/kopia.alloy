@@ -1,0 +1,50 @@
+// 1. Dateien finden
+local.file_match "kopia_logs" {
+    path_targets = [
+        {
+            __path__="/var/docker_logs/kopia/nas/content_logs/*.log",
+            instance = "nas",
+            job = "content_logs",
+            service = "kopia_logs",
+        },
+        {
+            __path__="/var/docker_logs/kopia/extern/content_logs/*.log",
+            instance = "extern",
+            job = "content_logs",
+            service = "kopia_logs",
+        },
+    ]
+}
+
+// 2. Logs aus den gefundenen Dateien einlesen
+loki.source.file "read_kopia_logs" {
+    targets = local.file_match.kopia_logs.targets
+    forward_to = [loki.process.process_kopia_logs.receiver]
+}
+
+
+// 3. Verarbeitung (Parsing & Labels setzen)
+loki.process "process_kopia_logs" {
+    // Das JSON parsen
+    stage.json {
+        expressions = {
+            "time"   = "t",
+            "source" = "n",
+        }
+    }
+
+    // Den Zeitstempel der Logzeile setzen (optional, aber empfohlen)
+    stage.timestamp {
+        source = "time"
+        format = "RFC3339"
+    }
+
+    // Die extrahierten Werte als Loki-Labels setzen
+    stage.labels {
+        values = {
+            "source" = "source",
+        }
+    }
+
+    forward_to = [loki.write.local.receiver]
+}
