@@ -31,7 +31,7 @@ services:
       proxy:
       bond0:
         ipv4_address: 192.168.178.5
-#      monitoring:
+      monitoring:
 
     ports:
       - "80:80"
@@ -180,5 +180,7 @@ networks:
     ipam:
       config:
         - subnet: 192.168.178.0/24
+  monitoring:
+    external: true
 #  monitoring:
 #    external: true

@@ -68,6 +68,8 @@ entryPoints:
         - secure-headers@file
   sftpgo:
     address: :2022
+  metrics:
+    address: :8082
 
 ping:
     entryPoint: ping
@@ -111,12 +113,12 @@ accessLog:
         Cookie: redact          # Zeigt "REDACTED" wenn Cookie vorhanden
         Set-Cookie: redact
 
-#metrics:
-#  prometheus:
-#    addEntryPointsLabels: true
-#    addRoutersLabels: true
-#    addServicesLabels: true
-#    entryPoint: traefik  # Metriken verfügbar auf Port 8080
+metrics:
+  prometheus:
+    entryPoint: metrics
+    addEntryPointsLabels: true
+    addRoutersLabels: true
+    addServicesLabels: true
 
 
 
