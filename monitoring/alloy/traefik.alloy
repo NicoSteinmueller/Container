@@ -43,3 +43,15 @@ loki.process "process_traefik_logs" {
 
     forward_to = [loki.write.local.receiver]
 }
+
+
+// Prometheus-Exporter für Traefik
+prometheus.scrape "traefik_metrics" {
+  targets = [
+    {"__address__" = "traefik:8082"},
+  ]
+  scrape_interval = "15s"
+  metrics_path    = "/metrics"
+
+  forward_to = [prometheus.remote_write.local.receiver]
+}
