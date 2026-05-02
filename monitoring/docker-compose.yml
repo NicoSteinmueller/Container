@@ -203,5 +203,6 @@ volumes:
 
 networks:
   monitoring:
+    name: monitoring
   proxy:
     external: true
