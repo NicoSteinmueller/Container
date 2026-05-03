@@ -52,6 +52,7 @@ prometheus.scrape "traefik_metrics" {
   ]
   scrape_interval = "15s"
   metrics_path    = "/metrics"
+  job_name        = "traefik"
 
   forward_to = [prometheus.remote_write.local.receiver]
 }
