@@ -71,7 +71,7 @@ services:
   redis:
 #    TODO: evtl. Update to alpine version later
     container_name: immich_redis
-    image: docker.io/valkey/valkey:9.0.3-trixie@sha256:3b55fbaa0cd93cf0d9d961f405e4dfcc70efe325e2d84da207a0a8e6d8fde4f9
+    image: docker.io/valkey/valkey:9.0.4-trixie@sha256:8436e10bc65c94886a91d4415b6a6dfa9cb5a306fb3b996e5bb67cd2b4854193
     healthcheck:
       test: redis-cli ping || exit 1
     restart: always
@@ -81,7 +81,7 @@ services:
   database:
     container_name: immich_postgres
     # https://github.com/immich-app/base-images/pkgs/container/postgres/versions?filters%5Bversion_type%5D=tagged
-    image: ghcr.io/immich-app/postgres:18-vectorchord0.5.3-pgvector0.8.1@sha256:ef431845dc61cdc061a2f2ff2ba927e87868e10ffd3d7e689a79fba061b043c0
+    image: ghcr.io/immich-app/postgres:18-vectorchord0.5.3-pgvector0.8.1@sha256:23895db38dd685c158a7dde37577bdabc83116b6109aed95dbe2965413cf9210
     environment:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_USER: postgres
