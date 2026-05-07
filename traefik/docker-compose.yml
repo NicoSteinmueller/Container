@@ -17,7 +17,7 @@
 #
 services:
   traefik:
-    image: traefik:3.7.0@sha256:84425c2c9a4c37f97ace3ff24705422162d5550bba43227990a3be026aab3dbb
+    image: traefik:3.7.0@sha256:eb328e2c806c53aafbbace6c451fa54d268961261a85452fcf0fb752a30c17be
     container_name: traefik
     restart: unless-stopped
     security_opt:
