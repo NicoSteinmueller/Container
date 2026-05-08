@@ -3,7 +3,7 @@
 services:
   ollama:
     container_name: ollama
-    image: ollama/ollama:0.22.1@sha256:3ca37ec2b9cb6341b62554074205c616778fe98abcf9e4fc50361b79a07407ae
+    image: ollama/ollama:0.23.2@sha256:d00473cb58f0082c07cd6ed0d326a8a86f443ab69c51f8fc2b1a41687d45c661
     pull_policy: always
     gpus: all
     ports:
