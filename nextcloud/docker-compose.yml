@@ -9,7 +9,7 @@
 services:
   # https://github.com/docker-library/docs/blob/master/nextcloud/README.md
   nextcloud:
-    image: nextcloud:32.0.9-apache@sha256:fdca48a6025e63d7b52913cad8ddf341c37b9dd8d03c4962ea0a1ec0c42c7442
+    image: nextcloud:32.0.9-apache@sha256:4b023dfbb32c0921e18d03465352a85330fc3a94fa9037cda6cea2c067a12526
     container_name: nextcloud
     restart: unless-stopped
 #    ports:
@@ -72,7 +72,7 @@ services:
       traefik.http.services.nextcloud.loadbalancer.server.port: 80
 
   cron:
-    image: nextcloud:32.0.9-apache@sha256:fdca48a6025e63d7b52913cad8ddf341c37b9dd8d03c4962ea0a1ec0c42c7442
+    image: nextcloud:32.0.9-apache@sha256:4b023dfbb32c0921e18d03465352a85330fc3a94fa9037cda6cea2c067a12526
     container_name: nextcloud_cron
     restart: unless-stopped
     volumes:
@@ -123,7 +123,7 @@ services:
       - no-new-privileges:true
 
   redis:
-    image: docker.io/valkey/valkey:9.0.3-alpine3.23@sha256:e1095c6c76ee982cb2d1e07edbb7fb2a53606630a1d810d5a47c9f646b708bf5
+    image: docker.io/valkey/valkey:9.0.4-alpine3.23@sha256:d1cc70645bbcef743615463a2fa4616e841407545e18f560aed0c49671a90147
     container_name: nextcloud_redis
     restart: unless-stopped
     healthcheck:
