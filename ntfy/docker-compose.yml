@@ -22,7 +22,7 @@ services:
     environment:
       TZ: Europe/Berlin
       # https://docs.ntfy.sh/config/
-      NTFY_BASE_URL: https://ntfy.nico-steinmueller.de
+      NTFY_BASE_URL: ntfy.nico-steinmueller.de
       NTFY_BEHIND_PROXY: true
       NTFY_AUTH_FILE: /var/lib/ntfy/auth.db
       NTFY_AUTH_DEFAULT_ACCESS: deny-all
@@ -44,7 +44,8 @@ services:
       NTFY_AUTH_ACCESS: ${ACCESS:-test:*:rw}
       # https://docs.ntfy.sh/config/#access-tokens
       # TODO: https://docs.ntfy.sh/config/#monitoring
-
+    ports:
+      - 80:80
     volumes:
       - /mnt/user/appdata/ntfy/cache:/var/cache/ntfy
       - /mnt/user/appdata/ntfy/attachments:/var/cache/ntfy/attachments
