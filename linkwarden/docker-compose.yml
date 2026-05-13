@@ -87,7 +87,7 @@ services:
 
 # https://www.meilisearch.com/docs/guides/docker
   meilisearch:
-    image: getmeili/meilisearch:v1.43.0@sha256:5d4e1353927785744486fe317d263f442710ab5b27b1983aa1b719dfe2c665b6
+    image: getmeili/meilisearch:v1.43.1@sha256:4407d9f9a4a5b8ef2e382827782b3dd6e0ecf8f2832ecb0344601691c13da149
     container_name: linkwarden_meilisearch
     restart: unless-stopped
     environment:
