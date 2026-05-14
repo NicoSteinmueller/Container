@@ -4,7 +4,7 @@ services:
     container_name: uptime-kuma
     restart: unless-stopped
     volumes:
-      - /mnt/user/appdata/uptime-kuma:/app/data  # Configuring persistent storage
+      - /mnt/user/appdata/uptime-kuma:/app/data
     environment:
       TZ: Europe/Berlin
     #      UMASK: 0022  # Set your file permissions manually
