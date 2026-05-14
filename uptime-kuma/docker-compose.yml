@@ -1,0 +1,37 @@
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:2.3.2
+    container_name: uptime-kuma
+    restart: unless-stopped
+    volumes:
+      - /mnt/user/appdata/uptime-kuma:/app/data  # Configuring persistent storage
+    environment:
+      TZ: Europe/Berlin
+    #      UMASK: 0022  # Set your file permissions manually
+    networks:
+      proxy:
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3001" ]
+      interval: 30s
+      retries: 3
+      start_period: 10s
+      timeout: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    labels:
+      traefik.enable: true
+      # Router
+      traefik.http.routers.uptime-kuma.rule: Host(`uptime-kuma.local.nico-steinmueller.de`)
+      traefik.http.routers.uptime-kuma.entrypoints: websecure
+      traefik.http.routers.uptime-kuma.middlewares: local-only@file
+      traefik.http.routers.uptime-kuma.service: uptime-kuma
+      # Service → Web-UI auf Port 80
+      traefik.http.services.uptime-kuma.loadbalancer.server.port: 3001
+
+networks:
+  proxy:
+    external: true
