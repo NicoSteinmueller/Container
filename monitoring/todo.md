@@ -12,3 +12,7 @@ Importiere diese in Grafana (Dashboards → Import):
 
 # Alloy Vorlagen
 https://github.com/grafana/alloy-scenarios
+
+# Blackbox Exporter
+https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.blackbox/
+https://grafana.com/grafana/dashboards/13659-blackbox-exporter-http-prober/
