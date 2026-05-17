@@ -101,7 +101,7 @@ services:
       - nextcloud-network
 
   database:
-    image: postgres:17.10-alpine3.23
+    image: postgres:18.4-alpine3.23@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
     container_name: nextcloud_postgres
     restart: unless-stopped
     environment:
@@ -110,7 +110,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
     volumes:
-      - postgres:/var/lib/postgresql/data
+      - postgres:/var/lib/postgresql
     networks:
       - nextcloud-network
     healthcheck:
