@@ -110,7 +110,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
     volumes:
-      - postgres:/var/lib/postgresql/data
+      - postgres:/var/lib/postgresql
     networks:
       - nextcloud-network
     healthcheck:
