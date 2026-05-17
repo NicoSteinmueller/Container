@@ -9,7 +9,7 @@
 services:
   # https://github.com/docker-library/docs/blob/master/nextcloud/README.md
   nextcloud:
-    image: nextcloud:32.0.9-apache@sha256:ad1cf2d4ced89a8dfeeaa796a2c4dec0b5c3d4e132e9df1c8d15b30897813bcd
+    image: nextcloud:33.0.3-apache@sha256:b67959acacd54ed2d110e111c8b28c0a87a20129f9427bf5f721a1dc6121decb
     container_name: nextcloud
     restart: unless-stopped
 #    ports:
@@ -72,7 +72,7 @@ services:
       traefik.http.services.nextcloud.loadbalancer.server.port: 80
 
   cron:
-    image: nextcloud:32.0.9-apache@sha256:ad1cf2d4ced89a8dfeeaa796a2c4dec0b5c3d4e132e9df1c8d15b30897813bcd
+    image: nextcloud:33.0.3-apache@sha256:b67959acacd54ed2d110e111c8b28c0a87a20129f9427bf5f721a1dc6121decb
     container_name: nextcloud_cron
     restart: unless-stopped
     volumes:
@@ -101,7 +101,7 @@ services:
       - nextcloud-network
 
   database:
-    image: postgres:17.10-alpine3.23@sha256:979c4379dd698aba0b890599a6104e082035f98ef31d9b9291ec22f2b13059ca
+    image: postgres:18.4-alpine3.23@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
     container_name: nextcloud_postgres
     restart: unless-stopped
     environment:
@@ -110,7 +110,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
     volumes:
-      - postgres:/var/lib/postgresql/data
+      - postgres:/var/lib/postgresql
     networks:
       - nextcloud-network
     healthcheck:
