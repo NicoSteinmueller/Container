@@ -179,7 +179,7 @@ services:
       #   1 = Einstellung aus Common Section verwenden
       SFTPGO_HTTPD__BINDINGS__0__PROXY_MODE: 1
       # Liste erlaubter Proxy-IPs für dieses Binding (optional, überschreibt Common-Einstellung)
-      # SFTPGO_HTTPD__BINDINGS__0__PROXY_ALLOWED:
+      SFTPGO_HTTPD__BINDINGS__0__PROXY_ALLOWED: 172.16.0.0/12
       # Header, der die echte Client-IP enthält (z.B. X-Forwarded-For, X-Real-IP, CF-Connecting-IP)
       SFTPGO_HTTPD__BINDINGS__0__CLIENT_IP_PROXY_HEADER: X-Forwarded-For
       # Anzahl der vertrauenswürdigen Proxies (von rechts gezählt)
