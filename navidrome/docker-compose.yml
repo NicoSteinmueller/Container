@@ -49,11 +49,11 @@ services:
       - proxy
     labels:
       traefik.enable: true
-      traefik.http.routers.ntfy.rule: Host(`music.nico-steinmueller.de`)
-      traefik.http.routers.ntfy.entrypoints: websecure
-      traefik.http.routers.ntfy.middlewares: crowdsec@file, local-only@file
-      traefik.http.routers.ntfy.service: ntfy
-      traefik.http.services.ntfy.loadbalancer.server.port: 4533
+      traefik.http.routers.navidrome.rule: Host(`music.nico-steinmueller.de`)
+      traefik.http.routers.navidrome.entrypoints: websecure
+      traefik.http.routers.navidrome.middlewares: crowdsec@file, local-only@file
+      traefik.http.routers.navidrome.service: navidrome
+      traefik.http.services.navidrome.loadbalancer.server.port: 4533
 
 networks:
   proxy:
