@@ -1,0 +1,203 @@
+# Project Name
+name: example
+
+services:
+  example:
+    image: nginx:alpine
+    # begrenzt die Anzahl der nutzbaren CPUs für den Service-Container
+    cpu_count: 1
+    # begrenzt die CPU-Nutzung auf 5% der verfügbaren CPU-Leistung
+    cpu_percent: 5
+    # Fügt benötigte Linux-Kapazitäten hinzu und entfernt alle anderen, um die Sicherheit zu erhöhen
+    cap_add:
+      - NET_ADMIN
+    cap_drop:
+      - ALL
+    # Überschreibt den Standardbefehl des Images
+    command:
+      - nginx -g "daemon off;"
+    # Name des Containers
+    container_name: example
+    # Steuert die Abhängigkeiten zwischen Services (Start und Stop Reihenfolge)
+    depends_on:
+      db:
+        # automatischer Neustart des abhängigen Service, wenn er aktualisiert wurde.
+        restart: true
+        # definiert die Bedingung, unter der der abhängige Service als "bereit" gilt
+        # service_started: Der abhängige Service muss gestartet sein, aber es wird nicht überprüft, ob er tatsächlich funktionsfähig ist.
+        # service_healthy: Der abhängige Service muss den Gesundheitscheck bestehen, um als bereit zu gelten.
+        # service_completed_successfully: Der abhängige Service muss erfolgreich abgeschlossen sein.
+        condition: service_healthy
+        # Bei False wird nur gewarnt, dass der abhängige Service nicht bereit ist, aber der Start des aktuellen Services wird trotzdem fortgesetzt.
+        required: true
+    # Definiert die Geräte, die dem Container zur Verfügung stehen sollen, und wie sie im Container gemountet werden sollen
+    devices:
+      - "/dev/ttyUSB0:/dev/ttyUSB0"
+    # Definiert die DNS Server, die der Container verwenden soll, anstelle der Standard-DNS-Server des Hosts
+    dns:
+      - 8.8.8.8
+    # Definiert zusätzliche Optionen für die DNS-Auflösung im Container
+    dns_opt:
+      - use-vc
+    # Definiert zusätzliche Suchdomänen für die DNS-Auflösung im Container
+    dns_search:
+      - example.com
+    # Definiert den DNS Namen
+    domainname: example.com
+    # Definiert die Datei/-en mit den Umgebungsvariablen, die in den Container geladen werden sollen
+    env_file:
+      - path: ./defaul.env
+        required: true
+    # Definiert die Umgebungsvariablen, die in den Container geladen werden sollen
+    environment:
+      TZ: Europe/Berlin
+    # prüft die Gesundheit des Containers, um sicherzustellen, dass er ordnungsgemäß funktioniert und erreichbar ist
+    healthcheck:
+      # definiert den Befehl, der ausgeführt wird, um die Gesundheit des Containers zu überprüfen.
+      test: [ "CMD", "curl", "-f", "http://localhost" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+      start_interval: 5s
+    # definiert einen custom Host Name für den Container, der innerhalb des Containers verwendet wird.
+    hostname: example
+    # startet den Container mit einem init-Prozess, um die ordnungsgemäße Signalweiterleitung und Prozessverwaltung zu gewährleisten.
+    init: true
+    # definiert benutzerdefinierte Metadaten für den Container, die von anderen Tools oder Diensten verwendet werden können.
+    labels:
+      com.example.description: "This is an example service"
+    logging:
+      # TODO
+    # max. RAM Nutzung
+    mem_limit: 100M
+    # reservierter RAM bei Start
+    mem_reservation: 50M
+    # gesamter RAM --> 1G = 100M im RAM und 900M im Swap
+    # 0 = ignoriert
+    memswap_limit: 1G
+    # Netzwerkmodus des Containers (verbietet `networks` attribute)
+    # bridge: verbindet mit bridge Network
+    # none: Schaltet alle Container Netzwerke aus
+    # host: Container hat Zugriff auf Host Netzwerk interface
+    network_mode: bridge
+    # Ohne Angabe wird default Netzwerk genutzt
+    networks:
+      basic:
+        # Definiert Aliase,unter dem der Service im de Netzwerk erreichba ist
+        aliases:
+          - abs
+    # Container darf bei RAM Mangel nicht automatisch getötet werden
+    oom_kill_disable: true
+    # Priorität bei OOM Killer (niedriger Wert = höhere Priorität, Standard: 0, Bereich: -1000 bis 1000)
+    oom_score_adj: -100
+    # definiert die PID-Limitierung für den Container, um die Anzahl der Prozesse zu begrenzen, die im Container ausgeführt werden können, um die Stabilität und Sicherheit zu verbessern.
+    pids_limit: 20
+    ports:
+      - name: web
+        target: 80
+        host_ip: 127.0.0.1
+        published: "8080"
+        protocol: tcp
+        app_protocol: http
+        mode: host
+      - name: web-secured
+        target: 443
+        host_ip: 127.0.0.1
+        published: "8083-9000"
+        protocol: tcp
+        app_protocol: https
+        mode: host
+    # Container erstellt mit Read-Only-Dateisystem, um die Sicherheit zu erhöhen, indem verhindert wird, dass Anwendungen im Container Dateien ändern oder erstellen können.
+    read_only: true
+    # Neustart-Policy für den Container, um sicherzustellen, dass er automatisch neu gestartet wird, wenn er unerwartet stoppt oder abstürzt.
+    # no: Der Container wird nicht automatisch neu gestartet.
+    # always: Der Container wird immer neu gestartet, unabhängig von der Ursache des Stopps.
+    # on-failure:[max-retries]: Der Container wird nur neu gestartet, wenn er mit einem Fehlercode
+    # unless-stopped: Der Container wird neu gestartet, es sei denn, er wurde manuell gestoppt.
+    restart: unless-stopped
+    # Definiert zusätzliche Sicherheitsoptionen für den Container, um die Sicherheit zu erhöhen, indem bestimmte Privilegien oder Funktionen deaktiviert werden.
+    # https://docs.docker.com/reference/cli/docker/container/run/#security-opt
+    security_opt:
+      - no-new-privileges:true
+    # Wartezeit nach Stop signal, bevor Kill gesendet wird, um dem Container Zeit zu geben, ordnungsgemäß herunterzufahren und Ressourcen freizugeben.
+    stop_grace_period: 1m
+    # Mountet ein temporäres Dateisystem im Container
+    tmpfs:
+      #- /tmp:rw,noexec,nosuid,size=64m
+      - /data:mode=755,uid=1009,gid=1009
+      - /run
+    # Überschreibt ulimits für einen Container
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 20000
+        hard: 40000
+    # TODO use_api_socket https://docs.docker.com/reference/compose-file/services/#external_links:~:text=use%5Fapi%5Fsocket,-When
+    # überschreibt den Benutzer, mit dem der Container läuft
+    user: 99:100
+    # Mounts von host Pfaden oder volumes
+    # type: volume, bind, tmpfs, image, npipe, cluster
+    # source: Pfad auf Host bei bind, Docker Image bei image, Volumename bei volume, nicht bei tmpfs
+    # target: Pfad im Container
+    # read_only:
+    # bind:
+    #   propagation: Propagationsmodus
+    #   create_host_path: Erstellt nötigen Host-Pfad, wenn er nicht existiert (true/false)
+    #   selinux: SELinux-Label für den Mount (z.B. "z" (shared) oder "Z" (private))
+    # volume:
+    #   nocopy: Verhindert das Kopieren von Daten in das Volume, wenn es zum ersten Mal erstellt wird (true/false)
+    #   subpath: Unterverzeichnis im Volume, das gemountet werden soll
+    # tmpfs:
+    #   size: Größe des tmpfs (z.B. "64m" für 64 Megabyte)
+    #   mode: Berechtigungen für das tmpfs (z.B. "1777" für rwx für alle mit Sticky Bit)
+    # image:
+    #   subpath: Unterverzeichnis im Image, das gemountet werden soll
+    volumes:
+      - data:/internal/data
+      - type: volume
+        source: db-data
+        target: /data
+        volume:
+          nocopy: true
+          subpath: sub
+      - type: bind
+        source: /var/run/postgres/postgres.sock
+        target: /var/run/postgres/postgres.sock
+
+networks:
+  # wenn kein Netzwerk angegeben ist, kann default modifiziert werden
+  default:
+    name: example_default
+    driver_opts: # pass options to driver for network creation
+      com.docker.network.bridge.host_binding_ipv4: 127.0.0.1
+  # custom network
+  basic:
+  advanced:
+    # bridge: Standardnetzwerk
+    # host: Kein Netzwerktrenner zum Host
+    # ipvlan: Container im VLAN des Hosts
+    # macvlan: Container erscheinen als eigene Geräte im Netzwerk
+    # none: Kein Netzwerkzugriff
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
+  # externes Netzwerk
+  outside:
+    external: true
+  # Rein intern erreichbares Netzwerk (Standard von außen erreichbar)
+  inside:
+    internal: true
+
+volumes:
+  # benannte Volumes
+  data:
+    name: example_data
+  # benanntes Volume mit bind auf Host-Verzeichnis
+  appdata:
+    name: example_appdata
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/user/appdata/example

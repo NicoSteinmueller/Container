@@ -3,6 +3,24 @@ services:
     image: louislam/uptime-kuma:2.3.2@sha256:9aeb4e51d038047f414309c77a1af553281ca535723cb88907d907269d0a908e
     container_name: uptime-kuma
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=default
+    cap_drop: ["ALL"]
+    init: true
+    stop_grace_period: 30s
+    user: "99:100"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /run:rw,noexec,nosuid,size=16m
+      - /var/tmp:rw,noexec,nosuid,size=32m
+      - /var/log:rw,noexec,nosuid,size=32m
+      - /var/cache:rw,noexec,nosuid,size=32m
+    ipc: private
+    pids_limit: 256
+    ulimits:
+      nofile: 4096
     volumes:
       - /mnt/user/appdata/uptime-kuma:/app/data
     environment:
