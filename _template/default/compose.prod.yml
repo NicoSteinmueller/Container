@@ -1,0 +1,28 @@
+# Einstellungen für die Produktion
+
+service:
+  example:
+    user: 99:100
+    networks:
+      proxy:
+    volumes:
+      - type: bind
+        source: /var/run/postgres/postgres.sock
+        target: /var/run/postgres/postgres.sock
+        read_only: false
+        bind:
+          propagation: rshared
+          create_host_path: false
+
+    labels:
+      traefik.enable: true
+      # Umbenennen des Routers, damit er eindeutig ist
+      traefik.http.routers.example.rule: Host(`example.nico-steinmueller.de`)
+      traefik.http.routers.example.entrypoints: websecure
+      traefik.http.routers.example.middlewares: local-only@file, crowdsec-appsec@file
+      traefik.http.routers.example.service: example
+      traefik.http.services.example.loadbalancer.server.port: 3001
+
+networks:
+  proxy:
+    external: true
