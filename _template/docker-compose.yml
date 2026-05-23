@@ -71,12 +71,14 @@ services:
     oom_score_adj: -100
     # begrenzt die Anzahl der Prozesse, die ausgeführt werden können
     pids_limit: 20
-    # TODO: Überschreibt ulimits für einen Container
     # https://docs.docker.com/reference/cli/docker/container/run/#set-ulimits-in-container---ulimit
     ulimits:
+      # Maximale Anzahl von Prozessen, die der Container\-User starten darf
       nproc: 65535
       nofile:
+        # Soft\-Limit: Standardgrenze für gleichzeitig offene Dateien
         soft: 20000
+        # Hard\-Limit: Absolute Obergrenze für offene Dateien
         hard: 40000
     # Logging begrenzen
     logging:
