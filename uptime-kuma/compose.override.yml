@@ -1,0 +1,17 @@
+services:
+  uptime-kuma:
+    user: 1000:1000
+    ports:
+      - name: web
+        target: 3001
+        published: 3001
+        protocol: tcp
+        app_protocol: http
+        mode: host
+    volumes:
+      - type: bind
+        source: ./data
+        target: /app/data
+        read_only: false
+        bind:
+          create_host_path: false

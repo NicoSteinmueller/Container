@@ -34,8 +34,8 @@ services:
 
     # ----------- Ressourcen -----------
     # docker stats <container_name> zeigt die aktuelle Ressourcennutzung an
-    # max. 5% der verfügbaren CPU-Leistung
-    cpu_percent: 5
+    # max. 0.5 Kerne der CPU
+    cpus: 0.5
     # max. RAM Nutzung
     mem_limit: 100M
     # reservierter RAM bei Start

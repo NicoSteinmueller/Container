@@ -1,0 +1,47 @@
+name: uptime-kuma
+
+services:
+  uptime-kuma:
+    # ------------ Identität ------------------------
+    image: louislam/uptime-kuma:2.3.2@sha256:9aeb4e51d038047f414309c77a1af553281ca535723cb88907d907269d0a908e
+    container_name: uptime-kuma
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure:3
+    stop_grace_period: 30s
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3001" ]
+      interval: 30s
+      retries: 3
+      start_period: 10s
+      timeout: 5s
+
+    # ----------- Ressourcen -----------
+    cpus: 0.5
+    mem_limit: 256M
+    mem_reservation: 128M
+    memswap_limit: 512M
+    oom_kill_disable: true
+    pids_limit: 32
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # ----------- Speicher -----------
+    read_only: true
+    tmpfs:
+      - /run:rw,noexec,nosuid,size=16m
+      - /var/cache:rw,noexec,nosuid,size=32m
+
+    # ---------- Environment -----------
+    environment:
+      TZ: Europe/Berlin

@@ -45,3 +45,8 @@ build/
 /traefik/logs/traefik.log
 /paperless/gpt/
 /paperless/ollama/
+
+# Generic runtime data directories
+**/data/**
+!**/data/
+!**/data/.gitkeep
