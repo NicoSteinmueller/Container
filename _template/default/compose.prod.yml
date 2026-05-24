@@ -7,11 +7,10 @@ service:
       proxy:
     volumes:
       - type: bind
-        source: /var/run/postgres/postgres.sock
-        target: /var/run/postgres/postgres.sock
+        source: /mnt/user/appdata/example
+        target: /app/data
         read_only: false
         bind:
-          propagation: rshared
           create_host_path: false
 
     labels:

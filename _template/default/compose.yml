@@ -33,6 +33,7 @@ services:
 
 
     # ----------- Ressourcen -----------
+    # docker stats <container_name> zeigt die aktuelle Ressourcennutzung an
     # max. 5% der verfügbaren CPU-Leistung
     cpu_percent: 5
     # max. RAM Nutzung
@@ -49,14 +50,15 @@ services:
     # begrenzt die Anzahl der Prozesse, die ausgeführt werden können
     pids_limit: 20
     # https://docs.docker.com/reference/cli/docker/container/run/#set-ulimits-in-container---ulimit
-    ulimits:
-      # Maximale Anzahl von Prozessen, die der Container\-User starten darf
-      nproc: 65535
-      nofile:
-        # Soft\-Limit: Standardgrenze für gleichzeitig offene Dateien
-        soft: 20000
-        # Hard\-Limit: Absolute Obergrenze für offene Dateien
-        hard: 40000
+#    TODO: anschauen, ob sinnvoll
+#      ulimits:
+#      # Maximale Anzahl von Prozessen, die der Container\-User starten darf
+#      nproc: 65535
+#      nofile:
+#        # Soft\-Limit: Standardgrenze für gleichzeitig offene Dateien
+#        soft: 20000
+#        # Hard\-Limit: Absolute Obergrenze für offene Dateien
+#        hard: 40000
     # Logging begrenzen
     logging:
       driver: json-file
@@ -68,11 +70,8 @@ services:
     # ----------- Sicherheit -----------
     # deaktiviert bestimmte Privilegien und Funktionen
     # https://docs.docker.com/reference/cli/docker/container/run/#security-opt
-    # Seccomp: Restrict syscalls to the minimum required for your container.
-    # AppArmor: Apply per-container AppArmor profiles to enforce mandatory access controls
     security_opt:
       - no-new-privileges:true
-      - seccomp=default
     # entfernt alle Linux-Kapazitäten und fügt nur notwendige hinzu
     # https://dockerlabs.collabnix.com/advanced/security/capabilities/
     # https://man7.org/linux/man-pages/man7/capabilities.7.html
@@ -87,8 +86,10 @@ services:
     devices:
       - "/dev/ttyUSB0:/dev/ttyUSB0"
     # Read-Only-Dateisystem
-    # vorher mit docker diff prüfen, welche Dateien/Verzeichnisse im Container geändert werden
-    # https://tmp.bearblog.dev/secure-filesystem-in-docker/
+    # docker diff (https://tmp.bearblog.dev/secure-filesystem-in-docker/)
+    # A - added file/directory
+    # C - changed file/directory
+    # D - deleted file/directory
     read_only: true
     # Mountet ein temporäres Dateisystem im Container
     # rw erlaubt Schreibzugriff
