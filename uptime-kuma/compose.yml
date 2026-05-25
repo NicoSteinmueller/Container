@@ -39,8 +39,8 @@ services:
     # ----------- Speicher -----------
     read_only: true
     tmpfs:
-      - /run:rw,noexec,nosuid,size=16m
-      - /var/cache:rw,noexec,nosuid,size=32m
+      - /run/nscd:rw,noexec,nosuid,size=16m
+      - /var/cache/nscd:rw,noexec,nosuid,size=32m
 
     # ---------- Environment -----------
     environment:
