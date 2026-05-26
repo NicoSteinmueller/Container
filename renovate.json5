@@ -5,9 +5,9 @@
   ],
   mode: 'full',
   timezone: 'Europe/Berlin',
-  schedule: [
-    'after 2am and before 6am',
-  ],
+//  schedule: [
+//    'after 2am and before 6am',
+//  ],
   'docker-compose': {
     enabled: true,
     managerFilePatterns: [
