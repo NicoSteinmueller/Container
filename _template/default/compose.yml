@@ -34,31 +34,20 @@ services:
 
     # ----------- Ressourcen -----------
     # docker stats <container_name> zeigt die aktuelle Ressourcennutzung an
-    # max. 0.5 Kerne der CPU
-    cpus: 0.5
-    # max. RAM Nutzung
-    mem_limit: 100M
-    # reservierter RAM bei Start
-    mem_reservation: 50M
-    # gesamter RAM --> 1G = 100M im RAM und 900M im Swap
-    # 0 = ignoriert
-    memswap_limit: 1G
-    # Container darf bei RAM Mangel nicht automatisch getötet werden
-    oom_kill_disable: true
-    # Priorität bei OOM Killer (niedriger Wert = höhere Priorität, Standard: 0, Bereich: -1000 bis 1000)
-    oom_score_adj: -100
-    # begrenzt die Anzahl der Prozesse, die ausgeführt werden können
-    pids_limit: 32
-    # https://docs.docker.com/reference/cli/docker/container/run/#set-ulimits-in-container---ulimit
-#    TODO: anschauen, ob sinnvoll
-#      ulimits:
-#      # Maximale Anzahl von Prozessen, die der Container\-User starten darf
-#      nproc: 65535
-#      nofile:
-#        # Soft\-Limit: Standardgrenze für gleichzeitig offene Dateien
-#        soft: 20000
-#        # Hard\-Limit: Absolute Obergrenze für offene Dateien
-#        hard: 40000
+    deploy:
+      resources:
+        limits:
+          # max. 0.5 Kerne der CPU
+          cpus: 0.5
+          # max. RAM Nutzung
+          memory: 100M
+          # begrenzt die Anzahl der Prozesse, die ausgeführt werden können
+          pids: 32
+        reservations:
+          # reservierte CPU-Kerne
+          cpus: 0.25
+          # reservierter RAM
+          memory: 50M
     # Logging begrenzen
     logging:
       driver: json-file

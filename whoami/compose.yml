@@ -12,12 +12,12 @@ services:
     stop_grace_period: 10s
 
     # ----------- Ressourcen -----------
-    cpus: 0.1
-    mem_limit: 12M
-    mem_reservation: 6M
-    memswap_limit: 50M
-    oom_kill_disable: true
-    pids_limit: 16
+    deploy:
+      resources:
+        limits:
+          cpus: 0.1
+          memory: 6M
+          pids: 16
     logging:
       driver: json-file
       options:
