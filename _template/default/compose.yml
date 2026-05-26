@@ -48,7 +48,7 @@ services:
     # Priorität bei OOM Killer (niedriger Wert = höhere Priorität, Standard: 0, Bereich: -1000 bis 1000)
     oom_score_adj: -100
     # begrenzt die Anzahl der Prozesse, die ausgeführt werden können
-    pids_limit: 20
+    pids_limit: 32
     # https://docs.docker.com/reference/cli/docker/container/run/#set-ulimits-in-container---ulimit
 #    TODO: anschauen, ob sinnvoll
 #      ulimits:
