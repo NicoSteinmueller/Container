@@ -25,7 +25,7 @@ services:
             memory: 128M
             pids: 16
           reservations:
-            memory: 50M
+            memory: 15M
     logging:
       driver: json-file
       options:
