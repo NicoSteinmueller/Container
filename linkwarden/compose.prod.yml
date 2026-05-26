@@ -39,6 +39,16 @@ services:
       traefik.http.routers.linkwarden.service: linkwarden
       traefik.http.services.linkwarden.loadbalancer.server.port: 3000
 
+  linkwarden-init:
+    user: 99:100
+    volumes:
+      - type: bind
+        source: /mnt/user/data/linkwarden/data
+        target: /data/data
+        read_only: false
+        bind:
+          create_host_path: false
+
   postgres:
     user: 99:100
     environment:

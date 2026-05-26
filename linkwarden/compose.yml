@@ -22,6 +22,8 @@ services:
         condition: service_healthy
       meilisearch:
         condition: service_healthy
+      linkwarden-init:
+        condition: service_completed_successfully
 
     # ----------- Ressourcen -----------
     deploy:
@@ -59,6 +61,19 @@ services:
 
       # MeiliSearch
       MEILI_HOST: http://meilisearch:7700
+      # Persist Playwright browsers to a bind-mounted path so worker restarts survive.
+      PLAYWRIGHT_BROWSERS_PATH: /data/data/ms-playwright
+
+  # Init service to ensure Playwright browsers are installed into the bind-mounted data path.
+  linkwarden-init:
+    image: ghcr.io/linkwarden/linkwarden:v2.14.1@sha256:31cf4bd2a2e111991fa5c9de03174c8698869c83722105c6ce529e4c911e6861
+    container_name: linkwarden_playwright_init
+    init: true
+    restart: no
+    environment:
+      COREPACK_HOME: /tmp/corepack
+      PLAYWRIGHT_BROWSERS_PATH: /data/data/ms-playwright
+    command: sh -lc 'if [ ! -d /data/data/ms-playwright ] || [ -z "$(ls -A /data/data/ms-playwright 2>/dev/null)" ]; then echo "Installing Playwright browsers..."; npx playwright install chromium || true; else echo "Playwright browsers already present"; fi'
 
   postgres:
     # ------------ Identität ------------------------

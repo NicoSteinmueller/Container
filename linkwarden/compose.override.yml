@@ -27,6 +27,16 @@ services:
         bind:
           create_host_path: false
 
+  linkwarden-init:
+    user: 1000:1000
+    volumes:
+      - type: bind
+        source: ./data/linkwarden
+        target: /data/data
+        read_only: false
+        bind:
+          create_host_path: false
+
   postgres:
     user: 1000:1000
     environment:
