@@ -24,14 +24,14 @@ services:
         condition: service_healthy
 
     # ----------- Ressourcen -----------
-    deploy:
-      resources:
-        limits:
-          cpus: 1
-          memory: 1280M
-          pids: 374
-        reservations:
-          memory: 256M
+#    deploy:
+#      resources:
+#        limits:
+#          cpus: 1
+#          memory: 1280M
+##          pids: 374
+#        reservations:
+#          memory: 256M
     logging:
       driver: json-file
       options:
@@ -43,16 +43,20 @@ services:
 #      - no-new-privileges:true
 #    cap_drop:
 #      - ALL
-
-    # ----------- Speicher -----------
-#    read_only: true
-#    tmpfs:
-#      - /tmp:rw,exec,nosuid,size=4M
-#      - /home/node/.cache:rw,noexec,nosuid,size=128M
+#
+#    # ----------- Speicher -----------
+    read_only: true
+    tmpfs:
+      - /tmp:rw,exec,nosuid,size=256M
+      - /home/node/.cache:rw,noexec,nosuid,size=128M
+      - /.cache:rw,noexec,nosuid,size=128M
     # ---------- Environment -----------
     environment:
       # https://docs.linkwarden.app/self-hosting/environment-variables
       TZ: Europe/Berlin
+      
+      # Fix corepack permission issues
+      COREPACK_HOME: /tmp/corepack
 
       # MeiliSearch
       MEILI_HOST: http://meilisearch:7700
