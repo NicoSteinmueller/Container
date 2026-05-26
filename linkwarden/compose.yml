@@ -56,8 +56,6 @@ services:
 
       # MeiliSearch
       MEILI_HOST: http://meilisearch:7700
-      # Persist Playwright browsers to a bind-mounted path so worker restarts survive.
-      PLAYWRIGHT_BROWSERS_PATH: /data/data/ms-playwright
 
   postgres:
     # ------------ Identität ------------------------
