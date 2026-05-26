@@ -4,7 +4,7 @@ name: example
 services:
   example:
     # ------------ Identität ------------------------
-    image: nginx:alpine
+    image: nginx:alpine@sha256:8b1e78743a03dbb2c95171cc58639fef29abc8816598e27fb910ed2e621e589a
     # Name des Containers
     container_name: example
     # definiert einen custom Host Name für den Container, der innerhalb des Containers verwendet wird.
