@@ -18,12 +18,16 @@ services:
       timeout: 5s
 
     # ----------- Ressourcen -----------
-    cpus: 0.5
-    mem_limit: 256M
-    mem_reservation: 128M
-    memswap_limit: 512M
-    oom_kill_disable: true
-    pids_limit: 32
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: 256M
+          pids: 32
+        reservations:
+          cpus: 0.25
+          memory: 128M
+          pids: 10
     logging:
       driver: json-file
       options:
