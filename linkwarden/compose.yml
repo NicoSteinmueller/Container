@@ -51,6 +51,7 @@ services:
     tmpfs:
       - /tmp:rw,exec,nosuid,size=16M
       - /home/node/.cache:rw,noexec,nosuid,size=16M
+      - /data/apps:rw,noexec,nosuid,size=64M
     # ---------- Environment -----------
     environment:
       # https://docs.linkwarden.app/self-hosting/environment-variables
