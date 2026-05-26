@@ -1,0 +1,10 @@
+services:
+  whoami:
+    user: 1000:1000
+    ports:
+      - name: web
+        target: 80
+        published: 80
+        protocol: tcp
+        app_protocol: http
+        mode: host

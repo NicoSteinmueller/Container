@@ -1,0 +1,38 @@
+name: whoami
+
+services:
+  whoami:
+    # ------------ Identität ------------------------
+    image: traefik/whoami:v1.10.1
+    container_name: whoami
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure:3
+    stop_grace_period: 10s
+
+    # ----------- Ressourcen -----------
+    cpus: 0.1
+    mem_limit: 12M
+    mem_reservation: 6M
+    memswap_limit: 50M
+    oom_kill_disable: true
+    pids_limit: 16
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # ----------- Speicher -----------
+    read_only: true
+
+    # ---------- Environment -----------
+    environment:
+      TZ: Europe/Berlin

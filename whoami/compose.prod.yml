@@ -1,0 +1,16 @@
+services:
+  whoami:
+    user: 99:100
+    networks:
+      proxy:
+    labels:
+      traefik.enable: true
+      traefik.http.routers.whoami.rule: Host(`whoami.nico-steinmueller.de`)
+      traefik.http.routers.whoami.entrypoints: websecure
+      traefik.http.routers.whoami.middlewares: local-only@file
+      traefik.http.routers.whoami.service: whoami
+      traefik.http.services.whoami.loadbalancer.server.port: 80
+
+networks:
+  proxy:
+    external: true
