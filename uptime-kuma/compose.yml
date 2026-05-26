@@ -25,7 +25,7 @@ services:
           memory: 256M
           pids: 32
         reservations:
-          cpus: 0.25
+          cpus: 0.05
           memory: 128M
     logging:
       driver: json-file
