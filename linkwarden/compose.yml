@@ -66,14 +66,46 @@ services:
 
   # Init service to ensure Playwright browsers are installed into the bind-mounted data path.
   linkwarden-init:
+    # ------------ Identität ------------------------
     image: ghcr.io/linkwarden/linkwarden:v2.14.1@sha256:31cf4bd2a2e111991fa5c9de03174c8698869c83722105c6ce529e4c911e6861
     container_name: linkwarden_playwright_init
+    # ------------ Abhängigkeiten & Start -----------
     init: true
+    command: sh -lc 'if [ ! -d /data/data/ms-playwright ] || [ -z "$(ls -A /data/data/ms-playwright 2>/dev/null)" ]; then echo "Installing Playwright browsers..."; npx playwright install chromium || true; else echo "Playwright browsers already present"; fi'
     restart: no
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          # max. 0.5 Kerne der CPU
+          cpus: 1
+          # max. RAM Nutzung
+          memory: 1G
+          # begrenzt die Anzahl der Prozesse, die ausgeführt werden können
+          pids: 512
+        reservations:
+          # reservierte CPU-Kerne
+          cpus: 0.5
+          # reservierter RAM
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # ----------- Speicher --------------
+    read_only: true
+    tmpfs:
+      - /tmp:rw,exec,nosuid,size=512M
+    # ---------- Environment -----------
     environment:
       COREPACK_HOME: /tmp/corepack
       PLAYWRIGHT_BROWSERS_PATH: /data/data/ms-playwright
-    command: sh -lc 'if [ ! -d /data/data/ms-playwright ] || [ -z "$(ls -A /data/data/ms-playwright 2>/dev/null)" ]; then echo "Installing Playwright browsers..."; npx playwright install chromium || true; else echo "Playwright browsers already present"; fi'
 
   postgres:
     # ------------ Identität ------------------------
