@@ -39,10 +39,10 @@ services:
         max-file: 3
 
     # ----------- Sicherheit -----------
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
+#    security_opt:
+#      - no-new-privileges:true
+#    cap_drop:
+#      - ALL
 
     # ----------- Speicher -----------
 #    read_only: true

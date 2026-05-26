@@ -5,7 +5,7 @@ services:
     user: 99:100
     environment:
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      DATABASE_URL: postgresql://linkwarden:${POSTGRES_PASSWORD:-}@postgres:5432/linkwarden
+      DATABASE_URL: postgresql://linkwarden:${POSTGRES_PASSWORD}@postgres:5432/linkwarden
       # MeiliSearch
       MEILI_MASTER_KEY: ${MEILI_MASTER_KEY}
       # Authentifizierung
