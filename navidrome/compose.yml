@@ -18,12 +18,14 @@ services:
       start_period: 30s
 
     # ----------- Ressourcen -----------
-    cpus: 1.0
-    mem_limit: 256M
-    mem_reservation: 50M
-    memswap_limit: 512M
-    oom_kill_disable: true
-    pids_limit: 32
+    deploy:
+        resources:
+          limits:
+            cpus: 0.5
+            memory: 128M
+            pids: 16
+          reservations:
+            memory: 50M
     logging:
       driver: json-file
       options:
