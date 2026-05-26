@@ -19,6 +19,7 @@ services:
       KEYCLOAK_CLIENT_ID: linkwarden
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
     networks:
+      default:
       proxy:
     volumes:
       - type: bind

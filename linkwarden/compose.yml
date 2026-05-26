@@ -24,14 +24,14 @@ services:
         condition: service_healthy
 
     # ----------- Ressourcen -----------
-#    deploy:
-#      resources:
-#        limits:
-#          cpus: 1
-#          memory: 1280M
-##          pids: 374
-#        reservations:
-#          memory: 256M
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: 1280M
+          pids: 374
+        reservations:
+          memory: 256M
     logging:
       driver: json-file
       options:
@@ -39,11 +39,11 @@ services:
         max-file: 3
 
     # ----------- Sicherheit -----------
-#    security_opt:
-#      - no-new-privileges:true
-#    cap_drop:
-#      - ALL
-#
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
 #    # ----------- Speicher -----------
     read_only: true
     tmpfs:
