@@ -1,3 +1,4 @@
+# https://github.com/compose-spec/compose-spec/blob/main/spec.md
 # Project Name
 name: example
 
@@ -54,21 +55,26 @@ services:
 
 
     # ----------- Ressourcen -----------
-    # begrenzt die Anzahl der nutzbaren CPUs für den Service-Container
-    cpu_count: 1
-    # begrenzt die CPU-Nutzung auf 5% der verfügbaren CPU-Leistung
-    cpu_percent: 5
-    # max. RAM Nutzung
-    mem_limit: 100M
-    # reservierter RAM bei Start
-    mem_reservation: 50M
+    deploy:
+      resources:
+        limits:
+          # begrenzt die Anzahl der nutzbaren CPU-Kerne für den Service-Container
+          cpus: 0.5
+          # max. RAM Nutzung
+          memory: 100M
+          # begrenzt die Anzahl der Prozesse, die ausgeführt werden können
+          pids: 32
+        reservations:
+          # reservierte CPU-Kerne
+          cpus: 0.05
+          # reservierter RAM
+          memory: 50M
     # gesamter RAM --> 1G = 100M im RAM und 900M im Swap
     # 0 = ignoriert
     memswap_limit: 1G
     # Container darf bei RAM Mangel nicht automatisch getötet werden
+    # Sollte nicht genutzt werden, da es zu Instabilitäten führen kann, wenn der Container zu viel RAM verbraucht und das System insgesamt in Schwierigkeiten bringt.
     oom_kill_disable: true
-    # Priorität bei OOM Killer (niedriger Wert = höhere Priorität, Standard: 0, Bereich: -1000 bis 1000)
-    oom_score_adj: -100
     # begrenzt die Anzahl der Prozesse, die ausgeführt werden können
     pids_limit: 20
     # https://docs.docker.com/reference/cli/docker/container/run/#set-ulimits-in-container---ulimit
