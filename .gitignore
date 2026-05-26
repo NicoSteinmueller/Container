@@ -49,4 +49,5 @@ build/
 # Generic runtime data directories
 **/data/**
 !**/data/
-!**/data/.gitkeep
+!**/data/**/
+!**/data/**/.gitkeep

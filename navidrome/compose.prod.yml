@@ -1,0 +1,43 @@
+# Variablen
+# PASSWORDENCRYPTIONKEY: NICHT ÄNDERN! Fester Schlüssel zur Verschlüsselung von Passwörtern.
+
+services:
+  navidrome:
+    user: 99:100
+    environment:
+      ND_BASEURL: https://music.nico-steinmueller.de
+      # https://www.navidrome.org/docs/usage/admin/security/#encrypted-passwords
+      # Fester Schlüssel zur Verschlüsselung von Passwörtern in der navidrome.db.
+      ND_PASSWORDENCRYPTIONKEY: ${PASSWORDENCRYPTIONKEY}
+    networks:
+      proxy:
+    volumes:
+      - type: bind
+        source: /mnt/user/appdata/navidrome/data
+        target: /data
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/appdata/navidrome/backup
+        target: /backup
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/music
+        target: /music
+        read_only: true
+        bind:
+          create_host_path: false
+    labels:
+      traefik.enable: true
+      traefik.http.routers.navidrome.rule: Host(`music.nico-steinmueller.de`)
+      traefik.http.routers.navidrome.entrypoints: websecure
+      traefik.http.routers.navidrome.middlewares: crowdsec@file
+      traefik.http.routers.navidrome.service: navidrome
+      traefik.http.services.navidrome.loadbalancer.server.port: 4533
+
+networks:
+  proxy:
+    external: true

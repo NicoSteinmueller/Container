@@ -86,10 +86,11 @@ services:
     devices:
       - "/dev/ttyUSB0:/dev/ttyUSB0"
     # Read-Only-Dateisystem
-    # docker diff (https://tmp.bearblog.dev/secure-filesystem-in-docker/)
+    # docker diff container (https://tmp.bearblog.dev/secure-filesystem-in-docker/)
     # A - added file/directory
     # C - changed file/directory
     # D - deleted file/directory
+    # docker exec navidrome du -sh /data
     read_only: true
     # Mountet ein temporäres Dateisystem im Container
     # rw erlaubt Schreibzugriff

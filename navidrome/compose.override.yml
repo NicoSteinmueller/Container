@@ -1,0 +1,29 @@
+services:
+  navidrome:
+    user: 1000:1000
+    ports:
+      - name: web
+        target: 4533
+        published: 4533
+        protocol: tcp
+        app_protocol: http
+        mode: host
+    volumes:
+      - type: bind
+        source: ./data/data
+        target: /data
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/music
+        target: /music
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/backup
+        target: /backup
+        read_only: false
+        bind:
+          create_host_path: false

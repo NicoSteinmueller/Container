@@ -1,24 +1,51 @@
-# Env
-# - PASSWORDENCRYPTIONKEY
+name: navidrome
 
 services:
   navidrome:
+    # ------------ Identität ------------------------
     image: deluan/navidrome:0.61.2@sha256:9fa40b3d8dec43ceb2213d1fa551da3dcfef6ac6d19c2e534efb92527c2bafd2
     container_name: navidrome
-#    user: 1000:1000 # should be owner of volumes
-#    ports:
-#      - "4533:4533"
-    restart: unless-stopped
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure:3
+    stop_grace_period: 30s
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:4533/ping || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 30s
+
+    # ----------- Ressourcen -----------
+    cpus: 1.0
+    mem_limit: 256M
+    mem_reservation: 50M
+    memswap_limit: 512M
+    oom_kill_disable: true
+    pids_limit: 32
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # ----------- Speicher -----------
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+
+    # ---------- Environment -----------
     environment:
+      TZ: Europe/Berlin
       # https://www.navidrome.org/docs/usage/configuration/options/
       ND_LOGLEVEL: info
-      ND_BASEURL: https://music.nico-steinmueller.de
       # Anonymous Data Collection
       ND_ENABLEINSIGHTSCOLLECTOR: false
       ND_DEEZER_LANGUAGE: de
@@ -29,32 +56,12 @@ services:
       ND_ENABLEEXTERNALSERVICES: false
       ND_INSPECT_ENABLED: false
       ND_LASTFM_LANGUAGE: de
-      # https://www.navidrome.org/docs/usage/admin/security/#encrypted-passwords
-      # Darf nicht geändert werden.
-      ND_PASSWORDENCRYPTIONKEY: ${PASSWORDENCRYPTIONKEY}
-      # Prometheus Metrics unter /metrics evtl. blockieren
+      # TODO: Prometheus Metrics unter /metrics evtl. blockieren
       ND_PROMETHEUS_ENABLED: false
+      ND_DATAFOLDER: /data
+      ND_MUSICFOLDER: /music
       # ND_PROMETHEUS_PASSWORD
       # https://www.navidrome.org/docs/usage/admin/backup/
       ND_BACKUP_PATH: /backup
       ND_BACKUP_SCHEDULE: "0 0 * * *"
       ND_BACKUP_COUNT: 7
-    volumes:
-      # appdata
-      - /mnt/user/appdata/navidrome/data:/data
-      - /mnt/user/appdata/navidrome/backup:/backup
-      # data
-      - /mnt/user/data/music:/music:ro
-    networks:
-      - proxy
-    labels:
-      traefik.enable: true
-      traefik.http.routers.navidrome.rule: Host(`music.nico-steinmueller.de`)
-      traefik.http.routers.navidrome.entrypoints: websecure
-      traefik.http.routers.navidrome.middlewares: crowdsec@file
-      traefik.http.routers.navidrome.service: navidrome
-      traefik.http.services.navidrome.loadbalancer.server.port: 4533
-
-networks:
-  proxy:
-    external: true
