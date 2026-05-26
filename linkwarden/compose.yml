@@ -101,7 +101,7 @@ services:
     # ----------- Speicher --------------
     read_only: true
     tmpfs:
-      - /tmp:rw,exec,nosuid,size=512M
+      - /tmp:rw,noexec,nosuid,size=512M
     # ---------- Environment -----------
     environment:
       COREPACK_HOME: /tmp/corepack
