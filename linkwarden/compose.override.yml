@@ -51,4 +51,4 @@ services:
     environment:
       MEILI_MASTER_KEY: Password1234567!
     tmpfs:
-      - /meili_data:rw,noexec,nosuid,size=128M,uid=1000,gid=1000
+      - /meili_data:rw,noexec,nosuid,size=4M,uid=1000,gid=1000
