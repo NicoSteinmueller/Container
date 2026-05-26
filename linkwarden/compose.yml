@@ -47,9 +47,7 @@ services:
 #    # ----------- Speicher -----------
     read_only: true
     tmpfs:
-      - /tmp:rw,exec,nosuid,size=256M
       - /home/node/.cache:rw,noexec,nosuid,size=128M
-      - /.cache:rw,noexec,nosuid,size=128M
     # ---------- Environment -----------
     environment:
       # https://docs.linkwarden.app/self-hosting/environment-variables
