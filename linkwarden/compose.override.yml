@@ -1,0 +1,54 @@
+# Einstellungen für Development- und Testumgebungen
+
+services:
+  linkwarden:
+    user: 1000:1000
+    environment:
+      NEXTAUTH_SECRET: SomeRandomSecret1234567890
+      DATABASE_URL: postgresql://linkwarden:PASSWORD@postgres:5432/linkwarden
+      # MeiliSearch
+      MEILI_MASTER_KEY: Password1234567!
+      # Authentifizierung
+      NEXT_PUBLIC_DISABLE_REGISTRATION: false
+      NEXT_PUBLIC_CREDENTIALS_ENABLED: true
+    ports:
+      - name: web
+        target: 3000
+        host_ip: 127.0.0.1
+        published: 3000
+        protocol: tcp
+        app_protocol: http
+        mode: host
+    volumes:
+      - type: bind
+        source: ./data/linkwarden
+        target: /data/data
+        read_only: false
+        bind:
+          create_host_path: false
+
+  postgres:
+    user: 1000:1000
+    environment:
+      POSTGRES_PASSWORD: PASSWORD
+    ports:
+      - name: postgres
+        target: 5432
+        host_ip: 127.0.0.1
+        published: 5432
+        protocol: tcp
+        mode: host
+    volumes:
+      - type: bind
+        source: ./data/postgres
+        target: /var/lib/postgresql
+        read_only: false
+        bind:
+          create_host_path: false
+
+  meilisearch:
+    user: 1000:1000
+    environment:
+      MEILI_MASTER_KEY: Password1234567!
+    tmpfs:
+      - /meili_data:rw,noexec,nosuid,size=128M,uid=1000,gid=1000

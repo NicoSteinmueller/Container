@@ -1,0 +1,157 @@
+name: linkwarden
+
+services:
+  # https://github.com/linkwarden/linkwarden
+  linkwarden:
+    # ------------ Identität ------------------------
+    image: ghcr.io/linkwarden/linkwarden:v2.14.1@sha256:31cf4bd2a2e111991fa5c9de03174c8698869c83722105c6ce529e4c911e6861
+    container_name: linkwarden
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure:3
+    stop_grace_period: 30s
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fS http://localhost:3000/ || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: 1280M
+          pids: 374
+        reservations:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # ----------- Speicher -----------
+    read_only: true
+    tmpfs:
+      - /tmp:rw,exec,nosuid,size=4M
+      - /home/node/.cache:rw,noexec,nosuid,size=128M
+    # ---------- Environment -----------
+    environment:
+      # https://docs.linkwarden.app/self-hosting/environment-variables
+      TZ: Europe/Berlin
+
+      # MeiliSearch
+      MEILI_HOST: http://meilisearch:7700
+      # Persist Playwright browsers to a bind-mounted path so worker restarts survive.
+      PLAYWRIGHT_BROWSERS_PATH: /data/data/ms-playwright
+
+  postgres:
+    # ------------ Identität ------------------------
+    image: postgres:18.4-alpine3.23@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
+    container_name: linkwarden_postgres
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure:3
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U linkwarden -d linkwarden"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: 128M
+          pids: 32
+        reservations:
+          memory: 50M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # ----------- Speicher -----------
+    read_only: true
+    tmpfs:
+      - /run/postgresql:rw,noexec,nosuid,size=1M,mode=1777
+      - /tmp:rw,noexec,nosuid,size=16m
+
+    # ---------- Environment -----------
+    environment:
+      TZ: Europe/Berlin
+      POSTGRES_DB: linkwarden
+      POSTGRES_USER: linkwarden
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
+
+  # https://www.meilisearch.com/docs/guides/docker
+  meilisearch:
+    # ------------ Identität ------------------------
+    image: getmeili/meilisearch:v1.45.0@sha256:7fde2b22e9a7ccfe7551613a521fc1b3abdbec20fedbd9aa0fb8ff133cd83c5d
+    container_name: linkwarden_meilisearch
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure:3
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fS http://localhost:7700/health | grep -q '\"available\"' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: 256M
+          pids: 64
+        reservations:
+          memory: 70M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # ----------- Speicher -----------
+    read_only: true
+
+    # ---------- Environment -----------
+    environment:
+      TZ: Europe/Berlin
+      MEILI_ENV: production
+      MEILI_NO_ANALYTICS: true
