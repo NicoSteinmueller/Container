@@ -45,10 +45,10 @@ services:
       - ALL
 
     # ----------- Speicher -----------
-#    read_only: true
-#    tmpfs:
-#      - /tmp:rw,exec,nosuid,size=4M
-#      - /home/node/.cache:rw,noexec,nosuid,size=128M
+    read_only: true
+    tmpfs:
+      - /tmp:rw,exec,nosuid,size=4M
+      - /home/node/.cache:rw,noexec,nosuid,size=128M
     # ---------- Environment -----------
     environment:
       # https://docs.linkwarden.app/self-hosting/environment-variables
