@@ -27,7 +27,7 @@ services:
         limits:
           cpus: 1.5
           memory: 1500M
-#          pids: 350
+          pids: 350
         reservations:
           cpus: 0.1
           memory: 512M
@@ -44,7 +44,7 @@ services:
       - ALL
 
     # ----------- Speicher ---------------
-    # TODO: Probleme mit editierten Dateien
+    # Probleme mit editierten Dateien
     read_only: false
 
     # ---------- Environment -----------

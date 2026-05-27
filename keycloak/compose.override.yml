@@ -1,6 +1,5 @@
 services:
   keycloak:
-    user: 1000:1000
     command: start-dev
     environment:
       # Admin-Credentials
