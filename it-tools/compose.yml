@@ -1,0 +1,48 @@
+name: it-tools
+
+services:
+  it-tools:
+    # ------------ Identität ------------------------
+    image: ghcr.io/sharevb/it-tools:2026.1.4@sha256:6d335b5d6f7d28a540ef36c0ab2e20cbf7df2c0d8b7adb16585ccd3ebcfeed59
+    container_name: it-tools
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure:3
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fS http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: 64M
+          pids: 64
+        reservations:
+          memory: 10M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # ----------- Speicher -----------
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1m
+
+    # ---------- Environment -----------
+    environment:
+      TZ: Europe/Berlin
