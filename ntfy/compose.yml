@@ -24,11 +24,11 @@ services:
       resources:
         limits:
           cpus: 0.5
-          memory: 128M
+          memory: 64M
           pids: 32
         reservations:
           cpus: 0.05
-          memory: 30M
+          memory: 20M
     logging:
       driver: json-file
       options:
