@@ -1,0 +1,43 @@
+services:
+  ntfy:
+    user: 99:100
+    networks:
+      proxy:
+    volumes:
+      - type: bind
+        source: /mnt/user/appdata/ntfy/lib
+        target: /var/lib/ntfy
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/appdata/ntfy/cache
+        target: /var/cache/ntfy
+        read_only: false
+        bind:
+          create_host_path: false
+    environment:
+      NTFY_BASE_URL: https://ntfy.nico-steinmueller.de
+      # USER Format: <user>:<bcrypt-hash>:<role>
+      #   Rollen: admin | user
+      #   Hinweis: In docker-compose müssen `$` im bcrypt Hash als `$$` escaped werden.
+      #   Beispiel:
+      #     USER=test:$$2a$$12$$...:admin
+      NTFY_AUTH_USERS: ${USER}
+      # ACCESS Format: <user>:<topic>:<permissions>
+      #   Topic: `*` als Wildcard (z.B. test:*:ro)
+      #   Permissions: rw | ro | wo | none
+      #   Beispiel:
+      #     ACCESS=test:*:rw
+      NTFY_AUTH_ACCESS: ${ACCESS}
+    labels:
+      traefik.enable: true
+      traefik.http.routers.ntfy.rule: Host(`ntfy.nico-steinmueller.de`)
+      traefik.http.routers.ntfy.entrypoints: websecure
+      traefik.http.routers.ntfy.middlewares: crowdsec@file
+      traefik.http.routers.ntfy.service: ntfy
+      traefik.http.services.ntfy.loadbalancer.server.port: 80
+
+networks:
+  proxy:
+    external: true

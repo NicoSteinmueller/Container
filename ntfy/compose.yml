@@ -1,0 +1,59 @@
+name: ntfy
+
+services:
+  ntfy:
+    # ------------ Identität ------------------------
+    image: binwiederhier/ntfy:v2.23.0@sha256:b32b4221a64ec2e7c000f0782b2feef24022e1a09a24e531640f4cbba6cfa1e6
+    container_name: ntfy
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure:3
+    stop_grace_period: 30s
+    command:
+      - serve
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --tries=1 http://localhost:80/v1/health -O - | grep -Eo '\"healthy\"\\s*:\\s*true' || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: 128M
+          pids: 32
+        reservations:
+          cpus: 0.05
+          memory: 30M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # ----------- Speicher -----------
+    read_only: true
+
+    # ---------- Environment -----------
+    environment:
+      TZ: Europe/Berlin
+      # https://docs.ntfy.sh/config/
+      NTFY_BEHIND_PROXY: true
+      NTFY_AUTH_FILE: /var/lib/ntfy/auth.db
+      NTFY_AUTH_DEFAULT_ACCESS: deny-all
+      NTFY_ATTACHMENT_CACHE_DIR: /var/cache/ntfy/attachments
+      NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
+      NTFY_CACHE_DURATION: 30d
+      NTFY_ATTACHMENT_FILE_SIZE_LIMIT: 50M
+      NTFY_ATTACHMENT_TOTAL_SIZE_LIMIT: 20G
+      NTFY_ATTACHMENT_EXPIRY_DURATION: 30d

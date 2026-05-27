@@ -1,0 +1,37 @@
+services:
+  ntfy:
+    user: 1000:1000
+    ports:
+      - name: http
+        target: 80
+        published: 8080
+        protocol: tcp
+        app_protocol: http
+        mode: host
+    volumes:
+      - type: bind
+        source: ./data/lib
+        target: /var/lib/ntfy
+        read_only: false
+        bind:
+          create_host_path: true
+      - type: bind
+        source: ./data/cache
+        target: /var/cache/ntfy
+        read_only: false
+        bind:
+          create_host_path: true
+    environment:
+      NTFY_BASE_URL: http://localhost:80
+      # USER Format: <user>:<bcrypt-hash>:<role>
+      #   Rollen: admin | user
+      #   Hinweis: In docker-compose müssen `$` im bcrypt Hash als `$$` escaped werden.
+      #   Beispiel:
+      #     USER=test:$$2a$$12$$...:admin
+      NTFY_AUTH_USERS: admin:$$2b$$12$$j1tBG.rv8YBRodp3KnF2AOh60/DrOgjXrhVOEpaCG8NW9OP1YRn5W:admin,test:$$2b$$12$$YyZ9xr792yFwmSQAU9Tadesu6tuvj2C5e/mQJI13TAxOxy/Qj8waS:user
+      # ACCESS Format: <user>:<topic>:<permissions>
+      #   Topic: `*` als Wildcard (z.B. test:*:ro)
+      #   Permissions: rw | ro | wo | none
+      #   Beispiel:
+      #     ACCESS=test:*:rw
+      NTFY_AUTH_ACCESS: test:*:rw
