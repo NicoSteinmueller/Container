@@ -1,10 +1,5 @@
 services:
   keycloak:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: keycloak:26.6.2-user99
-    user: 99:100
     networks:
       default:
       proxy:
