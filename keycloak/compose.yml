@@ -22,15 +22,15 @@ services:
         condition: service_healthy
 
     # ----------- Ressourcen -----------
-#    deploy:
-#      resources:
-#        limits:
-#          cpus: 1.5
-#          memory: 1500M
-##          pids: 350
-#        reservations:
-#          cpus: 0.1
-#          memory: 512M
+    deploy:
+      resources:
+        limits:
+          cpus: 1.5
+          memory: 1500M
+#          pids: 350
+        reservations:
+          cpus: 0.1
+          memory: 512M
     logging:
       driver: json-file
       options:
@@ -38,10 +38,10 @@ services:
         max-file: 3
 
     # ----------- Sicherheit -----------
-#    security_opt:
-#      - no-new-privileges:true
-#    cap_drop:
-#      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
     # ----------- Speicher ---------------
     # TODO: Probleme mit editierten Dateien
