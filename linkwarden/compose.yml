@@ -147,7 +147,8 @@ services:
     # ----------- Speicher -----------
     read_only: true
     tmpfs:
-      - /run/postgresql:rw,noexec,nosuid,size=1M,mode=1777
+      - /run/postgresql:rw,exec,nosuid,size=32M,mode=1777
+      - /tmp:rw,noexec,nosuid,size=32M
 
     # ---------- Environment -----------
     environment:

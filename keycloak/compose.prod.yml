@@ -1,0 +1,56 @@
+services:
+  keycloak:
+    user: 99:100
+    networks:
+      default:
+      proxy:
+    environment:
+      # Admin-Credentials
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+
+      # Proxy-Konfiguration für Traefik
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: true
+      KC_HOSTNAME_STRICT: true
+      KC_HOSTNAME: keycloak.nico-steinmueller.de
+      KC_PROXY-HEADERS: xforwarded
+
+      # Datenbank-Konfiguration (PostgreSQL)
+      KC_DB_PASSWORD: ${DB_PASSWORD}
+
+    labels:
+      traefik.enable: true
+
+      # Router für administrative Pfade - nur lokal erreichbar
+      traefik.http.routers.keycloak-admin.rule: Host(`keycloak.nico-steinmueller.de`) && (PathPrefix(`/admin`) || PathPrefix(`/realms/master`))
+      traefik.http.routers.keycloak-admin.entrypoints: websecure
+      traefik.http.routers.keycloak-admin.priority: 100
+      traefik.http.routers.keycloak-admin.middlewares: local-only@file, compress@file
+      traefik.http.routers.keycloak-admin.service: keycloak
+
+      # Router für alle anderen Pfade - öffentlich erreichbar
+      traefik.http.routers.keycloak-public.rule: Host(`keycloak.nico-steinmueller.de`)
+      traefik.http.routers.keycloak-public.entrypoints: websecure
+      traefik.http.routers.keycloak-public.priority: 50
+      traefik.http.routers.keycloak-public.middlewares: crowdsec@file, compress@file
+      traefik.http.routers.keycloak-public.service: keycloak
+
+      # Service Definition (beide Router nutzen denselben Service)
+      traefik.http.services.keycloak.loadbalancer.server.port: 8080
+
+  database:
+    user: 99:100
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - type: bind
+        source: /mnt/user/appdata/keycloak/postgres
+        target: /var/lib/postgresql
+        read_only: false
+        bind:
+          create_host_path: false
+
+networks:
+  proxy:
+    external: true

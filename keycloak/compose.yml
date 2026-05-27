@@ -1,0 +1,112 @@
+name: keycloak
+
+services:
+  keycloak:
+    # ------------ Identität ------------------------
+    image: quay.io/keycloak/keycloak:26.6.2@sha256:5afd40414096432903a5374ba4ba70b931dcca598a6bd9f44239fe66ef8d9737
+    container_name: keycloak
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    command: start
+    restart: on-failure:3
+    stop_grace_period: 1m
+    healthcheck:
+      test: ["CMD-SHELL", "(exec 3<>/dev/tcp/localhost/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && timeout 2 cat <&3) | head -1 | grep -q 200"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      database:
+        condition: service_healthy
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 1.5
+          memory: 1G
+          pids: 350
+        reservations:
+          cpus: 0.1
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # ----------- Speicher ---------------
+    # TODO: Probleme mit editierten Dateien
+    read_only: false
+
+    # ---------- Environment -----------
+    environment:
+      TZ: Europe/Berlin
+
+      # Datenbank-Konfiguration (PostgreSQL)
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://database:5432/keycloak
+      KC_DB_USERNAME: keycloak
+
+      # Health und Metrics
+      # Health-Checks sind standardmäßig auf Port 9000 (Management Interface)
+      # Falls benötigt, kann mit --health-enabled=true beim Build aktiviert werden
+      KC_HEALTH_ENABLED: true
+      KC_METRICS_ENABLED: true
+
+  database:
+    # ------------ Identität ------------------------
+    image: postgres:18.4-alpine3.23@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
+    container_name: keycloak_postgres
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure:3
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: 128M
+          pids: 32
+        reservations:
+          memory: 50M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # ----------- Speicher -----------
+    read_only: true
+    tmpfs:
+      - /run/postgresql:rw,exec,nosuid,size=32M,mode=1777
+      - /tmp:rw,noexec,nosuid,size=32M
+
+    # ---------- Environment -----------
+    environment:
+      TZ: Europe/Berlin
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak

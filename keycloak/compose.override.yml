@@ -1,0 +1,31 @@
+services:
+  keycloak:
+    user: 1000:1000
+    command: start-dev
+    environment:
+      # Admin-Credentials
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+
+      # Datenbank-Konfiguration (PostgreSQL)
+      KC_DB_PASSWORD: PASSWORD
+    ports:
+      - name: web
+        target: 8080
+        host_ip: 127.0.0.1
+        published: 8080
+        protocol: tcp
+        app_protocol: http
+        mode: host
+
+  database:
+    user: 1000:1000
+    environment:
+      POSTGRES_PASSWORD: PASSWORD
+    volumes:
+      - type: bind
+        source: ./data/postgres
+        target: /var/lib/postgresql
+        read_only: false
+        bind:
+          create_host_path: false
