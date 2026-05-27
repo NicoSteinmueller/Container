@@ -3,7 +3,12 @@ name: keycloak
 services:
   keycloak:
     # ------------ Identität ------------------------
-    image: quay.io/keycloak/keycloak:26.6.2@sha256:5afd40414096432903a5374ba4ba70b931dcca598a6bd9f44239fe66ef8d9737
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        UID: 1000
+        GID: 1000
     container_name: keycloak
 
     # ------------ Abhängigkeiten & Start -----------

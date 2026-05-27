@@ -1,5 +1,12 @@
 services:
   keycloak:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        UID: 99
+        GID: 100
+    user: 99:100
     networks:
       default:
       proxy:

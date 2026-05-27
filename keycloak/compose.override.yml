@@ -1,5 +1,12 @@
 services:
   keycloak:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        UID: 1000
+        GID: 1000
+    user: 1000:1000
     command: start-dev
     environment:
       # Admin-Credentials
