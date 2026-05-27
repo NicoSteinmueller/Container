@@ -1,0 +1,128 @@
+services:
+  adguard:
+    # Muss als root laufen, da sonst der Start blockiert wird
+    networks:
+      bond0:
+        ipv4_address: 192.168.178.4
+      proxy:
+    ports:
+      # DNS (UDP + TCP)
+      - name: dns-udp
+        target: 53
+        host_ip: 127.0.0.1
+        published: 53
+        protocol: udp
+        app_protocol: dns
+        mode: host
+      - name: dns-tcp
+        target: 53
+        host_ip: 127.0.0.1
+        published: 53
+        protocol: tcp
+        app_protocol: dns
+        mode: host
+      # DHCP Server
+      - name: dhcp-bootps
+        target: 67
+        host_ip: 127.0.0.1
+        published: 67
+        protocol: udp
+        mode: host
+      - name: dhcp-bootpc-tcp
+        target: 68
+        host_ip: 127.0.0.1
+        published: 68
+        protocol: tcp
+        mode: host
+      - name: dhcp-bootpc-udp
+        target: 68
+        host_ip: 127.0.0.1
+        published: 68
+        protocol: udp
+        mode: host
+      # Https/DNS-over-HTTPS (DoH)
+      #      - name: https
+      #        target: 443
+      #        host_ip: 127.0.0.1
+      #        published: 443
+      #        protocol: tcp
+      #        app_protocol: https
+      #        mode: host
+      #      - name: doh-udp
+      #        target: 443
+      #        host_ip: 127.0.0.1
+      #        published: 443
+      #        protocol: udp
+      #        mode: host
+      # DNS-over-TLS (DoT)
+      - name: dot-tcp
+        target: 853
+        host_ip: 127.0.0.1
+        published: 853
+        protocol: tcp
+        app_protocol: dns
+        mode: host
+      #      # DNS-over-QUIC (DoQ)
+      #      - name: doq
+      #        target: 784
+      #        host_ip: 127.0.0.1
+      #        published: 784
+      #        protocol: udp
+      #        mode: host
+      - name: dot-udp
+        target: 853
+        host_ip: 127.0.0.1
+        published: 853
+        protocol: udp
+        app_protocol: dns
+        mode: host
+      #      - name: doq-alt
+      #        target: 8853
+      #        host_ip: 127.0.0.1
+      #        published: 8853
+      #        protocol: udp
+      #        mode: host
+      # DNSCrypt
+      - name: dnscrypt-udp
+        target: 5443
+        host_ip: 127.0.0.1
+        published: 5443
+        protocol: udp
+        mode: host
+      - name: dnscrypt-tcp
+        target: 5443
+        host_ip: 127.0.0.1
+        published: 5443
+        protocol: tcp
+        mode: host
+    volumes:
+      - type: bind
+        source: /mnt/user/appdata/adguard
+        target: /opt/adguardhome/conf
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/logs/adguard
+        target: /opt/adguardhome/work
+        read_only: false
+        bind:
+          create_host_path: false
+    labels:
+      traefik.enable: true
+      # Router
+      traefik.http.routers.adguard.rule: Host(`adguard.local.nico-steinmueller.de`)
+      traefik.http.routers.adguard.entrypoints: websecure
+      traefik.http.routers.adguard.middlewares: local-only@file
+      traefik.http.routers.adguard.service: adguard
+      # Service → Web-UI auf Port 80
+      traefik.http.services.adguard.loadbalancer.server.port: 80
+
+networks:
+  bond0:
+    external: true
+    ipam:
+      config:
+        - subnet: 192.168.178.0/24
+  proxy:
+    external: true

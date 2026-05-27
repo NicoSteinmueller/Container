@@ -1,0 +1,50 @@
+name: adguard
+
+services:
+  adguard:
+    # ------------ Identität ------------------------
+    image: adguard/adguardhome:v0.107.76@sha256:7157eb1dc3b26c7af1d6898759a7b3f7d0fa09891fbd2d3caa6abc1057a9179b
+    container_name: adguard
+
+    # ------------ Abhängigkeiten & Start -----------
+    restart: on-failure
+    init: true
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: 512M
+          pids: 100
+        reservations:
+          cpus: 0.1
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - NET_RAW
+      - NET_ADMIN
+
+    # ----------- Speicher -----------
+    read_only: false
+
+    environment:
+      TZ: Europe/Berlin

@@ -1,0 +1,32 @@
+services:
+  adguard:
+    ports:
+      # Zum initialen Einrichten
+      - name: web
+        target: 3000
+        host_ip: 127.0.0.1
+        published: 3000
+        protocol: tcp
+        app_protocol: http
+        mode: host
+      - name: web
+        target: 80
+        host_ip: 127.0.0.1
+        published: 8080
+        protocol: tcp
+        app_protocol: http
+        mode: host
+
+    volumes:
+      - type: bind
+        source: ./data/conf
+        target: /opt/adguardhome/conf
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/logs
+        target: /opt/adguardhome/work
+        read_only: false
+        bind:
+          create_host_path: false
