@@ -90,6 +90,8 @@ services:
       traefik.tcp.services.sftpgo-sftp.loadbalancer.server.port: 2022
       traefik.tcp.services.sftpgo-sftp.loadbalancer.serversTransport: sftpgo-sftp-transport
 
+      traefik.tcp.serversTransports.sftpgo-sftp-transport.proxyProtocol.version: 2
+
   database:
     user: 99:100
     environment:
