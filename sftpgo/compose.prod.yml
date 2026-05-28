@@ -38,7 +38,7 @@ services:
       # OIDC Role Feld im ID Token, notwendig für Admin OIDC-Nutzung
       SFTPGO_HTTPD__BINDINGS__0__OIDC__ROLE_FIELD: sftpgo_role
       # Logging Level (debug, info, warn, error)
-      SFTPGO_LOG_LEVEL: info
+      SFTPGO_LOG_LEVEL: debug
     networks:
       default:
       proxy:
