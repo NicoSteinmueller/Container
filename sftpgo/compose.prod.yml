@@ -85,7 +85,8 @@ services:
       # HostSNI(`*`) ist erforderlich, da ohne TLS kein SNI verfügbar ist.
       traefik.tcp.routers.sftpgo-sftp.rule: HostSNI(`*`)
       traefik.tcp.routers.sftpgo-sftp.entrypoints: sftpgo
-      traefik.tcp.routers.sftpgo-sftp.service: sftpgo-sftp@docker
+      traefik.tcp.routers.sftpgo-sftp.service: sftpgo-sftp
+      traefik.tcp.routers.sftpgo-sftp.tls: "false"
       traefik.tcp.services.sftpgo-sftp.loadbalancer.server.port: 2022
       traefik.tcp.services.sftpgo-sftp.loadbalancer.proxyProtocol.version: 2
 
