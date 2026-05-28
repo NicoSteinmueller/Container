@@ -48,7 +48,7 @@ services:
       - DAC_OVERRIDE
 
     # ----------- Speicher -----------
-    read_only: true
+    read_only: false
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
 
