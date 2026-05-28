@@ -1,0 +1,56 @@
+services:
+  immich:
+    user: 1000:1000
+    environment:
+      DB_PASSWORD: postgres
+    ports:
+      - name: http
+        target: 2283
+        published: 2283
+        protocol: tcp
+        app_protocol: http
+        mode: host
+    volumes:
+      - type: bind
+        source: ./data/immich
+        target: /data
+        read_only: false
+        bind:
+          create_host_path: false
+
+  immich-machine-learning:
+    user: 1000:1000
+    volumes:
+      - type: bind
+        source: ./data/machine-learning/cache
+        target: /cache
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/machine-learning/.cache
+        target: /.cache
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/machine-learning/.config
+        target: /.config
+        read_only: false
+        bind:
+          create_host_path: false
+
+  redis:
+    user: 1000:1000
+
+  database:
+    user: 1000:1000
+    environment:
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - type: bind
+        source: ./data/postgres
+        target: /var/lib/postgresql
+        read_only: false
+        bind:
+          create_host_path: false

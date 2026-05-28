@@ -1,0 +1,67 @@
+services:
+  immich:
+    user: 99:100
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD}
+    networks:
+      default:
+      proxy:
+    volumes:
+      - type: bind
+        source: /mnt/user/data/immich/media
+        target: /data
+        read_only: false
+        bind:
+          create_host_path: false
+    labels:
+      traefik.enable: true
+      traefik.http.routers.immich.rule: Host(`immich.nico-steinmueller.de`)
+      traefik.http.routers.immich.entrypoints: websecure
+      traefik.http.routers.immich.middlewares: crowdsec-appsec@file, compress@file
+      traefik.http.routers.immich.service: immich
+
+      traefik.http.services.immich.loadbalancer.server.port: 2283
+      traefik.http.services.immich.loadbalancer.responseForwarding.flushInterval: 100ms
+      traefik.http.services.immich.loadbalancer.passHostHeader: true
+      traefik.http.services.immich.loadbalancer.serversTransport: long-timeout@file
+
+  immich-machine-learning:
+    user: 99:100
+    volumes:
+      - type: bind
+        source: /mnt/user/appdata/immich/machine-learning/cache
+        target: /cache
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/appdata/immich/machine-learning/.cache
+        target: /.cache
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/appdata/immich/machine-learning/.config
+        target: /.config
+        read_only: false
+        bind:
+          create_host_path: false
+
+  redis:
+    user: 99:100
+
+  database:
+    user: 99:100
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - type: bind
+        source: /mnt/user/appdata/immich/postgres
+        target: /var/lib/postgresql
+        read_only: false
+        bind:
+          create_host_path: false
+
+networks:
+  proxy:
+    external: true
