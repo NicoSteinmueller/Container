@@ -44,7 +44,7 @@ services:
       proxy:
     volumes:
       - type: bind
-        source: /mnt/user/appdata/sftpgo
+        source: /mnt/user/appdata/sftpgo/lib
         target: /var/lib/sftpgo
         read_only: false
         bind:
