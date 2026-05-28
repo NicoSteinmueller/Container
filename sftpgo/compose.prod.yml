@@ -88,9 +88,10 @@ services:
       traefik.tcp.routers.sftpgo-sftp.service: sftpgo-sftp
       traefik.tcp.routers.sftpgo-sftp.tls: "false"
       traefik.tcp.services.sftpgo-sftp.loadbalancer.server.port: 2022
-      traefik.tcp.services.sftpgo-sftp.loadbalancer.serversTransport: sftpgo-sftp-transport
+#      traefik.tcp.services.sftpgo-sftp.loadbalancer.serversTransport: sftpgo-sftp-transport
 
-      traefik.tcp.serversTransports.sftpgo-sftp-transport.proxyProtocol.version: 2
+#
+#      traefik.tcp.serversTransports.sftpgo-sftp-transport.proxyProtocol.version: 2
 
   database:
     user: 99:100
