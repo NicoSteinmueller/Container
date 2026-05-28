@@ -192,11 +192,11 @@ services:
       # Proxy Mode
       #   0 = deaktiviert (Standard)
       #   1 = Einstellung aus Common Section verwenden
-      SFTPGO_HTTPD__BINDINGS__0__PROXY_MODE: 1
+      SFTPGO_HTTPD__BINDINGS__0__PROXY_MODE: 0
       # Liste erlaubter Proxy-IPs für dieses Binding (optional, überschreibt Common-Einstellung)
-      SFTPGO_HTTPD__BINDINGS__0__PROXY_ALLOWED: 172.16.0.0/12
+#      SFTPGO_HTTPD__BINDINGS__0__PROXY_ALLOWED: 172.16.0.0/12
       # Header, der die echte Client-IP enthält (z.B. X-Forwarded-For, X-Real-IP, CF-Connecting-IP)
-      SFTPGO_HTTPD__BINDINGS__0__CLIENT_IP_PROXY_HEADER: X-Forwarded-For
+#      SFTPGO_HTTPD__BINDINGS__0__CLIENT_IP_PROXY_HEADER: X-Forwarded-For
       # Anzahl der vertrauenswürdigen Proxies (von rechts gezählt)
       # 1 = nur letzter Proxy ist vertrauenswürdig (Standard für NPM)
       # 2+ = mehrere Proxies in der Kette
