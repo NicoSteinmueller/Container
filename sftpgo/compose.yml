@@ -330,9 +330,6 @@ services:
     cap_drop:
       - ALL
 
-    # ----------- Speicher -----------
-    shm_size: 64mb
-
     # ---------- Environment -----------
     environment:
       POSTGRES_USER: sftpgo
