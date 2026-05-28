@@ -48,7 +48,7 @@ services:
       - DAC_OVERRIDE
 
     # ----------- Speicher -----------
-    read_only: false
+    read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
 
@@ -71,14 +71,14 @@ services:
       #   1 = aktiviert. Proxy Header wird versucht zu lesen, aber ignoriert wenn upstream IP nicht erlaubt ist
       #   2 = erforderlich. Verbindung wird abgelehnt wenn upstream IP nicht erlaubt ist aber Proxy Header gefunden wird
       # Traefik sendet kein PROXY Protocol über HTTP-Backends
-      SFTPGO_COMMON__PROXY_PROTOCOL: 0
+      SFTPGO_COMMON__PROXY_PROTOCOL: 1
       # Liste erlaubter Proxy-IPs (Kommasepariert).
       # 172.16.0.0/12 = alle Docker-Standard-Netzwerke (172.16.0.0 bis 172.31.255.255)
       # Kann überschrieben werden mit PROXY_ALLOWED Umgebungsvariable
       SFTPGO_COMMON__PROXY_ALLOWED: 172.16.0.0/12
       # IPs, die von Proxy-Checks übersprungen werden sollen (optional)
       # Localhost (::1, 127.0.0.1) überspringen für Healthchecks
-#      SFTPGO_COMMON__PROXY_SKIPPED: ::1,127.0.0.1
+      SFTPGO_COMMON__PROXY_SKIPPED: ::1,127.0.0.1
       # Maximale Anzahl gleichzeitiger Verbindungen (0 = unbegrenzt)
       SFTPGO_COMMON__MAX_TOTAL_CONNECTIONS: 300
       # Maximale Anzahl gleichzeitiger Verbindungen pro Host (0 = unbegrenzt)
@@ -192,11 +192,11 @@ services:
       # Proxy Mode
       #   0 = deaktiviert (Standard)
       #   1 = Einstellung aus Common Section verwenden
-      SFTPGO_HTTPD__BINDINGS__0__PROXY_MODE: 0
+      SFTPGO_HTTPD__BINDINGS__0__PROXY_MODE: 1
       # Liste erlaubter Proxy-IPs für dieses Binding (optional, überschreibt Common-Einstellung)
-#      SFTPGO_HTTPD__BINDINGS__0__PROXY_ALLOWED: 172.16.0.0/12
+      SFTPGO_HTTPD__BINDINGS__0__PROXY_ALLOWED: 172.16.0.0/12
       # Header, der die echte Client-IP enthält (z.B. X-Forwarded-For, X-Real-IP, CF-Connecting-IP)
-#      SFTPGO_HTTPD__BINDINGS__0__CLIENT_IP_PROXY_HEADER: X-Forwarded-For
+      SFTPGO_HTTPD__BINDINGS__0__CLIENT_IP_PROXY_HEADER: X-Forwarded-For
       # Anzahl der vertrauenswürdigen Proxies (von rechts gezählt)
       # 1 = nur letzter Proxy ist vertrauenswürdig (Standard für NPM)
       # 2+ = mehrere Proxies in der Kette

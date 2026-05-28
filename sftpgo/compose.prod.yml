@@ -38,7 +38,7 @@ services:
       # OIDC Role Feld im ID Token, notwendig für Admin OIDC-Nutzung
       SFTPGO_HTTPD__BINDINGS__0__OIDC__ROLE_FIELD: sftpgo_role
       # Logging Level (debug, info, warn, error)
-      SFTPGO_LOG_LEVEL: debug
+      SFTPGO_LOG_LEVEL: info
     networks:
       default:
       proxy:
@@ -87,7 +87,7 @@ services:
       traefik.tcp.routers.sftpgo-sftp.entrypoints: sftpgo
       traefik.tcp.routers.sftpgo-sftp.service: sftpgo-sftp
       traefik.tcp.services.sftpgo-sftp.loadbalancer.server.port: 2022
-#      traefik.tcp.services.sftpgo-sftp.loadbalancer.proxyProtocol.version: 2
+      traefik.tcp.services.sftpgo-sftp.loadbalancer.proxyProtocol.version: 2
 
   database:
     user: 99:100
