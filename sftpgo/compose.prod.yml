@@ -1,0 +1,106 @@
+# Einstellungen für die Produktion
+
+services:
+  sftpgo:
+    user: 99:100
+    environment:
+      SFTPGO_DATA_PROVIDER__PASSWORD: ${DB_PASSWORD}
+      # Loginmethoden
+      #   0 = alle Methoden aktiviert (Standard)
+      #   1 = OIDC für WebAdmin UI deaktiviert
+      #   2 = OIDC für WebClient UI deaktiviert
+      #   4 = Login-Formular für WebAdmin UI deaktiviert
+      #   8 = Login-Formular für WebClient UI deaktiviert
+      #   16 = Admin Token Endpoint für REST API deaktiviert
+      #   32 = User Token Endpoint für REST API deaktiviert
+      #   64 = Admin API Key Login deaktiviert
+      #   128 = User API Key Login deaktiviert
+      #   Werte können kombiniert werden, z.B.:
+      #   12 (4+8) = Login-Formulare für WebAdmin und WebClient deaktiviert (nur OIDC)
+      #   252 (4+8+16+32+64+128) = nur OIDC-Login erlaubt
+      #   Empfehlung: 0 wenn OIDC nicht konfiguriert ist
+      SFTPGO_HTTPD__BINDINGS__0__DISABLED_LOGIN_METHODS: 252
+      # --------------------------------------------------------
+      # OpenID Einstellungen (optional - bei Bedarf aktivieren)
+      # OIDC URL (z.B. Keycloak, Google, etc.)
+      # https://keycloak.example.com/realms/myrealm + automatisch hinzugefügt ".well-known/openid-configuration"
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__CONFIG_URL: https://keycloak.nico-steinmueller.de/realms/mein-realm
+      # OIDC Client ID
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__CLIENT_ID: sftpgo
+      # OIDC Client Secret
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      # SFTPGo Redirect URL (suffix /web/oidc/redirect wird automatisch hinzugefügt)
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__REDIRECT_BASE_URL: https://sftpgo.nico-steinmueller.de
+      # OIDC Username Feld im ID Token
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__USERNAME_FIELD: preferred_username
+      # OIDC Scopes, die angefordert werden
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__SCOPES: openid,profile,email
+      # OIDC Role Feld im ID Token, notwendig für Admin OIDC-Nutzung
+      SFTPGO_HTTPD__BINDINGS__0__OIDC__ROLE_FIELD: sftpgo_role
+      # Logging Level (debug, info, warn, error)
+      SFTPGO_LOG_LEVEL: info
+    networks:
+      default:
+      proxy:
+    volumes:
+      - type: bind
+        source: /mnt/user/appdata/sftpgo
+        target: /var/lib/sftpgo
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/sftpgo/data
+        target: /srv/sftpgo/data
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/sftpgo/backups
+        target: /srv/sftpgo/backups
+        read_only: false
+        bind:
+          create_host_path: false
+
+    labels:
+      traefik.enable: "true"
+
+      # HTTP Router für Admin Interface (lokal erreichbar)
+      traefik.http.routers.sftpgo-admin.rule: Host(`sftpgo.nico-steinmueller.de`) && PathPrefix(`/web/admin`)
+      traefik.http.routers.sftpgo-admin.entrypoints: websecure
+      traefik.http.routers.sftpgo-admin.priority: 100
+      traefik.http.routers.sftpgo-admin.middlewares: local-only@file, compress@file
+      traefik.http.routers.sftpgo-admin.service: sftpgo-web
+
+      # HTTP Router für WebClient
+      traefik.http.routers.sftpgo-web.rule: Host(`sftpgo.nico-steinmueller.de`)
+      traefik.http.routers.sftpgo-web.entrypoints: websecure
+      traefik.http.routers.sftpgo-web.priority: 50
+      traefik.http.routers.sftpgo-web.middlewares: crowdsec@file, compress@file
+      traefik.http.routers.sftpgo-web.service: sftpgo-web
+      traefik.http.services.sftpgo-web.loadbalancer.server.port: 8080
+
+      # TCP Router für SFTP
+      # SFTP nutzt SSH (eigene Verschlüsselung), daher KEIN TLS auf Traefik-Ebene!
+      # HostSNI(`*`) ist erforderlich, da ohne TLS kein SNI verfügbar ist.
+      traefik.tcp.routers.sftpgo-sftp.rule: HostSNI(`*`)
+      traefik.tcp.routers.sftpgo-sftp.entrypoints: sftpgo
+      traefik.tcp.routers.sftpgo-sftp.service: sftpgo-sftp
+      traefik.tcp.services.sftpgo-sftp.loadbalancer.server.port: 2022
+      traefik.tcp.services.sftpgo-sftp.loadbalancer.proxyProtocol.version: 2
+
+  database:
+    user: 99:100
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - type: bind
+        source: /mnt/user/appdata/sftpgo/postgres
+        target: /var/lib/postgresql
+        read_only: false
+        bind:
+          create_host_path: false
+
+networks:
+  proxy:
+    external: true

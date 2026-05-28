@@ -1,0 +1,73 @@
+# Einstellungen für Development- und Testumgebungen
+
+services:
+  sftpgo:
+    user: 1000:1000
+    environment:
+      # Datenbank-Passwort
+      SFTPGO_DATA_PROVIDER__PASSWORD: PASSWORD
+      # Loginmethoden
+      #   0 = alle Methoden aktiviert (Standard)
+      #   1 = OIDC für WebAdmin UI deaktiviert
+      #   2 = OIDC für WebClient UI deaktiviert
+      #   4 = Login-Formular für WebAdmin UI deaktiviert
+      #   8 = Login-Formular für WebClient UI deaktiviert
+      #   16 = Admin Token Endpoint für REST API deaktiviert
+      #   32 = User Token Endpoint für REST API deaktiviert
+      #   64 = Admin API Key Login deaktiviert
+      #   128 = User API Key Login deaktiviert
+      #   Werte können kombiniert werden, z.B.:
+      #   12 (4+8) = Login-Formulare für WebAdmin und WebClient deaktiviert (nur OIDC)
+      #   252 (4+8+16+32+64+128) = nur OIDC-Login erlaubt
+      #   Empfehlung: 0 wenn OIDC nicht konfiguriert ist
+      SFTPGO_HTTPD__BINDINGS__0__DISABLED_LOGIN_METHODS: 0
+      # Logging Level (debug, info, warn, error)
+      SFTPGO_LOG_LEVEL: debug
+    ports:
+      - target: 8080
+        published: 8080
+        protocol: tcp
+        mode: host
+      - target: 2022
+        published: 2022
+        protocol: tcp
+        mode: host
+      - target: 21
+        published: 21
+        protocol: tcp
+        mode: host
+      - target: 443
+        published: 8443
+        protocol: tcp
+        mode: host
+    volumes:
+      - type: bind
+        source: ./data/sftpgo
+        target: /var/lib/sftpgo
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/data
+        target: /srv/sftpgo/data
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/backups
+        target: /srv/sftpgo/backups
+        read_only: false
+        bind:
+          create_host_path: false
+
+  database:
+    user: 1000:1000
+    environment:
+      POSTGRES_PASSWORD: PASSWORD
+    volumes:
+      - type: bind
+        source: ./data/postgres
+        target: /var/lib/postgresql
+        read_only: false
+        bind:
+          create_host_path: false
