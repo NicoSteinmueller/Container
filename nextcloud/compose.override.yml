@@ -1,0 +1,41 @@
+services:
+  nextcloud:
+#    user: 1000:1000
+    environment:
+      PUID: 1000
+      PGID: 1000
+      POSTGRES_PASSWORD: PASSWORD
+    volumes:
+      - type: bind
+        source: ./data/config
+        target: /config
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/data
+        target: /data
+        read_only: false
+        bind:
+          create_host_path: false
+    ports:
+      - name: websecure
+        target: 443
+        host_ip: 127.0.0.1
+        published: 8443
+        protocol: tcp
+        app_protocol: https
+        mode: host
+  database:
+    user: 1000:1000
+    environment:
+      POSTGRES_PASSWORD: PASSWORD
+    volumes:
+      - type: bind
+        source: ./data/postgres
+        target: /var/lib/postgresql
+        read_only: false
+        bind:
+          create_host_path: false
+  redis:
+    user: 1000:1000

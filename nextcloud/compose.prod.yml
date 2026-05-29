@@ -1,0 +1,27 @@
+services:
+  nextcloud:
+    environment:
+      PUID: 99
+      PGID: 100
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - type: bind
+        source: /mnt/user/appdata/nextcloud/config
+        target: /config
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/nextcloud/data
+        target: /data
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/paperless/consume
+        target: /app/www/public/paperless-consume
+        read_only: false
+        bind:
+          create_host_path: false
+
+          # TODO

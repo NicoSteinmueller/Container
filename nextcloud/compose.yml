@@ -1,33 +1,37 @@
-name: immich
+name: nextcloud
 
 services:
-  immich:
+  # https://docs.linuxserver.io/images/docker-nextcloud
+  nextcloud:
     # ------------ Identität ------------------------
-    container_name: immich
-    image: ghcr.io/immich-app/immich-server:v2.7.5@sha256:c15bff75068effb03f4355997d03dc7e0fc58720c2b54ad6f7f10d1bc57efaa5
+    image: lscr.io/linuxserver/nextcloud:33.0.4
+    container_name: nextcloud
 
     # ------------ Abhängigkeiten & Start -----------
-    init: true
+    init: false
     restart: on-failure:3
-    stop_grace_period: 30s
     healthcheck:
-      disable: false
+      test: [ "CMD-SHELL", "curl -f -k https://localhost/status.php || exit 1" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 5s
     depends_on:
-      redis:
-        condition: service_healthy
       database:
         condition: service_healthy
-      immich-machine-learning:
+      redis:
         condition: service_healthy
 
     # ----------- Ressourcen -----------
     deploy:
       resources:
         limits:
-          cpus: 2
+          cpus: 1.5
           memory: 2G
           pids: 128
         reservations:
+          cpus: 0.1
           memory: 256M
     logging:
       driver: json-file
@@ -35,10 +39,51 @@ services:
         max-size: 10m
         max-file: 3
 
-    # ----------- Speicher -----------
-    read_only: true
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # TODO
+    cap_add:
+      -
+
+
+    # ---------- Environment -----------
+    environment:
+      # Configeinstellungen direkt in config vornehmen
+      TZ: Europe/Berlin
+
+  database:
+    # ------------ Identität ------------------------
+    image: postgres:18.4-alpine3.23@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
+    container_name: nextcloud_postgres
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure:3
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nextcloud -d nextcloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: 128M
+          pids: 32
+        reservations:
+          memory: 50M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
 
     # ----------- Sicherheit -----------
     security_opt:
@@ -49,54 +94,14 @@ services:
     # ---------- Environment -----------
     environment:
       TZ: Europe/Berlin
-      DB_USERNAME: postgres
-      DB_DATABASE_NAME: immich
-
-
-  immich-machine-learning:
-    # ------------ Identität ------------------------
-    container_name: immich_machine_learning
-    image: ghcr.io/immich-app/immich-machine-learning:v2.7.5@sha256:a2501141440f10516d329fdfba2c68082e19eb9ba6016c061ac80d23beadf7f3
-
-    # ------------ Abhängigkeiten & Start -----------
-    init: true
-    restart: on-failure:3
-    stop_grace_period: 30s
-    healthcheck:
-      disable: false
-
-    # ----------- Ressourcen -----------
-    deploy:
-      resources:
-        limits:
-          cpus: 2
-          memory: 2G
-          pids: 256
-        reservations:
-          memory: 256M
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: 3
-
-    # ----------- Sicherheit -----------
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-
-    # ----------- Speicher -----------
-    read_only: true
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,size=64m
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
 
 
   redis:
     # ------------ Identität ------------------------
     container_name: immich_redis
-    # TODO - Alpine
-    image: docker.io/valkey/valkey:9.1.0-trixie@sha256:4963247afc4cd33c7d3b2d2816b9f7f8eeebab148d29056c2ca4d7cbc966f2d9
+    image: docker.io/valkey/valkey:9.1.0-alpine3.23@sha256:a35428eba9043cc0b79dbe54100f0c92784f2de00ad09b01182bfb1c5c83d1bd
 
     # ------------ Abhängigkeiten & Start -----------
     init: true
@@ -138,47 +143,4 @@ services:
     read_only: true
     tmpfs:
       - /data:rw,noexec,nosuid,size=8M
-
-  database:
-    # ------------ Identität ------------------------
-    container_name: immich_postgres
-    image: ghcr.io/immich-app/postgres:18-vectorchord0.5.3-pgvector0.8.1@sha256:23895db38dd685c158a7dde37577bdabc83116b6109aed95dbe2965413cf9210
-
-    # ------------ Abhängigkeiten & Start -----------
-    init: true
-    restart: on-failure:3
-    stop_grace_period: 30s
-    healthcheck:
-      disable: false
-
-    # ----------- Ressourcen -----------
-    deploy:
-      resources:
-        limits:
-          cpus: 1.5
-          memory: 1G
-          pids: 64
-        reservations:
-          memory: 128M
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: 3
-
-    # ----------- Sicherheit -----------
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-
-    # ----------- Speicher -----------
-    shm_size: 128mb
-
-    # ---------- Environment -----------
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_DB: immich
-      POSTGRES_INITDB_ARGS: '--data-checksums'
-      TZ: Europe/Berlin
 
