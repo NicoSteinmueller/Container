@@ -4,6 +4,9 @@ services:
       PUID: 99
       PGID: 100
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    networks:
+      default:
+      proxy:
     volumes:
       - type: bind
         source: /mnt/user/appdata/nextcloud/config
@@ -23,6 +26,17 @@ services:
         read_only: false
         bind:
           create_host_path: false
+    labels:
+      traefik.enable: true
+      traefik.http.routers.nextcloud.rule: Host(`cloud.nico-steinmueller.de`)
+      traefik.http.routers.nextcloud.entrypoints: websecure
+      traefik.http.routers.nextcloud.middlewares: crowdsec@file, compress@file
+      traefik.http.routers.nextcloud.service: nextcloud
+      traefik.http.services.nextcloud.loadbalancer.server.port: 8443
+      traefik.http.services.nextcloud.loadbalancer.servertransport: nextcloud-transport
+      traefik.http.services.nextcloud.loadbalancer.server.scheme: https
+
+      traefik.http.serverTransports.nextcloud-transport.insecureSkipVerify: true
   database:
     user: 99:100
     environment:
@@ -36,3 +50,7 @@ services:
           create_host_path: false
   redis:
     user: 99:100
+
+networks:
+  proxy:
+    external: true
