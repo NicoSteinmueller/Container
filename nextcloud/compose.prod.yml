@@ -23,5 +23,16 @@ services:
         read_only: false
         bind:
           create_host_path: false
-
-          # TODO
+  database:
+    user: 99:100
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - type: bind
+        source: /mnt/user/appdata/nextcloud/postgres
+        target: /var/lib/postgresql
+        read_only: false
+        bind:
+          create_host_path: false
+  redis:
+    user: 99:100

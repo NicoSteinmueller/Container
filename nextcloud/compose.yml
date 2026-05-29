@@ -44,9 +44,11 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    # TODO
     cap_add:
-      -
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
 
 
     # ---------- Environment -----------
@@ -75,7 +77,7 @@ services:
       resources:
         limits:
           cpus: 0.5
-          memory: 128M
+          memory: 256M
           pids: 32
         reservations:
           memory: 50M
