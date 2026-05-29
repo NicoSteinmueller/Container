@@ -32,11 +32,9 @@ services:
       traefik.http.routers.nextcloud.entrypoints: websecure
       traefik.http.routers.nextcloud.middlewares: crowdsec@file, compress@file, local-only@file
       traefik.http.routers.nextcloud.service: nextcloud
-      traefik.http.services.nextcloud.loadbalancer.server.port: 8443
-      traefik.http.services.nextcloud.loadbalancer.serverstransport: nextcloud-transport
+      traefik.http.services.nextcloud.loadbalancer.server.port: 443
+      traefik.http.services.nextcloud.loadbalancer.serverstransport: ignore-certificates@file
       traefik.http.services.nextcloud.loadbalancer.server.scheme: https
-
-      traefik.http.serversTransports.nextcloud-transport.insecureSkipVerify: true
   database:
     user: 99:100
     environment:

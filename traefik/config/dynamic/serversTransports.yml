@@ -12,4 +12,7 @@ http:
         responseHeaderTimeout: 1200s
         readIdleTimeout: 1200s
 
+    ignore-certificates:
+      insecureSkipVerify: true
+
 
