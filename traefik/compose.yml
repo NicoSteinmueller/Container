@@ -1,0 +1,216 @@
+name: traefik
+
+services:
+  traefik:
+    # ------------ Identität ------------------------
+    image: traefik:3.7.1@sha256:6b9cbca6fac42ab0075f5437d8dc1685cfd188626d8d515839ea94f8b6271c42
+    container_name: traefik
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure
+    # stop_grace_period gibt Docker genug Zeit, die bond0-IP (192.168.178.5) sauber
+    # freizugeben, bevor der neue Container beim Update/Neustart dieselbe IP anfordert.
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      crowdsec:
+        condition: service_healthy
+        restart: true
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 1.5
+          memory: 512M
+          pids: 256
+        reservations:
+          cpus: 0.1
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+#    cap_add:
+#      - NET_ADMIN
+
+    # ---------- Ports ----------------
+    ports:
+      - name: http
+        target: 80
+        host_ip: 127.0.0.1
+        published: 8000
+        protocol: tcp
+        app_protocol: http
+      - name: https
+        target: 443
+        host_ip: 127.0.0.1
+        published: 8443
+        protocol: tcp
+        app_protocol: https
+      - name: https-udp
+        target: 443
+        host_ip: 127.0.0.1
+        published: 8443
+        protocol: udp
+      - name: dashboard
+        target: 8080
+        host_ip: 127.0.0.1
+        published: 8080
+        protocol: tcp
+        app_protocol: http
+      - name: ssh
+        target: 2022
+        host_ip: 127.0.0.1
+        published: 2022
+        protocol: tcp
+
+    # ---------- Environment -----------
+    environment:
+      TZ: Europe/Berlin
+
+    # ----------- Speicher -----------
+    read_only: true
+
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    # ----------- Configuration -----------
+    command:
+      - --global.checknewversion=true
+      - --global.sendanonymoususage=false
+      - --api.dashboard=true
+      - --api.disabledashboardad=true
+      - --api.insecure=true
+      - --api.debug=false
+      - --entrypoints.web.address=:80
+
+
+  traefik-logrotate:
+    # ------------ Identität ------------------------
+    container_name: traefik-logrotate
+    # Eigenes Mini-Image mit vorinstalliertem logrotate (kein Paketdownload zur Laufzeit).
+    build:
+      context: ./logrotate
+      dockerfile: Dockerfile
+    image: traefik-logrotate:local
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        while true; do
+          logrotate -s /state/status /etc/logrotate.d/access.logrotate
+          sleep 86400
+        done
+    restart: on-failure:3
+    healthcheck:
+      # Gesund wenn Traefik im geteilten PID-NS erreichbar ist und logrotate kuerzlich lief.
+      test: ["CMD-SHELL", "kill -0 1 && test -f /state/status && find /state/status -mtime -2 | grep -q /state/status"]
+      interval: 30m
+      timeout: 10s
+      retries: 3
+      start_period: 2m
+    depends_on:
+      traefik:
+        condition: service_started
+        restart: true
+    # Gemeinsamer PID-Namespace mit traefik → Traefik laeuft als PID 1 → kill -USR1 1 moeglich,
+    # ohne Docker-Socket im Sidecar zu benoetigen.
+    pid: "service:traefik"
+    network_mode: none
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 0.1
+          memory: 64M
+          pids: 64
+        reservations:
+          memory: 16M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # ---------- Environment -----------
+    environment:
+      TZ: Europe/Berlin
+
+    # ----------- Speicher -----------
+    read_only: true
+
+
+  crowdsec:
+    # ------------ Identität ------------------------
+    image: crowdsecurity/crowdsec:v1.7.8@sha256:2f527c9bb8b367120eb08b82890aa912ce96bfa1ada93dda0721700e4b4e0dde
+    container_name: crowdsec
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure:3
+    healthcheck:
+      test: ["CMD", "sh", "-c", "cscli version && wget -q --spider http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 8
+      start_period: 180s
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: 512M
+          pids: 128
+        reservations:
+          cpus: 0.1
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # ---------- Environment -----------
+    environment:
+      # Prüfen für neue Anwendung: https://app.crowdsec.net/hub/conecllections
+      COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules crowdsecurity/appsec-crs crowdsecurity/appsec-crs-exclusion-plugin-nextcloud crowdsecurity/sshd crowdsecurity/linux crowdsecurity/iptables crowdsecurity/base-http-scenarios crowdsecurity/http-dos crowdsecurity/whitelist-good-actors crowdsecurity/nextcloud"
+      TZ: Europe/Berlin
+
+    # ----------- Speicher -----------
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+
+

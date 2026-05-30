@@ -1,0 +1,120 @@
+# Einstellungen für die Produktion
+
+services:
+  traefik:
+    networks:
+      default:
+      proxy:
+      bond0:
+        ipv4_address: 192.168.178.5
+      monitoring:
+
+    volumes:
+      - type: bind
+        source: /mnt/user/appdata/traefik/traefik.yml
+        target: /traefik.yml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/appdata/traefik/dynamic
+        target: /config/dynamic
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/logs/traefik
+        target: /logs
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/appdata/traefik/letsencrypt
+        target: /letsencrypt
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/appdata/traefik/plugins-storage
+        target: /plugins-storage
+        read_only: false
+        bind:
+          create_host_path: false
+
+    environment:
+      # IONOS DNS Challenge
+      # API Key erstellen unter: https://developer.hosting.ionos.de/keys
+      # Nur Berechtigung TXT-Record (DNS) erforderlich (kein Zugriff auf z.B. A-Records oder andere Ressourcen notwendig)
+      IONOS_API_KEY: ${IONOS_API_KEY}
+
+    labels:
+      traefik.enable: true
+      # Router
+      traefik.http.routers.traefik-dashboard.rule: Host(`traefik.local.nico-steinmueller.de`)
+      traefik.http.routers.traefik-dashboard.entrypoints: websecure
+      traefik.http.routers.traefik-dashboard.middlewares: local-only@file
+      # Service → internes Dashboard API
+      traefik.http.routers.traefik-dashboard.service: api@internal
+      traefik.http.services.traefik-dashboard.loadbalancer.server.port: 8080
+
+  traefik-logrotate:
+    user: 99:100
+    volumes:
+      - type: bind
+        source: /mnt/user/logs/traefik
+        target: /logs
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/appdata/traefik/logrotate
+        target: /state
+        read_only: false
+        bind:
+          create_host_path: false
+
+  crowdsec:
+    user: 99:100
+    environment:
+      # ENROLL_KEY auskommentiert - Instanz bereits enrolled, Key verursacht "Forbidden"-Fehler
+      ENROLL_KEY: ${CROWDSEC_ENROLL_KEY:-}
+      ENROLL_INSTANCE_NAME: traefik
+    volumes:
+      - type: bind
+        source: /mnt/user/appdata/traefik/crowdsec/config
+        target: /etc/crowdsec/
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/appdata/traefik/crowdsec/data
+        target: /var/lib/crowdsec/data/
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/logs/traefik
+        target: /var/log/traefik
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/appdata/traefik/crowdsec/acquis
+        target: /etc/crowdsec/acquis.d
+        read_only: false
+        bind:
+          create_host_path: false
+
+
+
+
+networks:
+  proxy:
+    external: true
+  bond0:
+    external: true
+    ipam:
+      config:
+        - subnet: 192.168.178.0/24
+  monitoring:
+    external: true
