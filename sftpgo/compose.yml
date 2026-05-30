@@ -4,7 +4,7 @@ services:
   sftpgo:
     # ------------ Identität ------------------------
     container_name: sftpgo
-    image: drakkan/sftpgo:v2.7.1-alpine@sha256:5df7d1abcce383c11a8fe118514bcf24b1d6dda2a990a2b77b52f0e10431b7be
+    image: drakkan/sftpgo:v2.7.3-alpine@sha256:c6b11975122f1210aa5eed426cf39a9f5136759ff41b724a6d54486390711100
 
     # ------------ Abhängigkeiten & Start -----------
     init: true
