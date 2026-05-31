@@ -42,13 +42,13 @@ services:
     # ----------- Sicherheit -----------
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - DAC_OVERRIDE
-      - SETGID
-      - SETUID
+#    cap_drop:
+#      - ALL
+#    cap_add:
+#      - CHOWN
+#      - DAC_OVERRIDE
+#      - SETGID
+#      - SETUID
 
 
     # ---------- Environment -----------
@@ -90,8 +90,8 @@ services:
     # ----------- Sicherheit -----------
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
+#    cap_drop:
+#      - ALL
 
     # ---------- Environment -----------
     environment:
@@ -134,12 +134,12 @@ services:
     # ----------- Sicherheit -----------
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
+#    cap_drop:
+#      - ALL
+#    cap_add:
+#      - CHOWN
+#      - SETGID
+#      - SETUID
 
     # ----------- Speicher -----------
     read_only: true
