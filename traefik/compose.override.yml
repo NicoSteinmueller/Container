@@ -52,7 +52,7 @@ services:
           create_host_path: false
 
   crowdsec:
-#    user: 1000:1000
+    user: 1000:1000
 
     # genutzte Ports
     # 6060/tcp: Prometheus metrics port
