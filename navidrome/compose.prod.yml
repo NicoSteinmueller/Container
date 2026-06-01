@@ -34,7 +34,7 @@ services:
       traefik.enable: true
       traefik.http.routers.navidrome.rule: Host(`music.nico-steinmueller.de`)
       traefik.http.routers.navidrome.entrypoints: websecure
-      traefik.http.routers.navidrome.middlewares: crowdsec@file
+      traefik.http.routers.navidrome.middlewares: crowdsec
       traefik.http.routers.navidrome.service: navidrome
       traefik.http.services.navidrome.loadbalancer.server.port: 4533
 

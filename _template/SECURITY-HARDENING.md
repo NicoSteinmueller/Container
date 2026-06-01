@@ -120,7 +120,7 @@ Optional, je nach App:
 
 - externe Erreichbarkeit nur ueber den Reverse Proxy
 - `traefik.http.routers.<name>.entrypoints=websecure`
-- `traefik.http.routers.<name>.middlewares=local-only@file`
+- `traefik.http.routers.<name>.middlewares=local-only`
 - HTTPS immer bewusst aktivieren
 
 ### Logging und Monitoring

@@ -165,7 +165,7 @@ services:
       # Host rule configurable via env var KOPIA_HOST (default kopia.local)
       - "traefik.http.routers.kopia-${INSTANCE:-main}.rule=Host(`kopia-${INSTANCE:-main}.local.nico-steinmueller.de`)"
       - "traefik.http.routers.kopia-${INSTANCE:-main}.entrypoints=websecure"
-      - "traefik.http.routers.kopia-${INSTANCE:-main}.middlewares=local-only@file"
+      - "traefik.http.routers.kopia-${INSTANCE:-main}.middlewares=local-only"
       - "traefik.http.services.kopia-${INSTANCE:-main}.loadbalancer.server.port=51515"
 
 

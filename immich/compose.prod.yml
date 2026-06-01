@@ -17,7 +17,7 @@ services:
       traefik.enable: true
       traefik.http.routers.immich.rule: Host(`immich.nico-steinmueller.de`)
       traefik.http.routers.immich.entrypoints: websecure
-      traefik.http.routers.immich.middlewares: crowdsec-appsec@file, compress@file
+      traefik.http.routers.immich.middlewares: crowdsec-appsec, compress
       traefik.http.routers.immich.service: immich
 
       traefik.http.services.immich.loadbalancer.server.port: 2283

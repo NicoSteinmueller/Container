@@ -113,7 +113,7 @@ services:
       # Router
       traefik.http.routers.adguard.rule: Host(`adguard.local.nico-steinmueller.de`)
       traefik.http.routers.adguard.entrypoints: websecure
-      traefik.http.routers.adguard.middlewares: local-only@file
+      traefik.http.routers.adguard.middlewares: local-only
       traefik.http.routers.adguard.service: adguard
       # Service → Web-UI auf Port 80
       traefik.http.services.adguard.loadbalancer.server.port: 80

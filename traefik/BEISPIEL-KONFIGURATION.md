@@ -60,7 +60,7 @@ services:
       - "traefik.http.routers.immich.entrypoints=websecure"
       - "traefik.http.routers.immich.tls.certresolver=letsencrypt"
       # WICHTIG: Middleware für lokale IP-Beschränkung
-      - "traefik.http.routers.immich.middlewares=local-only@file"
+      - "traefik.http.routers.immich.middlewares=local-only"
       - "traefik.http.services.immich.loadbalancer.server.port=2283"
     
     # WICHTIG: Mit proxy Netzwerk verbinden

@@ -69,14 +69,14 @@ services:
       traefik.http.routers.sftpgo-admin.rule: Host(`sftpgo.nico-steinmueller.de`) && PathPrefix(`/web/admin`)
       traefik.http.routers.sftpgo-admin.entrypoints: websecure
       traefik.http.routers.sftpgo-admin.priority: 100
-      traefik.http.routers.sftpgo-admin.middlewares: local-only@file, compress@file
+      traefik.http.routers.sftpgo-admin.middlewares: local-only, compress
       traefik.http.routers.sftpgo-admin.service: sftpgo-web
 
       # HTTP Router für WebClient
       traefik.http.routers.sftpgo-web.rule: Host(`sftpgo.nico-steinmueller.de`)
       traefik.http.routers.sftpgo-web.entrypoints: websecure
       traefik.http.routers.sftpgo-web.priority: 50
-      traefik.http.routers.sftpgo-web.middlewares: crowdsec@file, compress@file
+      traefik.http.routers.sftpgo-web.middlewares: crowdsec, compress
       traefik.http.routers.sftpgo-web.service: sftpgo-web
       traefik.http.services.sftpgo-web.loadbalancer.server.port: 8080
 

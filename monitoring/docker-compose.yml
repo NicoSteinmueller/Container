@@ -77,7 +77,7 @@ services:
       traefik.enable: true
       traefik.http.routers.grafana.rule: Host(`grafana.local.nico-steinmueller.de`)
       traefik.http.routers.grafana.entrypoints: websecure
-      traefik.http.routers.grafana.middlewares: local-only@file, compress@file
+      traefik.http.routers.grafana.middlewares: local-only, compress
       traefik.http.routers.grafana.service: grafana
       traefik.http.services.grafana.loadbalancer.server.port: 3000
 
@@ -130,7 +130,7 @@ services:
       traefik.enable: true
       traefik.http.routers.prometheus.rule: Host(`prometheus.local.nico-steinmueller.de`)
       traefik.http.routers.prometheus.entrypoints: websecure
-      traefik.http.routers.prometheus.middlewares: local-only@file, compress@file
+      traefik.http.routers.prometheus.middlewares: local-only, compress
       traefik.http.routers.prometheus.service: prometheus
       traefik.http.services.prometheus.loadbalancer.server.port: 9090
 
@@ -193,7 +193,7 @@ services:
       traefik.enable: true
       traefik.http.routers.alloy.rule: Host(`alloy.local.nico-steinmueller.de`)
       traefik.http.routers.alloy.entrypoints: websecure
-      traefik.http.routers.alloy.middlewares: local-only@file, compress@file
+      traefik.http.routers.alloy.middlewares: local-only, compress
       traefik.http.routers.alloy.service: alloy
       traefik.http.services.alloy.loadbalancer.server.port: 12345
 
