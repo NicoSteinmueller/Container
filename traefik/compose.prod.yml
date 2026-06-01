@@ -42,7 +42,20 @@ services:
       # Nur Berechtigung TXT-Record (DNS) erforderlich (kein Zugriff auf z.B. A-Records oder andere Ressourcen notwendig)
       IONOS_API_KEY: ${IONOS_API_KEY}
 
+      # Certificate Resolver - Let's Encrypt
+      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL: nico.steinmueller@gmx.net
+      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_STORAGE: /letsencrypt/acme.json
+      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_CASERVER: https://acme-v02.api.letsencrypt.org/directory
+      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_DNSCHALLENGE_PROVIDER: ionos
+      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_DNSCHALLENGE_RESOLVERS: 1.1.1.1:53,8.8.8.8:53
+      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_DNSCHALLENGE_DELAYBEFORECHECK: 30
+
     labels:
+      # Middleware Secrets
+      traefik.http.middlewares.crowdsec.plugin.crowdsec-bouncer.crowdsecLapiKey: ${CROWDSEC_LAPI_KEY}
+      traefik.http.middlewares.crowdsec-appsec.plugin.crowdsec-bouncer.crowdsecLapiKey: ${CROWDSEC_LAPI_KEY}
+
+
       # Router
       traefik.http.routers.traefik-dashboard.rule: Host(`traefik.local.nico-steinmueller.de`)
       traefik.http.routers.traefik-dashboard.entrypoints: websecure

@@ -148,14 +148,6 @@ services:
       TRAEFIK_PROVIDERS_FILE_DIRECTORY: /config/dynamic
       TRAEFIK_PROVIDERS_FILE_WATCH: true
 
-#      # Certificate Resolver - Let's Encrypt
-#      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL: nico.steinmueller@gmx.net
-#      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_STORAGE: /letsencrypt/acme.json
-#      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_CASERVER: https://acme-v02.api.letsencrypt.org/directory
-#      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_DNSCHALLENGE_PROVIDER: ionos
-#      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_DNSCHALLENGE_RESOLVERS: 1.1.1.1:53,8.8.8.8:53
-#      TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_DNSCHALLENGE_DELAYBEFORECHECK: 30
-
       # Logging
       TRAEFIK_LOG_LEVEL: INFO
       TRAEFIK_LOG_FILEPATH: /logs/traefik.log
@@ -200,7 +192,6 @@ services:
       traefik.http.middlewares.crowdsec.plugin.crowdsec-bouncer.crowdsecMode: live
       traefik.http.middlewares.crowdsec.plugin.crowdsec-bouncer.crowdsecLapiScheme: http
       traefik.http.middlewares.crowdsec.plugin.crowdsec-bouncer.crowdsecLapiHost: crowdsec:8080
-      traefik.http.middlewares.crowdsec.plugin.crowdsec-bouncer.crowdsecLapiKey: # TODO Key hinzufügen bevor auf Server laden
       traefik.http.middlewares.crowdsec.plugin.crowdsec-bouncer.clientTrustedIPs: "192.168.178.0/24"
       traefik.http.middlewares.crowdsec.plugin.crowdsec-bouncer.logLevel: INFO
 
@@ -209,7 +200,6 @@ services:
       traefik.http.middlewares.crowdsec-appsec.plugin.crowdsec-bouncer.crowdsecMode: live
       traefik.http.middlewares.crowdsec-appsec.plugin.crowdsec-bouncer.crowdsecLapiScheme: http
       traefik.http.middlewares.crowdsec-appsec.plugin.crowdsec-bouncer.crowdsecLapiHost: crowdsec:8080
-      traefik.http.middlewares.crowdsec-appsec.plugin.crowdsec-bouncer.crowdsecLapiKey: # TODO Key hinzufügen bevor auf Server laden
       traefik.http.middlewares.crowdsec-appsec.plugin.crowdsec-bouncer.crowdsecAppsecEnabled: true
       traefik.http.middlewares.crowdsec-appsec.plugin.crowdsec-bouncer.crowdsecAppsecHost: crowdsec:7422
       traefik.http.middlewares.crowdsec-appsec.plugin.crowdsec-bouncer.crowdsecAppsecFailureBlock: true
