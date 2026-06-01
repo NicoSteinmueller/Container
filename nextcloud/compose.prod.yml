@@ -30,7 +30,7 @@ services:
       traefik.enable: true
       traefik.http.routers.nextcloud.rule: Host(`cloud.nico-steinmueller.de`)
       traefik.http.routers.nextcloud.entrypoints: websecure
-      traefik.http.routers.nextcloud.middlewares: crowdsec@file, compress@file
+      traefik.http.routers.nextcloud.middlewares: crowdsec, compress
       traefik.http.routers.nextcloud.service: nextcloud
       traefik.http.services.nextcloud.loadbalancer.server.port: 443
       traefik.http.services.nextcloud.loadbalancer.serverstransport: ignore-certificates@file

@@ -3,6 +3,8 @@
 # This file maps Traefik access logs to CrowdSec parsers
 # Documentation: https://docs.crowdsec.net/docs/concepts/#acquisition
 
+# unter /mnt/user/appdata/traefik/crowdsec/config/acquis.d ablegen
+
 filenames:
   - /var/log/traefik/access.log
 labels:

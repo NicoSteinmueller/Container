@@ -35,7 +35,7 @@ services:
       traefik.enable: true
       traefik.http.routers.linkwarden.rule: Host(`linkwarden.nico-steinmueller.de`)
       traefik.http.routers.linkwarden.entrypoints: websecure
-      traefik.http.routers.linkwarden.middlewares: crowdsec@file, compress@file
+      traefik.http.routers.linkwarden.middlewares: crowdsec, compress
       traefik.http.routers.linkwarden.service: linkwarden
       traefik.http.services.linkwarden.loadbalancer.server.port: 3000
 

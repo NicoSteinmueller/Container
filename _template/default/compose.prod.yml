@@ -18,7 +18,7 @@ service:
       # Umbenennen des Routers, damit er eindeutig ist
       traefik.http.routers.example.rule: Host(`example.nico-steinmueller.de`)
       traefik.http.routers.example.entrypoints: websecure
-      traefik.http.routers.example.middlewares: local-only@file, crowdsec-appsec@file
+      traefik.http.routers.example.middlewares: local-only, crowdsec-appsec
       traefik.http.routers.example.service: example
       traefik.http.services.example.loadbalancer.server.port: 3001
 

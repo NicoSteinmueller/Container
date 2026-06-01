@@ -31,7 +31,7 @@ services:
       traefik.enable: true
       traefik.http.routers.octoprint.rule: Host(`octoprint.local.nico-steinmueller.de`)
       traefik.http.routers.octoprint.entrypoints: websecure
-      traefik.http.routers.octoprint.middlewares: local-only@file
+      traefik.http.routers.octoprint.middlewares: local-only
       traefik.http.routers.octoprint.service: octoprint
       traefik.http.services.octoprint.loadbalancer.server.port: 80
 

@@ -69,7 +69,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.paperless-gpt-${INSTANCE_NAME:-main}.rule=Host(`paperless-gpt-${INSTANCE_NAME:-main}.nico-steinmueller.de`)"
       - "traefik.http.routers.paperless-gpt-${INSTANCE_NAME:-main}.entrypoints=websecure"
-      - "traefik.http.routers.paperless-gpt-${INSTANCE_NAME:-main}.middlewares=local-only@file, crowdsec@file, compress@file"
+      - "traefik.http.routers.paperless-gpt-${INSTANCE_NAME:-main}.middlewares=local-only, crowdsec, compress"
       - "traefik.http.routers.paperless-gpt-${INSTANCE_NAME:-main}.service=paperless-gpt-${INSTANCE_NAME:-main}"
       - "traefik.http.services.paperless-gpt-${INSTANCE_NAME:-main}.loadbalancer.server.port=8080"
 

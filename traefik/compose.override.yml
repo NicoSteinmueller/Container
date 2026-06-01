@@ -1,0 +1,76 @@
+# Einstellungen für Development- und Testumgebungen
+
+services:
+  traefik:
+    user: 1000:1000
+    volumes:
+      - type: bind
+        source: ./data/dynamic
+        target: /config/dynamic
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/logs
+        target: /logs
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/letsencrypt
+        target: /letsencrypt
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/plugins
+        target: /plugins-storage
+        read_only: false
+        bind:
+          create_host_path: false
+
+  traefik-logrotate:
+    user: 1000:0000
+    volumes:
+      - type: bind
+        source: ./data/logs
+        target: /logs
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/logrotate
+        target: /state
+        read_only: false
+        bind:
+          create_host_path: false
+
+  crowdsec:
+    user: 1000:1000
+
+    # genutzte Ports
+    # 6060/tcp: Prometheus metrics port
+    # 8080/tcp: API port
+    # https://docs.crowdsec.net/u/getting_started/intro/
+    environment:
+      ENROLL_INSTANCE_NAME: dev-traefik
+    volumes:
+      - type: bind
+        source: ./data/crowdsec/config
+        target: /etc/crowdsec/
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/crowdsec/data
+        target: /var/lib/crowdsec/data/
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/logs
+        target: /var/log/traefik
+        read_only: true
+        bind:
+          create_host_path: false
+

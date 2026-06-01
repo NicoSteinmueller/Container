@@ -26,7 +26,7 @@ services:
       traefik.enable: true
       traefik.http.routers.ollama-api.rule: Host(`ollama-api.local.nico-steinmueller.de`)
       traefik.http.routers.ollama-api.entrypoints: websecure
-      traefik.http.routers.ollama-api.middlewares: local-only@file
+      traefik.http.routers.ollama-api.middlewares: local-only
       traefik.http.routers.ollama-api.service: ollama-api
       traefik.http.services.ollama-api.loadbalancer.server.port: 11434
 
@@ -81,7 +81,7 @@ services:
       traefik.enable: true
       traefik.http.routers.open-webui.rule: Host(`open-webui.local.nico-steinmueller.de`)
       traefik.http.routers.open-webui.entrypoints: websecure
-      traefik.http.routers.open-webui.middlewares: local-only@file
+      traefik.http.routers.open-webui.middlewares: local-only
       traefik.http.routers.open-webui.service: open-webui
       traefik.http.services.open-webui.loadbalancer.server.port: 8080
 
