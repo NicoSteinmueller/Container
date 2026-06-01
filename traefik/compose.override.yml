@@ -4,18 +4,12 @@ services:
   traefik:
     user: 1000:1000
     volumes:
-#      - type: bind
-#        source: ./data/traefik.yml
-#        target: /traefik.yml
-#        read_only: true
-#        bind:
-#          create_host_path: false
-#      - type: bind
-#        source: ./data/dynamic
-#        target: /config/dynamic
-#        read_only: true
-#        bind:
-#          create_host_path: false
+      - type: bind
+        source: ./data/dynamic
+        target: /config/dynamic
+        read_only: true
+        bind:
+          create_host_path: false
       - type: bind
         source: ./data/logs
         target: /logs
@@ -79,10 +73,4 @@ services:
         read_only: true
         bind:
           create_host_path: false
-#      - type: bind
-#        source: ./data/crowdsec/acquis
-#        target: /etc/crowdsec/acquis.d
-#        read_only: true
-#        bind:
-#          create_host_path: false
 

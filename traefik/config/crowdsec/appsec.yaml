@@ -1,4 +1,7 @@
 # https://app.crowdsec.net/hub/appsec-configurations
+
+# unter /mnt/user/appdata/traefik/crowdsec/config/acquis.d ablegen
+
 appsec_configs:
   - crowdsecurity/appsec-default            # Virtual patching rules (in-band blocking)
   - crowdsecurity/crs                       # OWASP CRS rules (out-of-band detection)
