@@ -1,0 +1,107 @@
+# Einstellungen für die Produktion
+
+services:
+  paperless:
+    environment:
+      USERMAP_UID: 99
+      USERMAP_GID: 100
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY}
+      PAPERLESS_DBPASS: ${DB_PASSWORD}
+
+      # Basis-Konfiguration
+      PAPERLESS_USE_X_FORWARD_HOST: true
+      PAPERLESS_USE_X_FORWARD_PORT: true
+      PAPERLESS_URL: https://paperless.nico-steinmueller.de
+
+      # OpenID Connect für Keycloak SSO
+      PAPERLESS_APPS: allauth.socialaccount.providers.openid_connect
+      PAPERLESS_SOCIALACCOUNT_PROVIDERS: '{"openid_connect":{"APPS":[{"provider_id":"keycloak","name":"Keycloak","client_id":"paperless","secret":"${KEYCLOAK_SECRET}","settings":{"server_url":"https://keycloak.nico-steinmueller.de/realms/mein-realm"}}],"OAUTH_PKCE_ENABLED":true}}'
+      PAPERLESS_SOCIALACCOUNT_ALLOW_SIGNUPS: ${PAPERLESS_ALLOW_SIGNUPS}
+      PAPERLESS_DISABLE_REGULAR_LOGIN: ${PAPERLESS_DISABLE_REGULAR_LOGIN}
+      PAPERLESS_LOGOUT_REDIRECT_URL: https://keycloak.nico-steinmueller.de/realms/mein-realm/protocol/openid-connect/logout?post_logout_redirect_uri=https://paperless.nico-steinmueller.de&&client_id=paperless
+      PAPERLESS_SESSION_COOKIE_AGE: 86400 # 1 Tag
+
+      PAPERLESS_IGNORE_DATES: ${PAPERLESS_IGNORE_DATES}
+
+    networks:
+      default:
+      proxy:
+    volumes:
+      # TODO
+      - type: bind
+        source: /mnt/user/appdata/paperless/data/nico
+        target: /usr/src/paperless/data
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/paperless/media/
+        target: /usr/src/paperless/media
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/paperless/export/
+        target: /usr/src/paperless/export
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/paperless/consume/
+        target: /usr/src/paperless/consume
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/logs/paperless/
+        target: /usr/src/paperless/data/log
+        read_only: false
+        bind:
+          create_host_path: false
+
+    labels:
+      traefik.enable: true
+
+      # Router für /admin - nur lokal erreichbar
+      traefik.http.routers.paperless-admin.rule: Host(`paperless.nico-steinmueller.de`) && PathPrefix(`/admin`)
+      traefik.http.routers.paperless-admin.entrypoints: websecure
+      traefik.http.routers.paperless-admin.priority: 100
+      traefik.http.routers.paperless-admin.middlewares: local-only, compress
+      traefik.http.routers.paperless-admin.service: paperless
+
+      # Router für alle anderen Pfade - öffentlich erreichbar
+      traefik.http.routers.paperless.rule: Host(`paperless.nico-steinmueller.de`)
+      traefik.http.routers.paperless.entrypoints: websecure
+      traefik.http.routers.paperless.priority: 50
+      traefik.http.routers.paperless.middlewares: local-only, crowdsec, compress
+      traefik.http.routers.paperless.service: paperless
+
+      # Service Definition (beide Router nutzen denselben Service)
+      traefik.http.services.paperless.loadbalancer.server.port: 8000
+
+  database:
+    user: 99:100
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    networks:
+      paperless-instance-network:
+    volumes:
+      - type: bind
+        source: /mnt/user/appdata/paperless/postgres
+        target: /var/lib/postgresql
+        read_only: false
+        bind:
+          create_host_path: false
+
+  redis:
+    user: 99:100
+
+  gotenberg:
+    user: 99:100
+
+  tika:
+    user: 99:100
+
+networks:
+  proxy:
+    external: true

@@ -1,0 +1,71 @@
+# Einstellungen für Development- und Testumgebungen
+
+services:
+  paperless:
+    environment:
+      USERMAP_UID: 1000
+      USERMAP_GID: 1000
+
+      PAPERLESS_ADMIN_USER: admin
+      PAPERLESS_ADMIN_PASSWORD: admin
+
+      PAPERLESS_SECRET_KEY: SECRET_KEY
+      PAPERLESS_DBPASS: PASSWORD
+
+      PAPERLESS_URL: http://127.0.0.1:8080
+
+      PAPERLESS_IGNORE_DATES: 01.01.1970,01.01.2000
+
+    ports:
+      - name: http
+        target: 8000
+        published: 8080
+        protocol: tcp
+        app_protocol: http
+        mode: host
+    volumes:
+      - type: bind
+        source: ./data/paperless
+        target: /usr/src/paperless/data
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/media
+        target: /usr/src/paperless/media
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/export
+        target: /usr/src/paperless/export
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/consume
+        target: /usr/src/paperless/consume
+        read_only: false
+        bind:
+          create_host_path: false
+
+  database:
+    user: 1000:1000
+    environment:
+      POSTGRES_PASSWORD: PASSWORD
+    volumes:
+      - type: bind
+        source: ./data/postgres
+        target: /var/lib/postgresql
+        read_only: false
+        bind:
+          create_host_path: false
+
+  redis:
+    user: 1000:1000
+
+  gotenberg:
+    user: 1000:1000
+
+  tika:
+    user: 1000:1000

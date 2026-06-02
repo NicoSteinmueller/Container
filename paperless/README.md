@@ -1,224 +1,157 @@
-# TODO: OCR für scanner deaktivieren?
+# Paperless-ngx Container-Setup
 
-# Paperless-ngx mit Keycloak SSO
+Diese Konfiguration folgt dem Standard-Template-Muster und besteht aus drei Compose-Dateien:
 
-## Architektur-Übersicht
-```
-┌──────────────────────────────────────────────────┐
-│                  Geteilte Services               │
-│  ┌──────────────┐              ┌──────────────┐  │
-│  │  Gotenberg   │              │     Tika     │  │
-│  │ (PDF-Konv.)  │              │    (OCR)     │  │
-│  └──────────────┘              └──────────────┘  │
-│               paperless_shared Network           │
-└──────────────────────────────────────────────────┘
-                           ▲
-                           │
-                           │
-        ┌──────────────────┴─────────────────┐
-        │                                    │
-┌───────▼────────┐                  ┌────────▼────────┐
-│  Instanz: main │                  │ Instanz: privat │
-│                │                  │                 │
-│  Paperless     │                  │  Paperless      │
-│  PostgreSQL    │                  │  PostgreSQL     │
-│  Redis         │                  │  Redis          │
-│                │                  │                 │
-│  Port: 61349   │                  │  Port: 61350    │
-└────────────────┘                  └─────────────────┘
-```
-## Deployment
-### Geteilte Services
-**Stack-Name:** `paperless-shared`  
-**Datei:** `docker-compose.shared.yml`
+- **compose.yml**: Basis-Konfiguration mit allen Services
+- **compose.override.yml**: Development-Einstellungen (lokal)
+- **compose.prod.yml**: Production-Einstellungen mit Traefik
 
-- **Gotenberg**: PDF-Konvertierung
-- **Tika**: OCR und Dokumentenanalyse
+## Services
 
-### Instanzen
-**Stack-Name:** `paperless-main`  
-**Datei:** `docker-compose.yml`
+- **paperless**: Hauptanwendung
+- **database**: PostgreSQL Datenbank
+- **redis**: Redis Cache
+- **gotenberg**: Dokumenten-Konvertierung (PDF)
+- **tika**: Datei-Parsing für OCR
 
-- **Paperless**: Hauptanwendung
-- **PostgreSQL**: Datenbank
-- **Redis**: Cache
+## Development-Betrieb
 
-**<span style="color: red;">Für jede Instanz einen eigenen Keycloak Client anlegen.</span>**
-
-**Environment Variables:**
-
-| Variable | Beispiel                                                                                                                                                                                                                         | Beschreibung                                                                     |
-|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|
-| `INSTANCE_NAME` | `main`                                                                                                                                                                                                                           | Name der Instanz                                                                 |
-|     `INSTANCE_PORT`            | `61349`                                                                                                                                                                                                                          | Externer Port für das Webinterface                                               |
-| `DB_PASSWORD`         | `changeme`                                                                                                                                                                                                                       | Postgres Datenbank-Passwort                                                      |
-| `PAPERLESS_SECRET_KEY`         | `changeme`                                                                                                                                                                                                                       | Key für Erstellung der Session Tokens (min. 50 Zeichen, AlphaNum + Sonderzeichen) |
-| `PAPERLESS_DATA_BASE_PATH`         | `/mnt/paperless`                                                                                                                                                                                                                 | Grundpfad auf dem Host für Daten                                                 |
-| `PAPERLESS_URL`         | `https://docs.example.com`                                                                                                                                                                                                       | externe URL                                                         |
-| `KEYCLOAK_CONFIG`         | `{"openid_connect":{"APPS":[{"provider_id":"keycloak","name":"Keycloak","client_id":"<CLIENT_ID>","secret":"<CLIENT_SECRET>","settings":{"server_url":"https://<KEYCLOAK_DOMAIN>/realms/<REALM>"}}],"OAUTH_PKCE_ENABLED":true}}` | JSON-Konfig für OpenID Connect Provider                                          |
-| `PAPERLESS_ALLOW_SIGNUPS`         | `false`                                                                                                                                                                                                                          | Anlegen von Usern bei ersten SSO-Login                                           |
-| `PAPERLESS_DISABLE_REGULAR_LOGIN`         | `true`                                                                                                                                                                                                                           | Standard-Login deaktviert                                                        |
-| `PAPERLESS_LOGOUT_REDIRECT_URL`         | `https://<KEYCLOAK_DOMAIN>/realms/<REALM>/protocol/openid-connect/logout?post_logout_redirect_uri=https://<PAPERLESS_DOMAIN>&&client_id=<CLIENT_ID>`                                                                   |                                                                                  |
-| `PAPERLESS_IGNORE_DATES`         | `25.04.1985,01.01.2000`                                                                                                                                                                                                                                 | Daten, die bei der automatischen Datumserkennung ignoriert werden sollen                                                                                 |
-
-## erste Konfiguration
-- Paperless Instanz im Browser öffnen: `https://<INSTANZ_IP+PORT>/main`
-- Tmp-Admin-User anlegen
-- Nginx Proxy Manager Proxy Host für die Instanz anlegen (siehe unten)
-- mit Keycloak Admin-User anmelden
-- mit dem Tmp-Admin-User in Paperless anmelden und Keycloak Admin-User die Superuser-Rechte geben
-- mit Keycloak Admin-User in Paperless anmelden und den Tmp-Admin-User löschen
-- normalen Login deaktivieren
-- mit notwendigen Nutzerkonten einloggen
-- Registrierung deaktivieren
-
-# Nginx Proxy Manager
-## Architektur
-- Alle Instanzen auf einer Domain mit verschiedenen Pfaden
-- Beispiel: https://docs.example.com/paperless-main, https://docs.example.com/paperless-privat
-- Nur eine Domain und ein SSL-Zertifikat nötig
-
-## Proxy Host Konfiguration
-### Details
-- Domain Names: `docs.example.com`
-- Scheme: `http`
-- Forward Hostname / IP: `paperless-main` (bzw. IP-Adresse des Hosts)
-- Forward Port: `61349` (bzw. der konfigurierte Port der Instanz)
-- Cache Assets: ✓ aktivieren
-- Block Common Exploits: ✓ aktivieren
-- Websockets Support: ✓ aktivieren
-
-### SSL
-- SSL Certificate: `Let's Encrypt`
-- Force SSL: ✓ aktivieren
-- HTTP/2 Support: ✓ aktivieren
-- HSTS Enabled: ✓ aktivieren
-- HSTS Subdomains: ✓ aktivieren
-
-### Custom Locations
-#### Root Location
-
-- Location: `/`
-- Scheme: `http`
-- Forward Hostname / IP: `paperless-main` (bzw. IP-Adresse des Hosts)
-- Forward Port: `61349` (bzw. der konfigurierte Port der Instanz)
-
-**Advanced**
-````nginx configuration
-location /admin {
-    allow 192.168.178.0/24;
-    deny all;
-
-    proxy_pass http://<INSTANZ_IP>:<INSTANZ_PORT>;
-
-    # Proxy Headers
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Forwarded-Host $host;
-    proxy_set_header X-Forwarded-Port $server_port;
-
-    # Websockets
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-
-    # Upload-Größe für Dokumente
-    client_max_body_size 100M;
-
-    # Timeouts
-    proxy_read_timeout 300;
-    proxy_connect_timeout 300;
-    proxy_send_timeout 300;
-}
-
-location / {
-    proxy_pass http://<INSTANZ_IP>:<INSTANZ_PORT>;
-
-    # Proxy Headers
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Forwarded-Host $host;
-    proxy_set_header X-Forwarded-Port $server_port;
-
-    # Websockets
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-
-    # Upload-Größe für Dokumente
-    client_max_body_size 100M;
-
-    # Timeouts
-    proxy_read_timeout 300;
-    proxy_connect_timeout 300;
-    proxy_send_timeout 300;
-}
-````
-
-# Paperless-ngx Administration
-## Superuser anlegen
 ```bash
-docker exec -it <PAPERLESS_CONTAINER> createsuperuser
+# Alle Services starten (lokal, mit localhost)
+docker compose up -d
+
+# Services stoppen
+docker compose down
 ```
 
-## Django Admin Interface
-- erreichbar unter: `https://<PAPERLESS_DOMAIN>/admin/`
+Zugänglich über: http://localhost:8000
 
-## Backup
-### Dokumente & Datenbank sichern
+## Production-Betrieb
+
 ```bash
-document_exporter ../export --use-folder-prefix --zip
+# Mit Production-Konfiguration (Traefik, externe Volumes)
+docker compose -f compose.yml -f compose.prod.yml up -d
+
+# Environment-Variablen müssen gesetzt sein (siehe .env)
 ```
-**Ergebnis:** Zip-Datei (z.b. `export-2026-01-21.zip`) mit allen Dokumenten, Metadaten, Einstellungen und Nutzer
 
-**Backup Skript für alle Instanzen**
+## Konfiguration
 
-````bash
-#!/bin/bash
-BACKUP_DIR="/mnt/user/paperless/export"
-RETENTION_DAYS=10
+Erstelle eine `.env` Datei im paperless-Verzeichnis mit folgendem Inhalt:
 
-# Array mit allen Paperless-Instanzen
-INSTANCES=("main" "privat")
-
-# Backup für jede Instanz erstellen
-for INSTANCE in "${INSTANCES[@]}"; do
-  # Export erstellen
-  docker exec paperless_$INSTANCE document_exporter ../export --use-folder-prefix --zip
-done
-# Alte Backups löschen
-find $BACKUP_DIR -name "export*.zip" -mtime +$RETENTION_DAYS -delete
-````
-
-### Dokumente & Datenbank wiederherstellen
-**<span style="color: red;">muss komplett leere Instanz sein (ohne Dokumente und leere Datenbank)</span>**
 ```bash
-document_importer ../export/export-2026-01-21.zip
+INSTANCE_NAME=main
+DB_PASSWORD=<sicheres-passwort>
+PAPERLESS_SECRET_KEY=<mindestens-50-zeichen-alphanumerisch>
+KEYCLOAK_SECRET=<keycloak-client-secret>
+PAPERLESS_ALLOW_SIGNUPS=false
+PAPERLESS_DISABLE_REGULAR_LOGIN=true
+PAPERLESS_IGNORE_DATES=
 ```
 
-## Änderung an PAPERLESS_FILENAME_FORMAT
-alle Dokumente nach dem neuen Schema umbenennen
+### Erforderliche Umgebungsvariablen
+
+| Variable | Default | Beschreibung |
+|----------|---------|-------------|
+| `INSTANCE_NAME` | `main` | Eindeutiger Name für mehrere Instanzen |
+| `DB_PASSWORD` | `changeme` | PostgreSQL-Passwort |
+| `PAPERLESS_SECRET_KEY` | `changeme` | Django Secret Key (50+ Zeichen) |
+| `KEYCLOAK_SECRET` | - | Client-Secret für Keycloak OIDC |
+| `PAPERLESS_ALLOW_SIGNUPS` | `false` | Auto-Erstellung von Usern bei SSO |
+| `PAPERLESS_DISABLE_REGULAR_LOGIN` | `true` | Login-Formular deaktivieren |
+| `PAPERLESS_IGNORE_DATES` | - | Komma-getrennte Daten ignorieren |
+
+## Volumes (Development)
+
+```
+./data/
+  ├── paperless/          # Appdata (Einstellungen)
+  ├── media/              # Hochgeladene Dokumente
+  ├── export/             # Exportierte Dokumente
+  ├── consume/            # Verzeichnis für Datei-Upload
+  └── postgres/           # Datenbankdaten
+```
+
+## Volumes (Production)
+
+```
+/mnt/user/
+  ├── appdata/paperless/
+  ├── data/paperless/
+  └── logs/paperless/
+```
+
+## Network
+
+- **Development**: Bridge-Network (automatisch erstellt)
+- **Production**: `paperless_${INSTANCE_NAME}_network` + `proxy` (Traefik)
+
+## Traefik-Integration (Production)
+
+Die Anwendung wird automatisch unter `paperless-${INSTANCE_NAME}.nico-steinmueller.de` verfügbar gemacht:
+
+- `/admin` Route: Nur lokal erreichbar (`local-only` Middleware)
+- Alle anderen Routes: Öffentlich erreichbar mit CrowdSec-Schutz
+
+## OCR & Verarbeitung
+
+- **Sprachen**: Deutsch + Englisch
+- **Workers**: 1 Worker mit 4 Threads
+- **Timeout**: 30 Minuten pro Dokument
+- **Duplikate**: Werden automatisch gelöscht
+
+## Keycloak SSO
+
+Falls aktiviert, verwendet die Anwendung OpenID Connect (Keycloak) für die Authentifizierung. Der reguläre Login wird deaktiviert.
+
+Konfiguration:
+- **Server**: https://keycloak.nico-steinmueller.de/realms/mein-realm
+- **Client ID**: `paperless_${INSTANCE_NAME}`
+- **Client Secret**: Siehe `.env`
+
+## Mehrere Instanzen
+
+Für mehrere unabhängige Paperless-Instanzen:
+
+1. Separate Verzeichnisse erstellen: `paperless-main/`, `paperless-secondary/`
+2. In jedem Verzeichnis: `.env` mit unterschiedlichem `INSTANCE_NAME` setzen
+3. Jede Instanz hat eigene Datenbank, Redis, Volumes und Traefik-Route
+
+## Sicherheit
+
+- Alle Container laufen mit `no-new-privileges:true`
+- CAP_DROP: ALL (nur notwendige Capabilities werden hinzugefügt)
+- Read-only Dateisystem für stateless Services
+- tmpfs für temporäre Dateien (noexec, nosuid)
+
+## Health Checks
+
+Alle Services haben Health Checks konfiguriert und werden automatisch neu gestartet bei Fehlern.
+
+Status prüfen:
 ```bash
-document_renamer
+docker compose ps
 ```
 
-## Neue Tags / Kategorien / etc. angelegt und für alle Dokumente übernehmen
+## Logging
+
+Die Logs sind auf max 10 MB pro Datei und 3 Dateien begrenzt (json-file Driver).
+
 ```bash
-document_retagger [-h] [-c] [-T] [-t] [-i] [--id-range] [--use-first] [-f]
+# Logs anzeigen
+docker compose logs -f paperless
 
-optional arguments:
--c, --correspondent
--T, --tags
--t, --document_type
--s, --storage_path
--i, --inbox-only
---id-range
---use-first
--f, --overwrite
+# Logs anderer Services
+docker compose logs -f database
+docker compose logs -f redis
 ```
 
+## Ressourcenlimits
 
+| Service | CPU Limit | Memory Limit |
+|---------|-----------|--------------|
+| paperless | 2 | 2G |
+| database | 1 | 512M |
+| redis | 0.5 | 256M |
+| gotenberg | 1 | 1G |
+| tika | 2 | 2G |

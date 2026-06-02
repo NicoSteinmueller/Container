@@ -1,0 +1,309 @@
+# ============================================
+# PAPERLESS-NGX HAUPT-KONFIGURATION
+# ============================================
+# Kombiniert paperless mit seinen abhängigen Services
+# compose.override.yml: Development-Umgebung
+# compose.prod.yml: Production-Umgebung mit Traefik
+
+name: paperless
+
+services:
+  paperless:
+    # ------------ Identität ------------------------
+    image: ghcr.io/paperless-ngx/paperless-ngx:2.20.15@sha256:6c86cad803970ea782683a8e80e7403444c5bf3cf70de63b4d3c8e87500db92f
+    container_name: paperless
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: false
+    restart: on-failure:3
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      gotenberg:
+        condition: service_healthy
+      tika:
+        condition: service_healthy
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 2
+          memory: 2G
+          pids: 128
+        reservations:
+          cpus: 0.5
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+#    cap_drop:
+#      - ALL
+
+    # ----------- Speicher -----------
+    read_only: false
+#    tmpfs:
+#      - /run/s6
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+
+    # ---------- Environment -----------
+    environment:
+      # https://docs.paperless-ngx.com/configuration/
+      PAPERLESS_TIME_ZONE: Europe/Berlin
+
+      # App-Titel
+      PAPERLESS_APP_TITLE: Paperless-ngx
+
+      # Redis-Konfiguration
+      PAPERLESS_REDIS: redis://redis:6379
+
+      # Datenbank-Konfiguration (PostgreSQL)
+      PAPERLESS_DBHOST: database
+      PAPERLESS_DBENGINE: postgresql
+      PAPERLESS_DBNAME: paperless
+      PAPERLESS_DBUSER: paperless
+
+      # Tika und Gotenberg (gemeinsam genutzt)
+      PAPERLESS_TIKA_ENABLED: true
+      PAPERLESS_TIKA_ENDPOINT: http://tika:9998
+      PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://gotenberg:3000
+
+      # Dateiname-Format
+      # https://docs.paperless-ngx.com/advanced_usage/#file-name-handling
+      PAPERLESS_FILENAME_FORMAT: '{{ owner_username }}/{{ document_type }}/{{ created_year }}/{{ created }}-{{ correspondent }}-{{ title }}'
+
+      # OCR Sprachen & Verarbeitung
+      PAPERLESS_OCR_LANGUAGE: deu+eng
+      # Erstellung von Archivdateien wird nie übersprungen
+      PAPERLESS_OCR_SKIP_ARCHIVE_FILE: never
+      # Seiten automatisch drehen (90°, 180°, 270°)
+      PAPERLESS_OCR_ROTATE_PAGES: true
+      # Rotationsschwelle für automatische Seitendrehung (niedriger = aggressiver, 15 = konservativ, 2 = aggressiv (führt oft zu falschen Drehungen))
+      PAPERLESS_OCR_ROTATE_PAGES_THRESHOLD: 12
+      # Entfernt digitale Signaturen aus PDFs während der OCR-Verarbeitung.
+      PAPERLESS_OCR_USER_ARGS: '{"invalidate_digital_signatures": true}'
+
+      # Worker-Konfiguration
+      PAPERLESS_TASK_WORKERS: 1
+      # Anzahl der Threads pro Worker, z.B. für OCR oder Datenextraktion. Bei Verwendung von Tesseract OCR kann dies die Leistung verbessern, wenn mehrere CPU-Kerne verfügbar sind.
+      PAPERLESS_THREADS_PER_WORKER: 4
+      # Timeout in Sekunden für die Verarbeitung von Dokumenten durch die Worker. Wenn ein Dokument länger als diese Zeit benötigt, wird die Verarbeitung abgebrochen und als Fehler markiert. Bei komplexen Dokumenten oder langsamer Hardware kann es sinnvoll sein, diesen Wert zu erhöhen.
+      PAPERLESS_WORKER_TIMEOUT: 1800
+
+      # Document Consumption
+      # Duplikate (Hash gleich) werden beim Import automatisch gelöscht.
+      PAPERLESS_CONSUMER_DELETE_DUPLICATES: true
+      # Dateien werden auch in Unterordnern des "consume"-Verzeichnisses gesucht.
+      PAPERLESS_CONSUMER_RECURSIVE: true
+      # Anzahl der vorgeschlagenen ersten gefundenen Daten
+      PAPERLESS_NUMBER_OF_SUGGESTED_DATES: 6
+      # Sekunden, die der Consumer wartet, bevor er mit der Verarbeitung einer neuen Datei beginnt.
+      PAPERLESS_CONSUMER_INOTIFY_DELAY: 30
+      # Anzahl der Tage, die Dokumente im Papierkorb verbleiben, bevor sie endgültig gelöscht werden.
+      PAPERLESS_EMPTY_TRASH_DELAY: 90
+
+
+  database:
+    # ------------ Identität ------------------------
+    image: postgres:18.4-alpine3.23@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
+    container_name: paperless_postgres
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure:3
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperless -d paperless"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: 256M
+          pids: 64
+        reservations:
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+#    cap_drop:
+#      - ALL
+
+    # ---------- Environment -----------
+    environment:
+      TZ: Europe/Berlin
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+
+
+  redis:
+    # ------------ Identität ------------------------
+    image: docker.io/valkey/valkey:9.1.0-alpine3.23@sha256:a35428eba9043cc0b79dbe54100f0c92784f2de00ad09b01182bfb1c5c83d1bd
+    container_name: paperless_redis
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure:3
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: 256M
+          pids: 32
+        reservations:
+          memory: 16M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+#    cap_drop:
+#      - ALL
+
+    # ----------- Speicher -----------
+    read_only: true
+    tmpfs:
+      - /data:rw,noexec,nosuid,size=8M
+
+    # ---------- Environment -----------
+    environment:
+      TZ: Europe/Berlin
+
+
+  gotenberg:
+    # ------------ Identität ------------------------
+    image: gotenberg/gotenberg:8.33.0@sha256:bddd8ea9d076e2d08b6ddaa6efae6403185202c6dab65a6488ed0a6923d6d8e8
+    container_name: paperless_gotenberg
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: false
+    command:
+      - "gotenberg"
+      - "--chromium-disable-javascript=true"
+      - "--chromium-allow-list=file:///tmp/.*"
+    restart: on-failure:3
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: 512M
+          pids: 64
+        reservations:
+          memory: 32M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+#    cap_drop:
+#      - ALL
+
+    # ----------- Speicher -----------
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/gotenberg
+
+    # ---------- Environment -----------
+    environment:
+      TZ: Europe/Berlin
+
+
+  tika:
+    # ------------ Identität ------------------------
+    image: apache/tika:3.3.1.0-full@sha256:d8e6ed96260ad89307a93195a1b856102987a818ac648502f8efbaf313d32470
+    container_name: paperless_tika
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure:3
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 -O /dev/null http://localhost:9998/version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: 1G
+          pids: 256
+        reservations:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+#    cap_drop:
+#      - ALL
+
+    # ----------- Speicher -----------
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=512m
+
+    # ---------- Environment -----------
+    environment:
+      TZ: Europe/Berlin
