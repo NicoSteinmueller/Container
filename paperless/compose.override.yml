@@ -29,25 +29,25 @@ services:
         target: /usr/src/paperless/data
         read_only: false
         bind:
-          create_host_path: false
+          create_host_path: true
       - type: bind
         source: ./data/media
         target: /usr/src/paperless/media
         read_only: false
         bind:
-          create_host_path: false
+          create_host_path: true
       - type: bind
         source: ./data/export
         target: /usr/src/paperless/export
         read_only: false
         bind:
-          create_host_path: false
+          create_host_path: true
       - type: bind
         source: ./data/consume
         target: /usr/src/paperless/consume
         read_only: false
         bind:
-          create_host_path: false
+          create_host_path: true
 
   database:
     user: 1000:1000
@@ -59,7 +59,7 @@ services:
         target: /var/lib/postgresql
         read_only: false
         bind:
-          create_host_path: false
+          create_host_path: true
 
   redis:
     user: 1000:1000
