@@ -14,13 +14,13 @@ services:
         target: /var/lib/ntfy
         read_only: false
         bind:
-          create_host_path: true
+          create_host_path: false
       - type: bind
         source: ./data/cache
         target: /var/cache/ntfy
         read_only: false
         bind:
-          create_host_path: true
+          create_host_path: false
     environment:
       NTFY_BASE_URL: http://localhost:80
       # USER Format: <user>:<bcrypt-hash>:<role>
