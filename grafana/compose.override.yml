@@ -1,0 +1,98 @@
+# Einstellungen für Development- und Testumgebungen
+
+services:
+  grafana:
+    user: 1000:1000
+    ports:
+      - name: web
+        target: 3000
+        host_ip: 127.0.0.1
+        published: 8080
+        protocol: tcp
+        app_protocol: http
+    volumes:
+      - type: bind
+        source: ./data/grafana
+        target: /var/lib/grafana
+        read_only: false
+        bind:
+          create_host_path: false
+    environment:
+      GF_DATABASE_PASSWORD: PASSWORD
+
+      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: false # Admin-User wird über Umgebungsvariablen erstellt
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+
+      GF_SERVER_ROOT_URL: http://localhost:8080
+
+
+  database:
+    user: 1000:1000
+    environment:
+      POSTGRES_PASSWORD: PASSWORD
+    volumes:
+      - type: bind
+        source: ./data/postgres
+        target: /var/lib/postgresql
+        read_only: false
+        bind:
+          create_host_path: false
+
+
+  prometheus:
+    user: 1000:1000
+    ports:
+      - name: web
+        target: 9090
+        host_ip: 127.0.0.1
+        published: 9090
+        protocol: tcp
+        app_protocol: http
+    volumes:
+      - type: bind
+        source: ./data/prometheus
+        target: /prometheus
+        read_only: false
+        bind:
+          create_host_path: false
+
+
+  loki:
+    user: 1000:1000
+    volumes:
+      - type: bind
+        source: ./data/loki
+        target: /loki
+        read_only: false
+        bind:
+          create_host_path: false
+
+
+  alloy:
+    user: root
+    ports:
+      - name: web
+        target: 12345
+        host_ip: 127.0.0.1
+        published: 12345
+        protocol: tcp
+        app_protocol: http
+    volumes:
+      - type: bind
+        source: ./data/alloy
+        target: /etc/alloy
+        read_only: true
+        bind:
+          create_host_path: false
+      # System-Metriken/Infos vom Host (CPU, RAM, Netzwerk, Prozesse, Docker-Stats, etc.)
+      - /proc:/rootproc:ro # Host-Prozesse/Metriken
+      - /var/run/docker.sock:/var/run/docker.sock:ro # Docker-API
+      - /sys:/sys:ro # Kernel-/HW-Infos
+      - /:/rootfs:ro # Host-Dateisystem
+      - /dev/disk/:/dev/disk:ro # Disk-IDs/Devices
+      - /var/lib/docker/:/var/lib/docker:ro # Docker-Daten/Logs
+      - /var/log:/var/host-log:ro # Host-Logs (z.B. Syslog, Auth, etc.)
+#      # Hier alle Host-Pfade, in die Apps Logs schreiben.
+#      - /mnt/user/logs:/var/docker_logs:ro
+

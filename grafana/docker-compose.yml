@@ -29,7 +29,6 @@ services:
       GF_ANALYTICS_CHECK_FOR_UPDATES: false # Update-Checks deaktivieren
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: false # Plugin-Update-Checks deaktivieren
       GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: true # Admin-User wird über Umgebungsvariablen erstellt
-      # GF_SECURITY_ADMIN_PASSWORD: admin # Bitte später ändern
       GF_USERS_DEFAULT_LANGUAGE: de
       GF_AUTH_DISABLE_LOGIN_FORM: true # Login-Formular deaktivieren
       GF_AUTH_SIGNOUT_REDIRECT_URL: https://keycloak.nico-steinmueller.de/realms/mein-realm/protocol/openid-connect/logout?post_logout_redirect_uri=https://grafana.local.nico-steinmueller.de/login
@@ -114,6 +113,7 @@ services:
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
     volumes:
+      #Todo
       - /mnt/user/appdata/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - /mnt/user/data/monitoring/prometheus:/prometheus
     networks:
