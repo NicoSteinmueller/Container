@@ -1,0 +1,44 @@
+name: kopia
+
+services:
+  kopia:
+    # ------------ Identität ------------------------
+    image: kopia/kopia:0.23.0@sha256:bd6a449c263465c388339c0637dcd25562e99dcdde286c9d51ade81e138bbf2c
+
+    # ------------ Abhängigkeiten & Start -----------
+    init: true
+    restart: on-failure:3
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "kopia", "repository", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+      start_interval: 5s
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          cpus: 2
+          memory: 2G
+          pids: 128
+        reservations:
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Speicher -----------
+    read_only: true
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+
+    # ---------- Environment -----------
+    environment:
+      TZ: Europe/Berlin

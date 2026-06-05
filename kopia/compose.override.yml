@@ -1,0 +1,60 @@
+# Einstellungen für Development- und Testumgebungen
+
+services:
+  kopia:
+    container_name: kopia_dev
+    user: 1000:1000
+    command:
+      - server
+      - start
+      - --disable-csrf-token-checks
+      - --insecure
+      - --address=0.0.0.0:51515
+      - --server-username=admin
+      - --server-password=admin
+    environment:
+      KOPIA_PASSWORD: password
+    ports:
+      - name: server
+        target: 51515
+        host_ip: 127.0.0.1
+        published: 51515
+        protocol: tcp
+        app_protocol: http
+        mode: host
+    volumes:
+      # Kopia Konfiguration und Cache
+      - type: bind
+        source: ./data/config
+        target: /app/config
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/cache
+        target: /app/cache
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./data/logs
+        target: /app/logs
+        read_only: false
+        bind:
+          create_host_path: false
+
+      # Backup-Zielordner (Repository)
+      - type: bind
+        source: ./data/repository
+        target: /repository
+        read_only: false
+        bind:
+          create_host_path: false
+
+      # Zugriff auf Snapshots
+      - type: bind
+        source: ./data/snapshots
+        target: /tmp
+        read_only: false
+        bind:
+          create_host_path: false

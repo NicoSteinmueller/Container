@@ -1,0 +1,224 @@
+# Einstellungen für die Produktion
+
+services:
+  kopia:
+    container_name: kopia_${INSTANCE}
+    user: 99:100
+    command:
+      - server
+      - start
+      - --disable-csrf-token-checks
+      - --insecure
+      - --address=0.0.0.0:51515
+      - --server-username=${KOPIA_SERVER_USERNAME}
+      - --server-password=${KOPIA_SERVER_PASSWORD}
+    environment:
+      KOPIA_PASSWORD: ${KOPIA_REPOSITORY_PASSWORD}
+    networks:
+      proxy:
+    volumes:
+      # Kopia Konfiguration und Cache
+      - type: bind
+        source: /mnt/user/appdata/kopia/${INSTANCE}/config
+        target: /app/config
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/appdata/kopia/${INSTANCE}/cache
+        target: /app/cache
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/logs/kopia/${INSTANCE}
+        target: /app/logs
+        read_only: false
+        bind:
+          create_host_path: false
+
+      # Backup-Zielordner (Repository)
+      - type: bind
+        source: ${KOPIA_REPOSITORY_DIR}
+        target: /repository
+        read_only: false
+        bind:
+          create_host_path: false
+
+      # Zugriff auf eingebundene Snapshots
+      - type: bind
+        source: /mnt/user/data/kopia/${INSTANCE}
+        target: /tmp
+        read_only: false
+        bind:
+          create_host_path: true
+          propagation: shared
+
+      # Quellordner - hier die Daten die gesichert werden sollen
+      # Bilder
+      - type: bind
+        source: /mnt/user/Bilder
+        target: /data/bilder
+        read_only: true
+        bind:
+          create_host_path: false
+
+      # Apps
+      # Adguard
+      - type: bind
+        source: /mnt/user/appdata/adguard
+        target: /data/adguard
+        read_only: true
+        bind:
+          create_host_path: false
+
+      # Immich
+      - type: bind
+        source: /mnt/user/data/immich/media
+        target: /data/immich/media
+        read_only: true
+        bind:
+          create_host_path: false
+
+      # Keycloak
+      - type: bind
+        source: /mnt/user/data/keycloak/db-backup
+        target: /data/keycloak/db-backup
+        read_only: true
+        bind:
+          create_host_path: false
+
+      # Minecraft
+      - type: bind
+        source: /mnt/user/appdata/minecraft
+        target: /data/minecraft/appdata
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/minecraft
+        target: /data/minecraft/data
+        read_only: true
+        bind:
+          create_host_path: false
+
+      # Nextcloud
+      - type: bind
+        source: /mnt/user/appdata/nextcloud/apps
+        target: /data/nextcloud/apps
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/appdata/nextcloud/config
+        target: /data/nextcloud/config
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/appdata/nextcloud/themes
+        target: /data/nextcloud/themes
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/nextcloud/data
+        target: /data/nextcloud/data
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/nextcloud/db-backup
+        target: /data/nextcloud/db-backup
+        read_only: true
+        bind:
+          create_host_path: false
+
+      # Octoprint
+      - type: bind
+        source: /mnt/user/appdata/octoprint/octoprint
+        target: /data/octoprint/octoprint
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/appdata/octoprint/plugins
+        target: /data/octoprint/plugins
+        read_only: true
+        bind:
+          create_host_path: false
+
+      # Paperless
+      - type: bind
+        source: /mnt/user/appdata/paperless/data
+        target: /data/paperless/data
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/paperless/consume
+        target: /data/paperless/consume
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/paperless/export
+        target: /data/paperless/export
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/paperless/media
+        target: /data/paperless/media
+        read_only: true
+        bind:
+          create_host_path: false
+
+      # SFTPGo
+      - type: bind
+        source: /mnt/user/appdata/sftpgo/config
+        target: /data/sftpgo/config
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/sftpgo/backups
+        target: /data/sftpgo/backups
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/data/sftpgo/data
+        target: /data/sftpgo/data
+        read_only: true
+        bind:
+          create_host_path: false
+
+      # Traefik
+      - type: bind
+        source: /mnt/user/appdata/traefik
+        target: /data/traefik
+        read_only: true
+        bind:
+          create_host_path: false
+
+      # Linkwarden
+      - type: bind
+        source: /mnt/user/data/linkwarden/data
+        target: /data/linkwarden/data
+        read_only: true
+        bind:
+          create_host_path: false
+
+
+    labels:
+      - "traefik.enable=true"
+      # Host rule configurable via env var KOPIA_HOST (default kopia.local)
+      - "traefik.http.routers.kopia-${INSTANCE}.rule=Host(`kopia-${INSTANCE}.local.nico-steinmueller.de`)"
+      - "traefik.http.routers.kopia-${INSTANCE}.entrypoints=websecure"
+      - "traefik.http.routers.kopia-${INSTANCE}.middlewares=local-only"
+      - "traefik.http.services.kopia-${INSTANCE}.loadbalancer.server.port=51515"
+
+networks:
+  proxy:
+    external: true
