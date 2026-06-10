@@ -15,7 +15,7 @@ services:
 
     # ------------ Abhängigkeiten & Start -----------
     init: false
-    restart: on-failure:3
+    restart: unless-stopped
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/"]
@@ -126,7 +126,7 @@ services:
 
     # ------------ Abhängigkeiten & Start -----------
     init: true
-    restart: on-failure:3
+    restart: unless-stopped
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U paperless -d paperless"]
@@ -170,7 +170,7 @@ services:
 
     # ------------ Abhängigkeiten & Start -----------
     init: true
-    restart: on-failure:3
+    restart: unless-stopped
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -221,7 +221,7 @@ services:
       - "gotenberg"
       - "--chromium-disable-javascript=true"
       - "--chromium-allow-list=file:///tmp/.*"
-    restart: on-failure:3
+    restart: unless-stopped
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
@@ -269,7 +269,7 @@ services:
 
     # ------------ Abhängigkeiten & Start -----------
     init: true
-    restart: on-failure:3
+    restart: unless-stopped
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD-SHELL", "wget --quiet --tries=1 -O /dev/null http://localhost:9998/version || exit 1"]

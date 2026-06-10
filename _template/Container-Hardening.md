@@ -129,7 +129,7 @@ https://man7.org/linux/man-pages/man7/capabilities.7.html
     ```
     - Erlaubt automatisches Neustarten bei Fehlern
     - ```yaml
-        restart: on-failure:3
+        restart: unless-stopped
       ```
 - `depends_on` mit healthcheck kombinieren
   - ```yaml

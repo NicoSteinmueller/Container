@@ -8,7 +8,7 @@ services:
 
     # ------------ Abhängigkeiten & Start -----------
     init: true
-    restart: on-failure:3
+    restart: unless-stopped
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
@@ -299,7 +299,7 @@ services:
 
     # ------------ Abhängigkeiten & Start -----------
     init: true
-    restart: on-failure:3
+    restart: unless-stopped
     stop_grace_period: 30s
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U sftpgo -d sftpgo" ]

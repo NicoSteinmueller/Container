@@ -14,7 +14,7 @@ services:
     # ------------ Abhängigkeiten & Start -----------
     init: true
     command: start
-    restart: on-failure:3
+    restart: unless-stopped
     stop_grace_period: 1m
     healthcheck:
       test: ["CMD-SHELL", "(exec 3<>/dev/tcp/localhost/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && timeout 2 cat <&3) | head -1 | grep -q 200"]
@@ -74,7 +74,7 @@ services:
 
     # ------------ Abhängigkeiten & Start -----------
     init: true
-    restart: on-failure:3
+    restart: unless-stopped
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]

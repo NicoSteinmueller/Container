@@ -28,7 +28,7 @@ services:
     # always: Der Container wird immer neu gestartet, unabhängig von der Ursache des Stopps.
     # on-failure:[max-retries]: Der Container wird nur neu gestartet, wenn er mit einem Fehlercode
     # unless-stopped: Der Container wird neu gestartet, es sei denn, er wurde manuell gestoppt.
-    restart: on-failure:3
+    restart: unless-stopped
     # Wartezeit nach Stop signal, bevor Kill gesendet wird, um dem Container Zeit zu geben, ordnungsgemäß herunterzufahren und Ressourcen freizugeben.
     stop_grace_period: 1m
     # prüft die Gesundheit des Containers, um sicherzustellen, dass er ordnungsgemäß funktioniert und erreichbar ist
