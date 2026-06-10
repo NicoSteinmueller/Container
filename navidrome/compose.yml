@@ -35,13 +35,13 @@ services:
     # ----------- Sicherheit -----------
     security_opt:
       - no-new-privileges:true
-#    cap_drop:
-#      - ALL
+    cap_drop:
+      - ALL
 
     # ----------- Speicher -----------
-#    read_only: true
-#    tmpfs:
-#      - /tmp
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=150m
 
     # ---------- Environment -----------
     environment:
