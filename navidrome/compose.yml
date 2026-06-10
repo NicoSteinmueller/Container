@@ -41,7 +41,7 @@ services:
     # ----------- Speicher -----------
     read_only: true
     tmpfs:
-      - /tmp:rw,noexec,nosuid,size=32m
+      - /tmp
 
     # ---------- Environment -----------
     environment:
