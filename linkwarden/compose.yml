@@ -184,7 +184,7 @@ services:
       - no-new-privileges:true
 
     # ----------- Speicher -----------
-    read_only: true
+#    read_only: true
 
     # ---------- Environment -----------
     environment:
