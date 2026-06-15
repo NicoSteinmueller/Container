@@ -43,14 +43,12 @@ services:
     # ----------- Sicherheit -----------
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
 
 #    # ----------- Speicher -----------
     read_only: true
     tmpfs:
-      - /tmp:rw,exec,nosuid,size=16M
-      - /home/node/.cache:rw,noexec,nosuid,size=16M
+      - /tmp:rw,exec,nosuid,size=64M
+      - /home/node/.cache:rw,noexec,nosuid,size=64M
     # ---------- Environment -----------
     environment:
       # https://docs.linkwarden.app/self-hosting/environment-variables
@@ -129,7 +127,7 @@ services:
         limits:
           cpus: 0.5
           memory: 128M
-          pids: 32
+          pids: 64
         reservations:
           memory: 50M
     logging:
@@ -141,8 +139,6 @@ services:
     # ----------- Sicherheit -----------
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
 
     # ---------- Environment -----------
     environment:
@@ -186,8 +182,6 @@ services:
     # ----------- Sicherheit -----------
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
 
     # ----------- Speicher -----------
     read_only: true
