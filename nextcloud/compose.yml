@@ -58,7 +58,7 @@ services:
 
   database:
     # ------------ Identität ------------------------
-    image: postgres:18.4-alpine3.23@sha256:c14378294b5806d846c5e659143ab28c04b7000e130deb030a64bd65c854ffcc
+    image: postgres:18.4-alpine3.23@sha256:7764e781145fa1b70b8ebd6f440d3372fdd985a26ce0039dcba8442d22c8c36e
     container_name: nextcloud_postgres
 
     # ------------ Abhängigkeiten & Start -----------
