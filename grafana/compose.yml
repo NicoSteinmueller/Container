@@ -12,7 +12,7 @@ services:
   # https://grafana.com/docs/grafana/latest/setup-grafana/installation/docker/
   grafana:
     # ------------ Identität ------------------------
-    image: grafana/grafana:13.1.0@sha256:eee9924b40da0a2c0e3174d164baa5a63a48c9ff10bac3eb02b7d6d7cb274968
+    image: grafana/grafana:13.1.0@sha256:121a7a9ece6dc10b969f1f96eed64b4f07dfac0d0b8abc070f7cb83bbde86f63
     container_name: grafana
 
     # ------------ Abhängigkeiten & Start -----------
@@ -84,7 +84,7 @@ services:
 
   # Die Datenbank für Grafana
   database:
-    image: postgres:18.4-alpine3.23@sha256:169a12515b04a483f4d508e9f8256edcda9e81409a03f89d6a0461ea59c673f9
+    image: postgres:18.4-alpine3.23@sha256:865a3cfdac164ea2608bea36342a9bb5c11e99b5aa8ed9b83b662185e556e178
     container_name: grafana_postgres
 
     # ------------ Abhängigkeiten & Start -----------
