@@ -4,7 +4,7 @@ services:
   # TODO https://doc.traefik.io/traefik/setup/docker/
   traefik:
     # ------------ Identität ------------------------
-    image: traefik:3.7.5@sha256:d6858791f9e74df44ca4014166647c41cdc2abd3bf2a71b832ca4e1c6a91b257
+    image: traefik:3.7.5@sha256:e4d98158c01ad752fc1071d4e9573788747230d902cdde00a772516e692d07c9
     container_name: traefik
 
     # ------------ Abhängigkeiten & Start -----------
@@ -246,7 +246,7 @@ services:
 
   docker-proxy:
     # ------------ Identität ------------------------
-    image: lscr.io/linuxserver/socket-proxy:3.4.0@sha256:1a210e6688649c3c8217faa29172dbbb46d9f9a0afb62b1c4b9987a612057a4d
+    image: lscr.io/linuxserver/socket-proxy:3.4.0@sha256:cb30b9c279443b461666dba087975e8efe0ad7af03b7c81c053cdcff9aacd531
     container_name: traefik_docker-proxy
 
     # ------------ Abhängigkeiten & Start -----------
