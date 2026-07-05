@@ -294,8 +294,6 @@ services:
       NETWORKS: 1      # Benötigt für Traefik
       PING: 1          # Aktiviert den /_ping Endpunkt (Standard: 1)
       VERSION: 1       # Erlaubt Traefik die API-Version abzufragen
-      EVENTS: 1          # Erlaubt das Überwachen von Docker-Events
-      POST: 1        # Braucht CrowdSec
 
 
   traefik-logrotate:
@@ -410,10 +408,11 @@ services:
       # Prüfen für neue Anwendung: https://app.crowdsec.net/hub/conecllections
       COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules crowdsecurity/appsec-crs crowdsecurity/appsec-crs-exclusion-plugin-nextcloud crowdsecurity/sshd crowdsecurity/linux crowdsecurity/iptables crowdsecurity/base-http-scenarios crowdsecurity/http-dos crowdsecurity/whitelist-good-actors crowdsecurity/nextcloud gauth-fr/immich"
       TZ: Europe/Berlin
-      DOCKER_HOST: tcp://docker-proxy:2375
 
     # ----------- Speicher -----------
     volumes:
       - /etc/localtime:/etc/localtime:ro
+      # Docker Socket über docker-proxy für erweiterte Container-Überwachung
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 
 
