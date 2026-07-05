@@ -84,7 +84,7 @@ services:
     user: 99:100
     environment:
       # ENROLL_KEY auskommentiert - Instanz bereits enrolled, Key verursacht "Forbidden"-Fehler
-      ENROLL_KEY: ${CROWDSEC_ENROLL_KEY}
+#      ENROLL_KEY: ${CROWDSEC_ENROLL_KEY}
       ENROLL_INSTANCE_NAME: traefik
     volumes:
       - type: bind
