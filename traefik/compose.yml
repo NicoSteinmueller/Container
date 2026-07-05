@@ -370,6 +370,10 @@ services:
     # ------------ Abhängigkeiten & Start -----------
     init: true
     restart: unless-stopped
+    depends_on:
+      docker-proxy:
+        condition: service_healthy
+        restart: true
     healthcheck:
       test: ["CMD", "sh", "-c", "cscli version && wget -q --spider http://localhost:8080/health || exit 1"]
       interval: 30s
@@ -404,6 +408,7 @@ services:
       # Prüfen für neue Anwendung: https://app.crowdsec.net/hub/conecllections
       COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules crowdsecurity/appsec-crs crowdsecurity/appsec-crs-exclusion-plugin-nextcloud crowdsecurity/sshd crowdsecurity/linux crowdsecurity/iptables crowdsecurity/base-http-scenarios crowdsecurity/http-dos crowdsecurity/whitelist-good-actors crowdsecurity/nextcloud gauth-fr/immich"
       TZ: Europe/Berlin
+      DOCKER_HOST: tcp://docker-proxy:2375
 
     # ----------- Speicher -----------
     volumes:
