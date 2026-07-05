@@ -295,7 +295,7 @@ services:
       PING: 1          # Aktiviert den /_ping Endpunkt (Standard: 1)
       VERSION: 1       # Erlaubt Traefik die API-Version abzufragen
       EVENTS: 1          # Erlaubt das Überwachen von Docker-Events
-#      POST: 0            # Verbietet das Erstellen/Ändern von Ressourcen
+      POST: 1        # Braucht CrowdSec
 
 
   traefik-logrotate:
