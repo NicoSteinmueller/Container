@@ -412,7 +412,5 @@ services:
     # ----------- Speicher -----------
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      # Docker Socket über docker-proxy für erweiterte Container-Überwachung
-      - /var/run/docker.sock:/var/run/docker.sock:ro
 
 
