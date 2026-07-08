@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prod Storage Overview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #f5f6f2;
+        --surface: #fffef8;
+        --text: #1f2a1f;
+        --muted: #5a665a;
+        --line: #d9dfd3;
+        --accent: #0a7b58;
+        --accent-soft: #e4f5ef;
+        --warn: #8f3c19;
+        --warn-soft: #fdeee6;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 10% -10%, #e6f4ea 0%, transparent 45%),
+          radial-gradient(circle at 90% -20%, #fff3d5 0%, transparent 40%),
+          var(--bg);
+      }
+
+      .wrap {
+        width: min(1200px, 92vw);
+        margin: 2.5rem auto 3rem;
+      }
+
+      .hero {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 1.25rem 1.4rem;
+        box-shadow: 0 10px 25px rgba(30, 48, 30, 0.06);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.2rem, 1rem + 1.5vw, 2rem);
+        letter-spacing: 0.01em;
+      }
+
+      .sub {
+        margin-top: 0.5rem;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      .metrics {
+        margin-top: 1rem;
+        display: grid;
+        gap: 0.75rem;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      }
+
+      .metric {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 0.75rem 0.85rem;
+      }
+
+      .metric .label {
+        color: var(--muted);
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .metric .value {
+        margin-top: 0.25rem;
+        font-size: 1.35rem;
+        font-weight: 700;
+      }
+
+      .panel {
+        margin-top: 1rem;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        box-shadow: 0 10px 25px rgba(30, 48, 30, 0.06);
+        overflow: hidden;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.7rem;
+        align-items: center;
+        padding: 0.9rem;
+        border-bottom: 1px solid var(--line);
+      }
+
+      input[type="search"] {
+        flex: 1 1 320px;
+        min-width: 220px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.56rem 0.72rem;
+        font: inherit;
+        background: #fffffc;
+      }
+
+      label.toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        text-align: left;
+        border-bottom: 1px solid var(--line);
+        padding: 0.62rem 0.78rem;
+        vertical-align: top;
+      }
+
+      th {
+        font-size: 0.77rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        background: #f9fbf6;
+      }
+
+      td.path {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 0.84rem;
+      }
+
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        padding: 0.2rem 0.52rem;
+      }
+
+      .rw {
+        color: var(--accent);
+        background: var(--accent-soft);
+      }
+
+      .ro {
+        color: var(--warn);
+        background: var(--warn-soft);
+      }
+
+      .notes {
+        margin-top: 1rem;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 0.95rem 1rem;
+      }
+
+      .split {
+        margin-top: 1rem;
+        display: grid;
+        gap: 0.75rem;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      }
+
+      .split-card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 0.8rem 0.9rem;
+      }
+
+      .split-card h2 {
+        margin: 0;
+        font-size: 0.86rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+
+      .split-card .count {
+        margin-top: 0.35rem;
+        font-size: 1.4rem;
+        font-weight: 700;
+      }
+
+      .split-card .meta {
+        margin-top: 0.2rem;
+        font-size: 0.86rem;
+        color: var(--muted);
+      }
+
+      .notes h2 {
+        margin: 0 0 0.45rem;
+        font-size: 1rem;
+      }
+
+      .notes ul {
+        margin: 0;
+        padding-left: 1.15rem;
+      }
+
+      .notes li {
+        margin: 0.2rem 0;
+        color: var(--muted);
+      }
+
+      @media (max-width: 850px) {
+        .table-wrap {
+          overflow-x: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="hero">
+        <h1>Speicherorte</h1>
+        <p class="sub">
+          Quelle: alle produktiven Compose-Dateien im Workspace.
+        </p>
+        <div class="metrics">
+          <div class="metric">
+            <div class="label">Bind-Mounts gesamt</div>
+            <div id="mTotal" class="value">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">Read/Write</div>
+            <div id="mRw" class="value">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">Read-Only</div>
+            <div id="mRo" class="value">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">Unique Host-Pfade</div>
+            <div id="mHosts" class="value">0</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="toolbar">
+          <input id="q" type="search" placeholder="Suchen: Stack, Service, Host- oder Container-Pfad" />
+          <label class="toggle">
+            <input id="onlyWritable" type="checkbox" />
+            nur Read/Write anzeigen
+          </label>
+          <label class="toggle">
+            Bereich:
+            <select id="pathArea">
+              <option value="all">alle</option>
+              <option value="appdata">appdata</option>
+              <option value="data">data</option>
+              <option value="logs">logs</option>
+            </select>
+          </label>
+          <span id="rowCount" class="sub"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Stack</th>
+                <th>Service</th>
+                <th>Bereich</th>
+                <th>Host-Pfad</th>
+                <th>Container-Pfad</th>
+                <th>Zugriff</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="split">
+        <article class="split-card">
+          <h2>appdata</h2>
+          <div class="count" id="splitAppdata">0</div>
+          <div class="meta" id="splitAppdataHosts">0 Host-Pfade</div>
+        </article>
+        <article class="split-card">
+          <h2>data</h2>
+          <div class="count" id="splitData">0</div>
+          <div class="meta" id="splitDataHosts">0 Host-Pfade</div>
+        </article>
+        <article class="split-card">
+          <h2>logs</h2>
+          <div class="count" id="splitLogs">0</div>
+          <div class="meta" id="splitLogsHosts">0 Host-Pfade</div>
+        </article>
+      </section>
+
+      <section class="notes">
+        <h2>Hinweise</h2>
+        <ul>
+          <li>Nur bind mounts aus compose.prod.yml sind enthalten.</li>
+          <li>tmpfs, Ports, Labels und Netzwerke werden absichtlich nicht dargestellt.</li>
+          <li>Keine persistenten bind mounts in Prod gefunden in: it-tools, whoami.</li>
+          <li>_template/default wurde als Vorlage nicht in die Tabelle aufgenommen.</li>
+        </ul>
+      </section>
+    </main>
+
+    <script>
+      const DATA = [
+        ["adguard", "adguard", "/mnt/user/appdata/adguard", "/opt/adguardhome/conf", false],
+        ["adguard", "adguard", "/mnt/user/logs/adguard", "/opt/adguardhome/work", false],
+        ["grafana", "grafana", "/mnt/user/appdata/grafana/grafana", "/var/lib/grafana", false],
+        ["grafana", "database", "/mnt/user/appdata/grafana/postgres", "/var/lib/postgresql", false],
+        ["grafana", "prometheus", "/mnt/user/data/grafana/prometheus", "/prometheus", false],
+        ["grafana", "loki", "/mnt/user/data/grafana/loki", "/loki", false],
+        ["grafana", "alloy", "/mnt/user/appdata/grafana/alloy", "/etc/alloy", true],
+        ["grafana", "alloy", "/mnt/user/logs", "/var/docker_logs", true],
+        ["immich", "immich", "/mnt/user/data/immich/media", "/data", false],
+        ["immich", "immich-machine-learning", "/mnt/user/appdata/immich/machine-learning/cache", "/cache", false],
+        ["immich", "immich-machine-learning", "/mnt/user/appdata/immich/machine-learning/.cache", "/.cache", false],
+        ["immich", "immich-machine-learning", "/mnt/user/appdata/immich/machine-learning/.config", "/.config", false],
+        ["immich", "database", "/mnt/user/appdata/immich/postgres", "/var/lib/postgresql", false],
+        ["keycloak", "database", "/mnt/user/appdata/keycloak/postgres", "/var/lib/postgresql", false],
+        ["kopia", "kopia", "/mnt/user/appdata/kopia/${INSTANCE}/config", "/app/config", false],
+        ["kopia", "kopia", "/mnt/user/appdata/kopia/${INSTANCE}/cache", "/app/cache", false],
+        ["kopia", "kopia", "/mnt/user/logs/kopia/${INSTANCE}", "/app/logs", false],
+        ["kopia", "kopia", "${KOPIA_REPOSITORY_DIR}", "/repository", false],
+        ["kopia", "kopia", "/mnt/user/data/kopia/${INSTANCE}", "/tmp", false],
+        ["kopia", "kopia", "/mnt/user/Bilder", "/data/bilder", true],
+        ["kopia", "kopia", "/mnt/user/appdata/adguard", "/data/adguard", true],
+        ["kopia", "kopia", "/mnt/user/data/immich/media", "/data/immich/media", true],
+        ["kopia", "kopia", "/mnt/user/data/keycloak/db-backup", "/data/keycloak/db-backup", true],
+        ["kopia", "kopia", "/mnt/user/appdata/minecraft", "/data/minecraft/appdata", true],
+        ["kopia", "kopia", "/mnt/user/data/minecraft", "/data/minecraft/data", true],
+        ["kopia", "kopia", "/mnt/user/appdata/nextcloud/apps", "/data/nextcloud/apps", true],
+        ["kopia", "kopia", "/mnt/user/appdata/nextcloud/config", "/data/nextcloud/config", true],
+        ["kopia", "kopia", "/mnt/user/appdata/nextcloud/themes", "/data/nextcloud/themes", true],
+        ["kopia", "kopia", "/mnt/user/data/nextcloud/data", "/data/nextcloud/data", true],
+        ["kopia", "kopia", "/mnt/user/data/nextcloud/db-backup", "/data/nextcloud/db-backup", true],
+        ["kopia", "kopia", "/mnt/user/appdata/octoprint/octoprint", "/data/octoprint/octoprint", true],
+        ["kopia", "kopia", "/mnt/user/appdata/octoprint/plugins", "/data/octoprint/plugins", true],
+        ["kopia", "kopia", "/mnt/user/appdata/paperless/data", "/data/paperless/data", true],
+        ["kopia", "kopia", "/mnt/user/data/paperless/consume", "/data/paperless/consume", true],
+        ["kopia", "kopia", "/mnt/user/data/paperless/export", "/data/paperless/export", true],
+        ["kopia", "kopia", "/mnt/user/data/paperless/media", "/data/paperless/media", true],
+        ["kopia", "kopia", "/mnt/user/appdata/sftpgo/config", "/data/sftpgo/config", true],
+        ["kopia", "kopia", "/mnt/user/data/sftpgo/backups", "/data/sftpgo/backups", true],
+        ["kopia", "kopia", "/mnt/user/data/sftpgo/data", "/data/sftpgo/data", true],
+        ["kopia", "kopia", "/mnt/user/appdata/traefik", "/data/traefik", true],
+        ["kopia", "kopia", "/mnt/user/data/linkwarden/data", "/data/linkwarden/data", true],
+        ["linkwarden", "linkwarden", "/mnt/user/data/linkwarden/data", "/data/data", false],
+        ["linkwarden", "linkwarden-init", "/mnt/user/data/linkwarden/data", "/data/data", false],
+        ["linkwarden", "postgres", "/mnt/user/appdata/linkwarden/postgres", "/var/lib/postgresql", false],
+        ["navidrome", "navidrome", "/mnt/user/appdata/navidrome/data", "/data", false],
+        ["navidrome", "navidrome", "/mnt/user/appdata/navidrome/backup", "/backup", false],
+        ["navidrome", "navidrome", "/mnt/user/data/music", "/music", true],
+        ["nextcloud", "nextcloud", "/mnt/user/appdata/nextcloud/config", "/config", false],
+        ["nextcloud", "nextcloud", "/mnt/user/data/nextcloud/data", "/data", false],
+        ["nextcloud", "nextcloud", "/mnt/user/data/paperless/consume", "/app/www/public/paperless-consume", false],
+        ["nextcloud", "database", "/mnt/user/appdata/nextcloud/postgres", "/var/lib/postgresql", false],
+        ["ntfy", "ntfy", "/mnt/user/appdata/ntfy/lib", "/var/lib/ntfy", false],
+        ["ntfy", "ntfy", "/mnt/user/appdata/ntfy/cache", "/var/cache/ntfy", false],
+        ["paperless", "paperless", "/mnt/user/appdata/paperless/data/nico", "/usr/src/paperless/data", false],
+        ["paperless", "paperless", "/mnt/user/data/paperless/media/", "/usr/src/paperless/media", false],
+        ["paperless", "paperless", "/mnt/user/data/paperless/export/", "/usr/src/paperless/export", false],
+        ["paperless", "paperless", "/mnt/user/data/paperless/consume/", "/usr/src/paperless/consume", false],
+        ["paperless", "paperless", "/mnt/user/logs/paperless/", "/usr/src/paperless/data/log", false],
+        ["paperless", "database", "/mnt/user/appdata/paperless/postgres", "/var/lib/postgresql", false],
+        ["sftpgo", "sftpgo", "/mnt/user/appdata/sftpgo/config", "/var/lib/sftpgo", false],
+        ["sftpgo", "sftpgo", "/mnt/user/data/sftpgo/data", "/srv/sftpgo/data", false],
+        ["sftpgo", "sftpgo", "/mnt/user/data/sftpgo/backups", "/srv/sftpgo/backups", false],
+        ["sftpgo", "database", "/mnt/user/appdata/sftpgo/postgres", "/var/lib/postgresql", false],
+        ["traefik", "traefik", "/mnt/user/appdata/traefik/dynamic", "/config/dynamic", true],
+        ["traefik", "traefik", "/mnt/user/logs/traefik", "/logs", false],
+        ["traefik", "traefik", "/mnt/user/appdata/traefik/letsencrypt", "/letsencrypt", false],
+        ["traefik", "traefik", "/mnt/user/appdata/traefik/plugins-storage", "/plugins-storage", false],
+        ["traefik", "traefik-logrotate", "/mnt/user/logs/traefik", "/logs", false],
+        ["traefik", "traefik-logrotate", "/mnt/user/appdata/traefik/logrotate", "/state", false],
+        ["uptime-kuma", "uptime-kuma", "/mnt/user/appdata/uptime-kuma", "/app/data", false]
+      ];
+
+      const rowsEl = document.getElementById("rows");
+      const qEl = document.getElementById("q");
+      const onlyWritableEl = document.getElementById("onlyWritable");
+      const pathAreaEl = document.getElementById("pathArea");
+      const rowCountEl = document.getElementById("rowCount");
+
+      function getPathArea(hostPath) {
+        if (/\/appdata(?:\/|$)/.test(hostPath)) return "appdata";
+        if (/\/data(?:\/|$)/.test(hostPath)) return "data";
+        if (/\/logs(?:\/|$)/.test(hostPath)) return "logs";
+        return "other";
+      }
+
+      function accessBadge(readOnly) {
+        if (readOnly) return '<span class="badge ro">RO</span>';
+        return '<span class="badge rw">RW</span>';
+      }
+
+      function render() {
+        const query = qEl.value.trim().toLowerCase();
+        const onlyWritable = onlyWritableEl.checked;
+        const selectedArea = pathAreaEl.value;
+
+        const filtered = DATA.filter((r) => {
+          const area = getPathArea(r[2]);
+          if (onlyWritable && r[4] === true) return false;
+          if (selectedArea !== "all" && area !== selectedArea) return false;
+          if (!query) return true;
+          return r.some((v) => String(v).toLowerCase().includes(query)) || area.includes(query);
+        });
+
+        rowsEl.innerHTML = filtered
+          .map(
+            (r) => `
+            <tr>
+              <td>${r[0]}</td>
+              <td>${r[1]}</td>
+              <td>${getPathArea(r[2])}</td>
+              <td class="path">${r[2]}</td>
+              <td class="path">${r[3]}</td>
+              <td>${accessBadge(r[4])}</td>
+            </tr>`
+          )
+          .join("");
+
+        rowCountEl.textContent = `${filtered.length} von ${DATA.length} Mounts sichtbar`;
+      }
+
+      function metrics() {
+        const total = DATA.length;
+        const ro = DATA.filter((r) => r[4] === true).length;
+        const rw = total - ro;
+        const hosts = new Set(DATA.map((r) => r[2])).size;
+
+        const appdataRows = DATA.filter((r) => getPathArea(r[2]) === "appdata");
+        const dataRows = DATA.filter((r) => getPathArea(r[2]) === "data");
+        const logsRows = DATA.filter((r) => getPathArea(r[2]) === "logs");
+
+        document.getElementById("mTotal").textContent = String(total);
+        document.getElementById("mRo").textContent = String(ro);
+        document.getElementById("mRw").textContent = String(rw);
+        document.getElementById("mHosts").textContent = String(hosts);
+
+        document.getElementById("splitAppdata").textContent = String(appdataRows.length);
+        document.getElementById("splitData").textContent = String(dataRows.length);
+        document.getElementById("splitLogs").textContent = String(logsRows.length);
+
+        document.getElementById("splitAppdataHosts").textContent = `${new Set(appdataRows.map((r) => r[2])).size} Host-Pfade`;
+        document.getElementById("splitDataHosts").textContent = `${new Set(dataRows.map((r) => r[2])).size} Host-Pfade`;
+        document.getElementById("splitLogsHosts").textContent = `${new Set(logsRows.map((r) => r[2])).size} Host-Pfade`;
+      }
+
+      qEl.addEventListener("input", render);
+      onlyWritableEl.addEventListener("change", render);
+      pathAreaEl.addEventListener("change", render);
+
+      metrics();
+      render();
+    </script>
+  </body>
+</html>
