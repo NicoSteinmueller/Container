@@ -4,7 +4,7 @@ services:
   # https://docs.linuxserver.io/images/docker-nextcloud
   nextcloud:
     # ------------ Identität ------------------------
-    image: lscr.io/linuxserver/nextcloud:34.0.1@sha256:397d5e5bdf1d626ab3f160575f6b8415b6479f5f258607c902385e48c92f2045
+    image: lscr.io/linuxserver/nextcloud:34.0.1@sha256:a5f914b3284eba90d9fe059fffaba9718dc194432a8b6cabe856b88d17436ec2
     container_name: nextcloud
 
     # ------------ Abhängigkeiten & Start -----------
@@ -58,7 +58,7 @@ services:
 
   database:
     # ------------ Identität ------------------------
-    image: postgres:18.4-alpine3.23@sha256:865a3cfdac164ea2608bea36342a9bb5c11e99b5aa8ed9b83b662185e556e178
+    image: postgres:18.4-alpine3.23@sha256:6e1358c9a8e69294523dbe8cbef8c32a37f96a54226b21d722cc74cdff887506
     container_name: nextcloud_postgres
 
     # ------------ Abhängigkeiten & Start -----------
