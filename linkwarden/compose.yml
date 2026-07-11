@@ -4,7 +4,7 @@ services:
   # https://github.com/linkwarden/linkwarden
   linkwarden:
     # ------------ Identität ------------------------
-    image: ghcr.io/linkwarden/linkwarden:v2.14.1@sha256:31cf4bd2a2e111991fa5c9de03174c8698869c83722105c6ce529e4c911e6861
+    image: ghcr.io/linkwarden/linkwarden:v2.15.0@sha256:5f70dc3fce3da22913329507748777a3c7c9201c6db1ec310367c20e2b93712a
     container_name: linkwarden
 
     # ------------ Abhängigkeiten & Start -----------
@@ -65,7 +65,7 @@ services:
   # Init service to ensure Playwright browsers are installed into the bind-mounted data path.
   linkwarden-init:
     # ------------ Identität ------------------------
-    image: ghcr.io/linkwarden/linkwarden:v2.14.1@sha256:31cf4bd2a2e111991fa5c9de03174c8698869c83722105c6ce529e4c911e6861
+    image: ghcr.io/linkwarden/linkwarden:v2.15.0@sha256:5f70dc3fce3da22913329507748777a3c7c9201c6db1ec310367c20e2b93712a
     container_name: linkwarden_playwright_init
     # ------------ Abhängigkeiten & Start -----------
     init: true
