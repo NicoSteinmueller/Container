@@ -145,7 +145,7 @@ services:
     # ----------- Speicher -----------
     read_only: true
     tmpfs:
-      - /data:rw,noexec,nosuid,size=8M
+      - /data:rw,noexec,nosuid,size=32M
 
   database:
     # ------------ Identität ------------------------
