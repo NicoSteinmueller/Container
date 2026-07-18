@@ -51,3 +51,9 @@ build/
 !**/data/
 !**/data/**/
 !**/data/**/.gitkeep
+/vm/terraform.tfstate
+/vm/terraform.tfstate.backup
+/vm/.terraform.lock.hcl
+/vm/volume_schema.json
+/vm/.terraform/providers/registry.terraform.io/dmacvicar/libvirt/0.9.8/linux_amd64/README.md
+/vm/.terraform/providers/registry.terraform.io/dmacvicar/libvirt/0.9.8/linux_amd64/terraform-provider-libvirt_v0.9.8

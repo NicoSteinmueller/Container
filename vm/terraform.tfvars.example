@@ -3,6 +3,7 @@ vm_user             = "nico"
 ssh_public_key_path = "~/.ssh/id_ed25519.pub"
 memory_mb           = 4096
 vcpu_count          = 2
+# 30 GiB
 root_disk_size_bytes = 32212254720
 network_name        = "default"
 storage_pool        = "default"

@@ -58,6 +58,7 @@ variable "vcpu_count" {
   default     = 2
 }
 
+# 30 GiB
 variable "root_disk_size_bytes" {
   description = "Groesse der Root-Disk in Bytes"
   type        = number

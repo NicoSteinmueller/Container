@@ -23,7 +23,7 @@ terraform apply
 
 - `ansible/install_terraform.yml`: installiert Terraform auf Ubuntu/Debian
 - `scripts/install-ansible.sh`: installiert Ansible auf Ubuntu/Debian
-- `inventory.ini`: lokales Inventory mit festem Python-Interpreter
+- `ansible/inventory.ini`: lokales Inventory mit festem Python-Interpreter
 
 ## Alles auf dem Host einrichten
 
