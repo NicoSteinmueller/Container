@@ -57,3 +57,10 @@ build/
 /vm/volume_schema.json
 /vm/.terraform/providers/registry.terraform.io/dmacvicar/libvirt/0.9.8/linux_amd64/README.md
 /vm/.terraform/providers/registry.terraform.io/dmacvicar/libvirt/0.9.8/linux_amd64/terraform-provider-libvirt_v0.9.8
+/vm/ubuntu-desktop/.terraform/providers/registry.terraform.io/dmacvicar/libvirt/0.8.1/linux_amd64/CHANGELOG.md
+/vm/ubuntu-desktop/.terraform/providers/registry.terraform.io/dmacvicar/libvirt/0.8.1/linux_amd64/LICENSE
+/vm/ubuntu-desktop/.terraform/providers/registry.terraform.io/dmacvicar/libvirt/0.8.1/linux_amd64/README.md
+/vm/ubuntu-desktop/.terraform/providers/registry.terraform.io/dmacvicar/libvirt/0.8.1/linux_amd64/terraform-provider-libvirt_v0.8.1
+/vm/ubuntu-desktop/.terraform.lock.hcl
+/vm/ubuntu-desktop/terraform.tfstate
+/vm/ubuntu-desktop/terraform.tfstate.backup
