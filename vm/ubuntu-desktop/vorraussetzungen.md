@@ -26,6 +26,9 @@ Das war der härteste Gegner. Wenn Terraform virtuelle Festplatten klont (ein so
 
     Die Lösung: Die systemweite AppArmor-Abstraktion für QEMU anpassen.
     In der Datei /etc/apparmor.d/abstractions/libvirt-qemu mussten ganz unten diese zwei Zeilen hinzugefügt werden:
+    
+    sudo nano /etc/apparmor.d/abstractions/libvirt-qemu
+
     Plaintext
 
     /var/lib/libvirt/images/ r,
