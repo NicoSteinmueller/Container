@@ -72,6 +72,8 @@ resource "libvirt_cloudinit_disk" "ubuntu_seed" {
 version: 2
 ethernets:
   eth0:
+    match:
+      name: "en*"
     dhcp4: true
 EOF
 }
@@ -82,7 +84,11 @@ EOF
 resource "libvirt_volume" "ubuntu_seed_volume" {
   name = "ubuntu-cloudinit.iso"
   pool = "default"
-
+  target = {
+    format = {
+      type = "iso"
+    }
+  }
   create = {
     content = {
       url = libvirt_cloudinit_disk.ubuntu_seed.path
@@ -103,7 +109,7 @@ resource "libvirt_domain" "ubuntu" {
   os = {
     type         = "hvm"
     type_arch    = "x86_64"
-    type_machine = "q35"
+    type_machine = "pc"
   }
 
   devices = {
@@ -136,8 +142,8 @@ resource "libvirt_domain" "ubuntu" {
         }
 
         target = {
-          dev = "sda"
-          bus = "sata"
+          dev = "sdb"
+          bus = "ide"
         }
       }
     ]
@@ -145,7 +151,9 @@ resource "libvirt_domain" "ubuntu" {
     interfaces = [
       {
         type = "network"
-
+        mac = {
+          address = "52:54:00:12:34:56"
+        }
         model = {
           type = "virtio"
         }
@@ -163,6 +171,35 @@ resource "libvirt_domain" "ubuntu" {
         spice = {
           auto_port = true
           listen    = "127.0.0.1"
+        }
+      }
+    ]
+
+    # NEU: Die virtuelle Grafikkarte, die das Bild für Spice rendert
+    videos = [
+      {
+        model = {
+          type = "virtio"
+          heads = 1
+          primary = "yes"
+        }
+      }
+    ]
+
+    # NEU: Der zugrundeliegende serielle Port, den die Konsole zwingend braucht
+    serials = [
+      {
+        type = "pty"
+      }
+    ]
+
+    # Korrigiert zu Mehrzahl: consoles
+    consoles = [
+      {
+        type = "pty"
+        target = {
+          port = 0
+          type = "serial"
         }
       }
     ]
