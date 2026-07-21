@@ -1,0 +1,6 @@
+---
+vms:
+- name: ubuntu
+  memory: 4096
+  vcpu: 2
+  network: default
