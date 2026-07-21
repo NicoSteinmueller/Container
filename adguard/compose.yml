@@ -22,8 +22,8 @@ services:
       resources:
         limits:
           cpus: 2
-          memory: 1500M
-          pids: 128
+          memory: 2500M
+          pids: 256
         reservations:
           cpus: 0.1
           memory: 128M
