@@ -1,0 +1,54 @@
+---
+- name: Minikube und kubectl vollständig entfernen
+  hosts: localhost
+  connection: local
+  become: true
+
+  vars:
+    # Ermittelt den echten Benutzer (auch bei Ausführung mit sudo)
+    target_user: "{{ ansible_facts['env']['SUDO_USER'] | default(ansible_facts['user_id']) }}"
+    target_home: "/home/{{ target_user }}"
+
+  tasks:
+    # -------------------------------------------------------------
+    # 1. Minikube Cluster stoppen & löschen
+    # -------------------------------------------------------------
+    - name: Minikube Cluster löschen (als normaler Benutzer)
+      ansible.builtin.command: minikube delete --all --purge
+      become: true
+      become_user: "{{ target_user }}"
+      failed_when: false
+      changed_when: true
+
+    # -------------------------------------------------------------
+    # 2. Binaries aus /usr/local/bin entfernen
+    # -------------------------------------------------------------
+    - name: Binaries (minikube, kubectl, helm) löschen
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /usr/local/bin/minikube
+        - /usr/local/bin/kubectl
+        - /usr/local/bin/helm
+
+    # -------------------------------------------------------------
+    # 3. Restliche Konfigurationsordner im Home-Verzeichnis löschen
+    # -------------------------------------------------------------
+    - name: Minikube, Kubernetes und Helm Konfigurationsordner löschen
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ target_home }}/.minikube"
+        - "{{ target_home }}/.kube"
+        - "{{ target_home }}/.helm"
+        - "{{ target_home }}/.config/helm"
+        - "{{ target_home }}/.cache/helm"
+
+    # -------------------------------------------------------------
+    # 4. Erfolgsmeldung
+    # -------------------------------------------------------------
+    - name: Status anzeigen
+      ansible.builtin.debug:
+        msg: "Minikube, kubectl, Helm und alle zugehörigen Daten wurden erfolgreich entfernt."

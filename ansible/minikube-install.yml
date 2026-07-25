@@ -1,0 +1,138 @@
+---
+- name: Minikube auf Ubuntu installieren
+  hosts: localhost
+  connection: local
+  become: true
+
+  vars:
+    # Ermittelt den echten Benutzer (auch wenn mit sudo/become ausgeführt)
+    target_user: "{{ ansible_facts['env']['SUDO_USER'] | default(ansible_facts['user_id']) }}"
+    target_home: "/home/{{ target_user }}"
+
+  tasks:
+    # -------------------------------------------------------------
+    # 1. System-Vorbereitung & Paket-Installationen
+    # -------------------------------------------------------------
+    - name: System-Abhängigkeiten installieren
+      ansible.builtin.apt:
+        name:
+          - curl
+          - apt-transport-https
+          - ca-certificates
+          - conntrack
+          - docker.io
+        state: latest
+        update_cache: yes
+
+    - name: Aktuellen Benutzer zur Docker-Gruppe hinzufügen
+      ansible.builtin.user:
+        name: "{{ target_user }}"
+        groups: docker
+        append: yes
+
+    # -------------------------------------------------------------
+    # 2. Docker-Kontext für den Benutzer reparieren (verhindert Warnungen)
+    # -------------------------------------------------------------
+    - name: Docker .docker Verzeichnis im Home-Ordner sicherstellen
+      ansible.builtin.file:
+        path: "{{ target_home }}/.docker"
+        state: directory
+        owner: "{{ target_user }}"
+        group: "{{ target_user }}"
+        mode: '0755'
+
+    - name: Docker default-Kontext aktivieren/erstellen
+      ansible.builtin.shell: |
+        docker context use default || docker context create default
+      become: true
+      become_user: "{{ target_user }}"
+      changed_when: false
+      ignore_errors: true
+
+    # -------------------------------------------------------------
+    # 3. Binaries herunterladen
+    # -------------------------------------------------------------
+    - name: Minikube Binary herunterladen
+      ansible.builtin.get_url:
+        url: "https://github.com/kubernetes/minikube/releases/latest/download/minikube-linux-amd64"
+        dest: /usr/local/bin/minikube
+        mode: '0755'
+
+    - name: kubectl Binary herunterladen
+      ansible.builtin.get_url:
+        url: "https://dl.k8s.io/release/{{ lookup('url', 'https://dl.k8s.io/release/stable.txt') }}/bin/linux/amd64/kubectl"
+        dest: /usr/local/bin/kubectl
+        mode: '0755'
+
+    # -------------------------------------------------------------
+    # Helm via offiziellem Skript installieren
+    # -------------------------------------------------------------
+    - name: Helm-Installationsskript herunterladen
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
+        dest: /tmp/get_helm.sh
+        mode: '0700'
+
+    - name: Helm-Installationsskript ausführen
+      ansible.builtin.command: /tmp/get_helm.sh
+      register: helm_install_out
+      changed_when: "'Helm v' in helm_install_out.stdout"
+
+    - name: Temporäres Helm-Skript löschen
+      ansible.builtin.file:
+        path: /tmp/get_helm.sh
+        state: absent
+
+    # -------------------------------------------------------------
+    # 4. Funktionsprüfungen (Checks)
+    # -------------------------------------------------------------
+    - name: Minikube Version prüfen
+      ansible.builtin.command: minikube version
+      register: minikube_version
+      changed_when: false
+
+    - name: kubectl Version prüfen
+      ansible.builtin.command: kubectl version --client
+      register: kubectl_version
+      changed_when: false
+
+    # -------------------------------------------------------------
+    # 4. Minikube starten & Cluster-Prüfungen
+    # -------------------------------------------------------------
+    # Minikube und kubectl müssen als normaler Benutzer laufen (ohne sudo/root)
+    - name: Minikube starten
+      ansible.builtin.shell: |
+        minikube start --driver=docker
+      become: true
+      become_user: "{{ target_user }}"
+      register: minikube_start
+      changed_when: "'Done! kubectl is now configured' in minikube_start.stdout"
+
+    - name: Minikube Status prüfen
+      ansible.builtin.shell: |
+        minikube status
+      become: true
+      become_user: "{{ target_user }}"
+      register: minikube_status
+      changed_when: false
+      failed_when: false
+
+    - name: Kubernetes Cluster Nodes prüfen
+      ansible.builtin.shell: |
+        kubectl get nodes
+      become: true
+      become_user: "{{ target_user }}"
+      register: kubectl_nodes
+      changed_when: false
+
+    # -------------------------------------------------------------
+    # 5. Zusammenfassung & Ergebnisse im Terminal ausgeben
+    # -------------------------------------------------------------
+    - name: Zusammenfassung der Installation
+      ansible.builtin.debug:
+        msg:
+          - "--- Minikube Installation abgeschlossen ---"
+          - "Minikube Version: {{ minikube_version.stdout }}"
+          - "kubectl Version: {{ kubectl_version.stdout }}"
+          - "Minikube Status: {{ minikube_status.stdout }}"
+          - "Kubernetes Cluster Nodes: {{ kubectl_nodes.stdout }}"
