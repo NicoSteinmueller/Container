@@ -32,7 +32,7 @@ services:
 
   open-webui:
     container_name: open-webui
-    image: ghcr.io/open-webui/open-webui:v0.11.0@sha256:d754c803602d63c517a6f696981f3d4b9b827da156e3a5ccdc9bf75937fb3b85
+    image: ghcr.io/open-webui/open-webui:v0.11.0@sha256:72c0ba641ba75e7aa52655cb242570906ececd09b1140fb736483038a22b3228
     pull_policy: always
     restart: unless-stopped
     depends_on:
