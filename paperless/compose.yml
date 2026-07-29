@@ -59,9 +59,6 @@ services:
     read_only: false
 #    tmpfs:
 #      - /run/s6
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
 
     # ---------- Environment -----------
     environment:
@@ -157,11 +154,6 @@ services:
 #    cap_drop:
 #      - ALL
 
-    # ----------- Speicher -----------
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-
     # ---------- Environment -----------
     environment:
       TZ: Europe/Berlin
@@ -210,9 +202,6 @@ services:
     read_only: true
     tmpfs:
       - /data:rw,noexec,nosuid,size=8M
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
 
     # ---------- Environment -----------
     environment:
@@ -266,9 +255,6 @@ services:
     tmpfs:
       - /tmp
       - /home/gotenberg
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
 
     # ---------- Environment -----------
     environment:
@@ -316,9 +302,6 @@ services:
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=512m
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
 
     # ---------- Environment -----------
     environment:
