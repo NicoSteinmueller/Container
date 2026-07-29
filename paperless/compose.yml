@@ -10,7 +10,7 @@ name: paperless
 services:
   paperless:
     # ------------ Identität ------------------------
-    image: ghcr.io/paperless-ngx/paperless-ngx:2.20.15@sha256:6c86cad803970ea782683a8e80e7403444c5bf3cf70de63b4d3c8e87500db92f
+    image: ghcr.io/paperless-ngx/paperless-ngx:3.0.4@sha256:3838b9a4260d23acc5bb63aed407138435e70b56e5806f4baa350ca184e57582
     container_name: paperless
 
     # ------------ Abhängigkeiten & Start -----------
@@ -90,8 +90,8 @@ services:
 
       # OCR Sprachen & Verarbeitung
       PAPERLESS_OCR_LANGUAGE: deu+eng
-      # Erstellung von Archivdateien wird nie übersprungen
-      PAPERLESS_OCR_SKIP_ARCHIVE_FILE: never
+      # Es wird immer eine Archivdatei generiert
+      PAPERLESS_ARCHIVE_FILE_GENERATION: always
       # Seiten automatisch drehen (90°, 180°, 270°)
       PAPERLESS_OCR_ROTATE_PAGES: true
       # Rotationsschwelle für automatische Seitendrehung (niedriger = aggressiver, 15 = konservativ, 2 = aggressiv (führt oft zu falschen Drehungen))
@@ -114,7 +114,7 @@ services:
       # Anzahl der vorgeschlagenen ersten gefundenen Daten
       PAPERLESS_NUMBER_OF_SUGGESTED_DATES: 6
       # Sekunden, die der Consumer wartet, bevor er mit der Verarbeitung einer neuen Datei beginnt.
-      PAPERLESS_CONSUMER_INOTIFY_DELAY: 30
+      PAPERLESS_CONSUMER_STABILITY_DELAY: 30
       # Anzahl der Tage, die Dokumente im Papierkorb verbleiben, bevor sie endgültig gelöscht werden.
       PAPERLESS_EMPTY_TRASH_DELAY: 90
 
