@@ -231,14 +231,15 @@ services:
       start_period: 30s
 
     # ----------- Ressourcen -----------
+    shm_size: 1G
     deploy:
       resources:
         limits:
-          cpus: 0.5
-          memory: 512M
-          pids: 64
+          cpus: 1
+          memory: 2G
+          pids: 512
         reservations:
-          memory: 32M
+          memory: 512M
     logging:
       driver: json-file
       options:
