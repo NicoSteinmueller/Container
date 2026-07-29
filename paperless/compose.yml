@@ -90,8 +90,8 @@ services:
 
       # OCR Sprachen & Verarbeitung
       PAPERLESS_OCR_LANGUAGE: deu+eng
-      # Erstellung von Archivdateien wird nie übersprungen
-      PAPERLESS_OCR_SKIP_ARCHIVE_FILE: never
+      # Es wird immer eine Archivdatei generiert
+      PAPERLESS_ARCHIVE_FILE_GENERATION: always
       # Seiten automatisch drehen (90°, 180°, 270°)
       PAPERLESS_OCR_ROTATE_PAGES: true
       # Rotationsschwelle für automatische Seitendrehung (niedriger = aggressiver, 15 = konservativ, 2 = aggressiv (führt oft zu falschen Drehungen))
@@ -114,7 +114,7 @@ services:
       # Anzahl der vorgeschlagenen ersten gefundenen Daten
       PAPERLESS_NUMBER_OF_SUGGESTED_DATES: 6
       # Sekunden, die der Consumer wartet, bevor er mit der Verarbeitung einer neuen Datei beginnt.
-      PAPERLESS_CONSUMER_INOTIFY_DELAY: 30
+      PAPERLESS_CONSUMER_STABILITY_DELAY: 30
       # Anzahl der Tage, die Dokumente im Papierkorb verbleiben, bevor sie endgültig gelöscht werden.
       PAPERLESS_EMPTY_TRASH_DELAY: 90
 
