@@ -27,9 +27,8 @@ services:
       default:
       proxy:
     volumes:
-      # TODO
       - type: bind
-        source: /mnt/user/appdata/paperless/data/nico
+        source: /mnt/user/appdata/paperless/data
         target: /usr/src/paperless/data
         read_only: false
         bind:
