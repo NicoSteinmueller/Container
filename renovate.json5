@@ -31,6 +31,28 @@
       ],
       datasourceTemplate: 'github-releases',
     },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)ansible\\/minikube-install\\.ya?ml$/',
+      ],
+      matchStrings: [
+        'minikube_release_version:\\s*"(?<currentValue>v[^"]+)"',
+      ],
+      datasourceTemplate: 'github-releases',
+      depNameTemplate: 'kubernetes/minikube',
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)ansible\\/minikube-install\\.ya?ml$/',
+      ],
+      matchStrings: [
+        'kubectl_release_version:\\s*"(?<currentValue>v[^"]+)"',
+      ],
+      datasourceTemplate: 'github-releases',
+      depNameTemplate: 'kubernetes/kubernetes',
+    },
   ],
   branchPrefix: 'renovate/',
   additionalBranchPrefix: '{{parentDir}}-',

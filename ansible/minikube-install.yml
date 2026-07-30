@@ -5,9 +5,26 @@
   become: true
 
   vars:
-    # Ermittelt den echten Benutzer (auch wenn mit sudo/become ausgeführt)
-    target_user: "{{ ansible_facts['env']['SUDO_USER'] | default(ansible_facts['user_id']) }}"
+    # Ermittelt den echten Benutzer über die Umgebung des ansible-playbook-Prozesses
+    # (ansible_facts['user_id']/['env'] würden hier fälschlich "root" liefern, da
+    # das Play bereits mit become:true Facts sammelt; lookup('env', ...) läuft
+    # dagegen auf dem Controller außerhalb des Become-Kontexts)
+    target_user: "{{ lookup('env', 'SUDO_USER') | default(lookup('env', 'USER'), true) }}"
     target_home: "/home/{{ target_user }}"
+
+    # Gepinnte Versionen für reproduzierbare Installationen.
+    # Bei Bedarf aktualisieren: https://github.com/kubernetes/minikube/releases
+    # bzw. https://kubernetes.io/releases/
+    minikube_release_version: "v1.38.1"
+    kubectl_release_version: "v1.36.2"
+
+    # Addons zur Vorbereitung auf einen produktiven Kubernetes-Umzug
+    minikube_addons:
+      - ingress # NGINX Ingress Controller
+      - metrics-server
+      - dashboard
+      - registry
+      - ingress-dns
 
   tasks:
     # -------------------------------------------------------------
@@ -20,9 +37,16 @@
           - apt-transport-https
           - ca-certificates
           - conntrack
+          - socat
           - docker.io
         state: latest
         update_cache: yes
+
+    - name: Docker-Dienst starten und aktivieren
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: yes
 
     - name: Aktuellen Benutzer zur Docker-Gruppe hinzufügen
       ansible.builtin.user:
@@ -54,13 +78,15 @@
     # -------------------------------------------------------------
     - name: Minikube Binary herunterladen
       ansible.builtin.get_url:
-        url: "https://github.com/kubernetes/minikube/releases/latest/download/minikube-linux-amd64"
+        url: "https://github.com/kubernetes/minikube/releases/download/{{ minikube_release_version }}/minikube-linux-amd64"
+        checksum: "sha256:https://github.com/kubernetes/minikube/releases/download/{{ minikube_release_version }}/minikube-linux-amd64.sha256"
         dest: /usr/local/bin/minikube
         mode: '0755'
 
     - name: kubectl Binary herunterladen
       ansible.builtin.get_url:
-        url: "https://dl.k8s.io/release/{{ lookup('url', 'https://dl.k8s.io/release/stable.txt') }}/bin/linux/amd64/kubectl"
+        url: "https://dl.k8s.io/release/{{ kubectl_release_version }}/bin/linux/amd64/kubectl"
+        checksum: "sha256:https://dl.k8s.io/release/{{ kubectl_release_version }}/bin/linux/amd64/kubectl.sha256"
         dest: /usr/local/bin/kubectl
         mode: '0755'
 
@@ -97,7 +123,7 @@
       changed_when: false
 
     # -------------------------------------------------------------
-    # 4. Minikube starten & Cluster-Prüfungen
+    # 5. Minikube starten & Cluster-Prüfungen
     # -------------------------------------------------------------
     # Minikube und kubectl müssen als normaler Benutzer laufen (ohne sudo/root)
     - name: Minikube starten
@@ -107,6 +133,16 @@
       become_user: "{{ target_user }}"
       register: minikube_start
       changed_when: "'Done! kubectl is now configured' in minikube_start.stdout"
+
+    - name: Minikube-Addons aktivieren
+      ansible.builtin.shell: |
+        minikube addons enable {{ item }}
+      loop: "{{ minikube_addons }}"
+      become: true
+      become_user: "{{ target_user }}"
+      register: minikube_addons_enable
+      changed_when: "'was successfully enabled' in minikube_addons_enable.stdout"
+      when: minikube_start is succeeded
 
     - name: Minikube Status prüfen
       ansible.builtin.shell: |
@@ -124,9 +160,11 @@
       become_user: "{{ target_user }}"
       register: kubectl_nodes
       changed_when: false
+      failed_when: false
+      when: minikube_start is succeeded
 
     # -------------------------------------------------------------
-    # 5. Zusammenfassung & Ergebnisse im Terminal ausgeben
+    # 6. Zusammenfassung & Ergebnisse im Terminal ausgeben
     # -------------------------------------------------------------
     - name: Zusammenfassung der Installation
       ansible.builtin.debug:
@@ -135,4 +173,6 @@
           - "Minikube Version: {{ minikube_version.stdout }}"
           - "kubectl Version: {{ kubectl_version.stdout }}"
           - "Minikube Status: {{ minikube_status.stdout }}"
-          - "Kubernetes Cluster Nodes: {{ kubectl_nodes.stdout }}"
+          - "Kubernetes Cluster Nodes: {{ kubectl_nodes.stdout | default('nicht abgefragt, da Minikube-Start fehlgeschlagen') }}"
+          - "Aktivierte Addons: {{ minikube_addons | join(', ') }}"
+          - "Hinweis: 'ingress-dns' erfordert manuell einen DNS-Eintrag auf dem Host (Nameserver = Minikube-IP, siehe 'minikube addons configure ingress-dns' / 'minikube ip')."
