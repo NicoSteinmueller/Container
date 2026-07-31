@@ -1,0 +1,57 @@
+# Default-Deny: ohne explizite allow-Regel darf whoami weder angesprochen
+# werden noch selbst etwas ansprechen (Zero-Trust innerhalb des Clusters).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: whoami-default-deny
+  namespace: whoami
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Erlaubt eingehenden Traffic ausschließlich vom Ingress-Controller.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: whoami-allow-ingress-from-controller
+  namespace: whoami
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: whoami
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 80
+---
+# whoami braucht selbst keine Verbindungen nach außen, außer DNS-Auflösung
+# (z.B. für spätere gesundheits-/Update-Checks). Alles andere bleibt verboten.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: whoami-allow-egress-dns
+  namespace: whoami
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: whoami
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
