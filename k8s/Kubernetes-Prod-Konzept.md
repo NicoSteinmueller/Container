@@ -135,7 +135,8 @@ aussieht. Die getroffenen Entscheidungen in Kurzform:
   VM im DMZ-Segment – die heutige macvlan-Anbindung an `bond0` ist die größte
   strukturelle Schwachstelle.
 - **Segmentierung über eine Firewall-VM** (Alpine + nftables) hinter der Fritzbox,
-  die selbst keine DMZ bauen kann und auch nicht muss.
+  die selbst keine DMZ bauen kann und auch nicht muss. Umgesetzt in
+  → [../vm/firewall/](../vm/firewall/).
 - **Traefik auf beiden Ebenen** – am Edge und als Cluster-Ingress; `ingress-nginx`
   scheidet wegen Retirement aus.
 - **mTLS und Cilium-NetworkPolicy** zwischen Edge und Cluster verhindern, dass die
@@ -286,11 +287,17 @@ selbst aktuell halten. Die getroffenen Entscheidungen in Kurzform:
 ## 9. Offene Punkte
 
 - RAM-Upgrade des Unraid-Hosts entscheiden (bestimmt, ob ein oder zwei Cluster)
+- Talos-VMs ins Segment `fw-cluster` umziehen: dort gibt es bewusst kein DHCP
+  (der Hypervisor soll kein Bein in DMZ/Cluster haben). Die Node-IP muss dann aus
+  der Machine-Config kommen statt wie in `vm/talos-test` aus einer
+  DHCP-Reservierung – inklusive Hostname, der dort heute von dnsmasq stammt
 - Reihenfolge der Dienst-Migration festlegen (Kandidaten mit wenig State zuerst)
 - Secrets-Strategie festlegen: SOPS/age vs. Sealed Secrets
 - Backup-Strategie für PVs: Kopia-Integration oder Velero
-- Egress-Test aus der DMZ konkret ausgestalten und in die CI hängen ([Edge-Architektur](Edge-Architektur.md), Abschnitt 5) –
-  Voraussetzung dafür, dass die Entscheidung gegen OPNsense trägt
+- Egress-Test aus der DMZ in die CI hängen ([Edge-Architektur](Edge-Architektur.md), Abschnitt 5) –
+  das Skript steht (`vm/firewall/verify/egress-test.sh`), die Einbindung in die
+  CI fehlt noch; sie ist Voraussetzung dafür, dass die Entscheidung gegen
+  OPNsense trägt
 - Portfreigaben ins Fritzbox-Gastnetz im Menü gegenprüfen ([Edge-Architektur](Edge-Architektur.md), Abschnitt 5) – die
   Architektur geht davon aus, dass es nicht geht
 - IPv6-Strategie für DMZ- und Cluster-Segment festlegen ([Edge-Architektur](Edge-Architektur.md), Abschnitt 5)

@@ -1,0 +1,10 @@
+# nft-Define <-> MAC-Adresse. Von Terraform gerendert.
+#
+# fw-render-interfaces löst die MACs beim Start in Interface-Namen auf und
+# erzeugt daraus /etc/nftables.d/interfaces.nft. Dieselben MACs stehen in der
+# Cloud-Init-Netzwerkkonfiguration - Adressierung und Regelsatz können deshalb
+# nicht auseinanderlaufen.
+wan_if  ${mac_wan}
+mgmt_if ${mac_mgmt}
+dmz_if  ${mac_dmz}
+clu_if  ${mac_cluster}

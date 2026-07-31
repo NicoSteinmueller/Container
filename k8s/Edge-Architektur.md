@@ -161,7 +161,15 @@ gegenprüfen.
 ### Firewall-VM: Entscheidung für Alpine + nftables
 
 **Gesetzt: Alpine Linux mit nftables**, aufgesetzt nach dem bestehenden
-`vm/alpine`-Terraform-Muster, Regeln per Ansible ausgerollt.
+`vm/alpine`-Terraform-Muster. Umgesetzt in → [../vm/firewall/](../vm/firewall/).
+
+> **Abweichung von der ursprünglichen Planung:** Die Regeln werden nicht per
+> Ansible ausgerollt, sondern zusammen mit Netzwerk, Härtung und sshd-Config aus
+> Terraform gerendert und über Cloud-Init installiert. Die VM hat genau eine
+> Aufgabe, und Ansible bräuchte einen zweiten Weg auf die Maschine – zusätzlich
+> zu dem SSH-Zugang, den man ohnehin so eng wie möglich hält. An der
+> Auditierbarkeit ändert das nichts: der Regelsatz bleibt Text im Repo, und
+> `vm/firewall/verify/assert-ruleset.sh` prüft den laufenden Stand dagegen.
 
 Beim reinen Paketfilter nehmen sich die Kandidaten nichts – `nftables`/netfilter und
 `pf` sind beide seit Jahrzehnten im Einsatz. Der Unterschied entsteht um den Filter
@@ -202,12 +210,19 @@ reproduzierbar statt visuell:
 
 - **Egress-Test aus der DMZ**, der prüft, dass LAN nicht erreichbar ist. Läuft nach
   jedem Regel-Deploy, idealerweise in der CI.
+  → `vm/firewall/verify/egress-test.sh`. Hängt eine wegwerfbare
+  Network-Namespace an die DMZ-Bridge und misst von dort – braucht also keine
+  fertige Edge-VM.
 - **nftables-Logging auf die Deny-Regeln**, ausgeleitet in den bestehenden
-  Loki-Stack.
-- **`nft list ruleset` als Ansible-Assertion** gegen den erwarteten Stand, damit
-  Drift auffällt.
+  Loki-Stack. → Präfixe `nft-deny-to-lan`, `nft-deny-to-mgmt`,
+  `nft-deny-clu-dmz`; Weiterleitung über die Variable `syslog_remote`.
+- **`nft list ruleset` als Assertion** gegen den erwarteten Stand, damit Drift
+  auffällt. → `vm/firewall/verify/assert-ruleset.sh`, vergleicht sowohl die
+  Datei als auch den geladenen Regelsatz gegen den Terraform-Output.
 
 Ohne diese drei Punkte ist die Entscheidung gegen OPNsense nicht tragfähig.
+Offen bleibt, beides in die CI zu hängen – bislang laufen die Skripte von Hand
+auf dem Hypervisor.
 
 ### Management-Zugang und Hypervisor-Grenze
 
@@ -312,8 +327,9 @@ Jeder Schritt wirkt für sich, die Reihenfolge ist nach Aufwand/Nutzen sortiert:
 1. Dienste in „öffentlich" / „nur VPN" aufteilen (kostet nichts, wirkt am meisten)
 2. `TRAEFIK_API_INSECURE` schließen, AppSec-Middleware als Default für
    internetexponierte Router
-3. Alpine-Firewall-VM aufsetzen (Terraform + Ansible), Portfreigabe der Fritzbox
-   darauf umbiegen, IPv6-Freigaben prüfen
+3. Alpine-Firewall-VM aufsetzen (→ [../vm/firewall/](../vm/firewall/), ein
+   `terraform apply`), Portfreigabe der Fritzbox darauf umbiegen, IPv6-Freigaben
+   prüfen
 4. Egress-Test, Deny-Logging und Ruleset-Assertion einrichten – **bevor** die
    erste Last darüber läuft (Abschnitt 5)
 5. Edge-VM ins DMZ-Netz ziehen, macvlan-Anbindung an `bond0` auflösen,

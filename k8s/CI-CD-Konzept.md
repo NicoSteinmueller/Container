@@ -76,7 +76,11 @@ Fast-Forward-Merge – dieselbe Mechanik, nur mit Mensch.
   `hardening.yaml` und `single-node.yaml` gegen das Machine-Config-Schema, bevor eine
   VM daran scheitert
 - `terraform fmt -check`, `terraform validate`, `tflint`
-- `ansible-lint` für die Playbooks der Firewall- und Edge-VM
+- `shellcheck` für die Skripte unter `vm/firewall/`; der Firewall-Regelsatz kommt
+  aus Terraform und Cloud-Init, nicht aus Ansible (siehe
+  [Edge-Architektur](Edge-Architektur.md), Abschnitt 5)
+- `nft -c -f` gegen den gerenderten Regelsatz – lässt sich ohne Privilegien in
+  einer User-Namespace prüfen (`unshare -rn nft -f …`)
 - nftables-Egress-Test aus [Edge-Architektur](Edge-Architektur.md), Abschnitt 5 gegen die Test-Umgebung
 
 > **`terraform plan` bleibt lokal.** Es bräuchte Zugriff auf libvirt und den State –
@@ -95,7 +99,7 @@ fehlen:
 | Provider `siderolabs/talos`, `dmacvicar/libvirt` | `terraform` (Default aktiv) |
 | Cilium, cert-manager, Kyverno, Trivy-Operator | `helmv3` / `flux` |
 | Images in `k8s/**` | **`kubernetes`** |
-| Alpine-Release für Firewall- und Edge-VM | custom regex in Terraform |
+| Alpine-Release für Firewall- und Edge-VM | custom regex in Terraform – für die Firewall eingerichtet (`vm/firewall/variables.tf`), Automerge bewusst aus |
 
 > **Konkrete Lücke:** Der `kubernetes`-Manager hat **keine Default-Dateimuster**.
 > Ohne explizite `managerFilePatterns` für `k8s/**` sieht Renovate die Manifeste

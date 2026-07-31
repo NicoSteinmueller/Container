@@ -53,6 +53,22 @@
       datasourceTemplate: 'github-releases',
       depNameTemplate: 'kubernetes/kubernetes',
     },
+    {
+      // Alpine-Release der Firewall-VM (vm/firewall/variables.tf).
+      // Datasource docker, weil die Alpine-Images auf Docker Hub für jedes
+      // Patch-Release getaggt werden - eine eigene Release-Datasource für
+      // dl-cdn.alpinelinux.org gibt es nicht.
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)vm\\/firewall\\/variables\\.tf$/',
+      ],
+      matchStrings: [
+        'variable "alpine_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
+      ],
+      datasourceTemplate: 'docker',
+      depNameTemplate: 'alpine',
+      versioningTemplate: 'semver',
+    },
   ],
   branchPrefix: 'renovate/',
   additionalBranchPrefix: '{{parentDir}}-',
@@ -165,6 +181,20 @@
       prCreation: 'immediate',
       prBodyNotes: [
         '### 🔌 Traefik Plugin Update\n\n⚠️ **WICHTIG: Manuelles Deployment erforderlich!**\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{/each}}{{/if}}',
+      ],
+    },
+    {
+      description: 'Firewall-VM: Alpine-Update immer mit Review',
+      matchManagers: [
+        'custom.regex',
+      ],
+      matchFileNames: [
+        'vm/firewall/variables.tf',
+      ],
+      automerge: false,
+      prCreation: 'immediate',
+      prBodyNotes: [
+        '### 🧱 Alpine-Update der Firewall-VM\n\n⚠️ Der Image-Name geht in den Volume-Namen ein: Nach dem Merge baut der **nächste `terraform apply` die VM neu**. Das ist ein Wartungsfenster – währenddessen haben DMZ und Cluster kein Gateway.\n\nDanach fällig:\n- `vm/firewall/verify/assert-ruleset.sh`\n- `sudo vm/firewall/verify/egress-test.sh`',
       ],
     },
     {
