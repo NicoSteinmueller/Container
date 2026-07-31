@@ -104,10 +104,11 @@ richtige Anfang dafür.
 
 ## 4. Absicherung der Internet-Exposition
 
-- **Traefik + CrowdSec auf Unraid als Edge behalten** und in den Cluster-Ingress
-  weiterleiten. Die bestehende WAF-/Bouncer-Konfiguration bleibt erhalten, es gibt
-  weiterhin nur einen TLS-Terminierungspunkt. Eine spätere Migration in den Cluster
-  ist jederzeit möglich.
+- **Traefik + CrowdSec als Edge vor dem Cluster behalten**, aber vom Unraid-Host in
+  eine eigene VM im DMZ-Segment ziehen. Die bestehende WAF-/Bouncer-Konfiguration
+  bleibt erhalten, es gibt weiterhin nur einen TLS-Terminierungspunkt. Begründung,
+  Zielbild und der Befund zur heutigen Netzanbindung in
+  → [Edge-Architektur.md](Edge-Architektur.md).
 - **Kubernetes-API niemals exponieren** – Zugriff ausschließlich über WireGuard
   oder Tailscale.
 - **Cilium statt Calico** im Prod-Cluster: eBPF, saubere NetworkPolicy-Durchsetzung,
@@ -123,13 +124,33 @@ richtige Anfang dafür.
 
 ---
 
-## 5. Update-Konzept
+## 5. Edge-Architektur: Reverse Proxy und Exposition
+
+> **Ausgelagert nach [Edge-Architektur.md](Edge-Architektur.md).**
+
+Legt fest, wo der Reverse Proxy steht und wie die Kette vom Internet bis zum Pod
+aussieht. Die getroffenen Entscheidungen in Kurzform:
+
+- **Edge bleibt außerhalb des Clusters**, zieht aber vom Unraid-Host in eine eigene
+  VM im DMZ-Segment – die heutige macvlan-Anbindung an `bond0` ist die größte
+  strukturelle Schwachstelle.
+- **Segmentierung über eine Firewall-VM** (Alpine + nftables) hinter der Fritzbox,
+  die selbst keine DMZ bauen kann und auch nicht muss.
+- **Traefik auf beiden Ebenen** – am Edge und als Cluster-Ingress; `ingress-nginx`
+  scheidet wegen Retirement aus.
+- **mTLS und Cilium-NetworkPolicy** zwischen Edge und Cluster verhindern, dass die
+  Sicherheitsschicht umgangen wird.
+- **Cloudflare Tunnel verworfen** – Klartext-Einsicht durch Dritte.
+
+---
+
+## 6. Update-Konzept
 
 Zentraler Punkt: **Talos-OS und Kubernetes werden getrennt aktualisiert.** Das OS
 kann angehoben werden, ohne Kubernetes anzufassen – und umgekehrt. Kein
 `apt upgrade`, kein `unattended-upgrades`, kein Reboot-Required-Flag.
 
-### 5.1 OS-Update (Talos selbst)
+### 6.1 OS-Update (Talos selbst)
 
 Talos hat zwei Boot-Partitionen (A/B). Ein Upgrade schreibt das neue Image auf die
 inaktive Partition und bootet dorthin.
@@ -160,7 +181,7 @@ Ein Reboot dauert typischerweise 1–2 Minuten. Bei einem Single-Node-Cluster is
 echte Downtime – ein weiteres Argument für getrennte Test-/Prod-VMs, damit jedes
 Upgrade zuerst auf Test durchgespielt wird.
 
-### 5.2 Kubernetes-Update
+### 6.2 Kubernetes-Update
 
 Komplett separat und ohne Node-Reboot:
 
@@ -173,7 +194,7 @@ die CoreDNS-Manifeste rollierend.
 
 **Regeln:** keine Minor-Version überspringen; erst Talos aktualisieren, dann Kubernetes.
 
-### 5.3 Config-Änderungen
+### 6.3 Config-Änderungen
 
 Änderungen an der Machine-Config (Netzwerk, Extensions, Kernel-Args, Zertifikate)
 laufen über `talosctl apply-config` bzw. über die Terraform-Ressource
@@ -190,7 +211,7 @@ selbst laufen üblicherweise **nicht** über Terraform, sondern über `talosctl`
 den Upgrade-Controller. Terraform bleibt zuständig für "wie sieht der Cluster aus",
 nicht für "welches Image läuft gerade".
 
-### 5.4 Automatisierung
+### 6.4 Automatisierung
 
 - **`system-upgrade-controller`** (Rancher) fährt Talos- und Kubernetes-Upgrades als
   `Plan`-CRD im Cluster – deklarativ, GitOps-tauglich, mit definierten Wartungsfenstern.
@@ -200,9 +221,10 @@ nicht für "welches Image läuft gerade".
   Merge → Flux rollt aus.
 
 Ergebnis: Renovate macht PRs für OS, Kubernetes und Apps, es wird gemergt, und der
-Cluster zieht nach.
+Cluster zieht nach. Wie diese Kette konkret aufgebaut wird – Prüfungen, Branch-Modell
+und Promotion – steht in → [CI-CD-Konzept.md](CI-CD-Konzept.md).
 
-### 5.5 Praktische Reihenfolge
+### 6.5 Praktische Reihenfolge
 
 Vor jedem Upgrade:
 
@@ -215,7 +237,7 @@ Dann: Test-Cluster upgraden → beobachten → Prod-Cluster upgraden.
 Talos-Minor-Releases erscheinen etwa alle zwei bis drei Monate – realistisch also
 vier bis sechs Wartungsfenster im Jahr statt wöchentlicher Paket-Updates.
 
-### 5.6 Was sich gegenüber heute ändert
+### 6.6 Was sich gegenüber heute ändert
 
 Statt `apt upgrade` auf einer VM plus Docker-Image-Pulls gibt es ein atomares,
 versioniertes Image mit automatischem Rollback.
@@ -227,19 +249,56 @@ Test-Cluster stehen sollte, bevor Prod darauf läuft.
 
 ---
 
-## 6. Vorgehen
+## 7. CI/CD und Automatisierung
+
+> **Ausgelagert nach [CI-CD-Konzept.md](CI-CD-Konzept.md).**
+
+Wie sich der Kubernetes-Aufbau und die zugehörigen VMs nach einmaliger Einrichtung
+selbst aktuell halten. Die getroffenen Entscheidungen in Kurzform:
+
+- **Erst CI, dann mehr Automerge** – heute existiert keine einzige Prüfung, das ist
+  die Voraussetzung für alles Weitere.
+- **Branch-Modell mit Promotion**: Test-Cluster zieht `main`, Prod-Cluster zieht
+  `prod`, dazwischen ein Fast-Forward-Merge nach Karenzzeit.
+- **Beide Cluster ziehen über Flux** – keine Credentials für den libvirt-Host bei
+  GitHub, `terraform plan` bleibt lokal.
+- **Infrastruktur applyed nicht automatisch**: VM-Definitionen, Talos-Majors und
+  Firewall-Regeln bleiben manuell.
+- **Renovate bleibt der einzige Update-Mechanismus**, erweitert um den
+  `kubernetes`-Manager und Talos-/Kubernetes-Quellen.
+
+---
+
+## 8. Vorgehen
 
 1. **Talos-Test-VM** (2 vCPU / 3 GB) per Terraform aufsetzen, neben der bestehenden
    `vm/alpine`-Config – z. B. als `vm/talos-test/`.
 2. **`whoami` über das bestehende Prod-Overlay** dorthin deployen, um den Weg zu validieren.
-3. **Cilium + Flux + cert-manager** aufsetzen, Traefik auf Unraid als Edge davorhängen.
+3. **Cilium + Flux + cert-manager** aufsetzen, Traefik als Cluster-Ingress
+   (→ [Edge-Architektur](Edge-Architektur.md), Abschnitt 7), bestehenden Unraid-Traefik vorläufig als Edge davorhängen.
 4. **Prod-VM bauen**, danach Dienste einzeln aus Docker Compose migrieren.
+5. **Edge nach [Edge-Architektur.md](Edge-Architektur.md) umbauen** – Schritte 1 und 2
+   der dortigen Umsetzungsreihenfolge (Abschnitt 9) können jederzeit vorgezogen
+   werden, sie hängen nicht am Cluster.
 
 ---
 
-## 7. Offene Punkte
+## 9. Offene Punkte
 
 - RAM-Upgrade des Unraid-Hosts entscheiden (bestimmt, ob ein oder zwei Cluster)
 - Reihenfolge der Dienst-Migration festlegen (Kandidaten mit wenig State zuerst)
 - Secrets-Strategie festlegen: SOPS/age vs. Sealed Secrets
 - Backup-Strategie für PVs: Kopia-Integration oder Velero
+- Egress-Test aus der DMZ konkret ausgestalten und in die CI hängen ([Edge-Architektur](Edge-Architektur.md), Abschnitt 5) –
+  Voraussetzung dafür, dass die Entscheidung gegen OPNsense trägt
+- Portfreigaben ins Fritzbox-Gastnetz im Menü gegenprüfen ([Edge-Architektur](Edge-Architektur.md), Abschnitt 5) – die
+  Architektur geht davon aus, dass es nicht geht
+- IPv6-Strategie für DMZ- und Cluster-Segment festlegen ([Edge-Architektur](Edge-Architektur.md), Abschnitt 5)
+- Erreichbarkeit von `192.168.178.5:8080` im LAN verifizieren ([Edge-Architektur](Edge-Architektur.md), Abschnitt 2)
+- Dienst-Liste „öffentlich vs. nur VPN" verbindlich festlegen ([Edge-Architektur](Edge-Architektur.md), Abschnitt 3)
+- Status von `ingress-nginx` gegenprüfen, bevor die Ingress-Entscheidung final wird
+- `k8s/whoami/overlays/prod/ingress.yaml` von `nginx` auf Traefik umstellen
+  (IngressClass, Middleware-Annotation, `whitelist-source-range` entfällt)
+- Karenzzeit für die automatische Promotion festlegen ([CI-CD-Konzept](CI-CD-Konzept.md), Abschnitt 2)
+- Bezugsquelle für die CRD-Schemas von `kubeconform` klären ([CI-CD-Konzept](CI-CD-Konzept.md), Abschnitt 3) – ohne sie
+  scheitert die Prüfung an Cilium-, Traefik- und Flux-Ressourcen
