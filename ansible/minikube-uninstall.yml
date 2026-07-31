@@ -5,8 +5,9 @@
   become: true
 
   vars:
-    # Ermittelt den echten Benutzer (auch bei Ausführung mit sudo)
-    target_user: "{{ ansible_facts['env']['SUDO_USER'] | default(ansible_facts['user_id']) }}"
+    # Ermittelt den echten Benutzer über die Umgebung des ansible-playbook-Prozesses
+    # (siehe minikube-install.yml für die Begründung)
+    target_user: "{{ lookup('env', 'SUDO_USER') | default(lookup('env', 'USER'), true) }}"
     target_home: "/home/{{ target_user }}"
 
   tasks:
@@ -47,7 +48,16 @@
         - "{{ target_home }}/.cache/helm"
 
     # -------------------------------------------------------------
-    # 4. Erfolgsmeldung
+    # 4. /etc/hosts-Einträge für Ingress-Hosts entfernen
+    # -------------------------------------------------------------
+    - name: Ingress-Hosts-Block aus /etc/hosts entfernen
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - Minikube Ingress Hosts"
+        state: absent
+
+    # -------------------------------------------------------------
+    # 5. Erfolgsmeldung
     # -------------------------------------------------------------
     - name: Status anzeigen
       ansible.builtin.debug:

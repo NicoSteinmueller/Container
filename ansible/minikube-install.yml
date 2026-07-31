@@ -26,6 +26,17 @@
       - registry
       - ingress-dns
 
+    # Ingress-Hostnamen der nach Kubernetes migrierten Dienste (k8s/<dienst>/overlays/minikube/ingress.yaml).
+    # Bei jedem neu migrierten Dienst hier den Host ergänzen - der Eintrag in
+    # /etc/hosts wird automatisch verwaltet und bei jedem Playbook-Lauf aktuell gehalten.
+    k8s_local_hosts:
+      - whoami.k8s.local
+
+    # Calico statt des Minikube-Standard-CNI (kindnet), damit NetworkPolicies
+    # auch lokal tatsächlich durchgesetzt werden - fürs Testen möglichst nah
+    # am späteren Produktiv-Cluster.
+    minikube_cni: "calico"
+
   tasks:
     # -------------------------------------------------------------
     # 1. System-Vorbereitung & Paket-Installationen
@@ -128,11 +139,33 @@
     # Minikube und kubectl müssen als normaler Benutzer laufen (ohne sudo/root)
     - name: Minikube starten
       ansible.builtin.shell: |
-        minikube start --driver=docker
+        minikube start --driver=docker --cni={{ minikube_cni }}
       become: true
       become_user: "{{ target_user }}"
       register: minikube_start
       changed_when: "'Done! kubectl is now configured' in minikube_start.stdout"
+
+    - name: Prüfen ob Calico im Cluster läuft
+      ansible.builtin.shell: |
+        kubectl get pods -A -l k8s-app=calico-node --no-headers 2>/dev/null | wc -l
+      become: true
+      become_user: "{{ target_user }}"
+      register: minikube_calico_pods
+      changed_when: false
+      failed_when: false
+      when: minikube_start is succeeded
+
+    - name: Warnen, falls bestehender Cluster noch mit altem CNI läuft
+      ansible.builtin.debug:
+        msg: >-
+          Der Cluster wurde ursprünglich ohne Calico erstellt (--cni wirkt nur beim
+          erstmaligen 'minikube start'). Das CNI lässt sich bei einem laufenden
+          Cluster nicht nachträglich wechseln - dafür ist einmalig 'minikube delete'
+          und ein erneuter Playbook-Lauf nötig, damit NetworkPolicies auch lokal
+          durchgesetzt werden.
+      when:
+        - minikube_start is succeeded
+        - (minikube_calico_pods.stdout | default('0') | trim | int) == 0
 
     - name: Minikube-Addons aktivieren
       ansible.builtin.shell: |
@@ -142,6 +175,27 @@
       become_user: "{{ target_user }}"
       register: minikube_addons_enable
       changed_when: "'was successfully enabled' in minikube_addons_enable.stdout"
+      when: minikube_start is succeeded
+
+    # -------------------------------------------------------------
+    # 5a. Lokale DNS-Auflösung für Ingress-Hosts (/etc/hosts)
+    # -------------------------------------------------------------
+    - name: Minikube-IP ermitteln
+      ansible.builtin.command: minikube ip
+      become: true
+      become_user: "{{ target_user }}"
+      register: minikube_ip
+      changed_when: false
+      when: minikube_start is succeeded
+
+    - name: Ingress-Hosts in /etc/hosts eintragen
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - Minikube Ingress Hosts"
+        block: |
+          {% for host in k8s_local_hosts %}
+          {{ minikube_ip.stdout }} {{ host }}
+          {% endfor %}
       when: minikube_start is succeeded
 
     - name: Minikube Status prüfen
