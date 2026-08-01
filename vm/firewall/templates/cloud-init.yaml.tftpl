@@ -114,6 +114,15 @@ write_files:
   # Härtung auf Kernel-Ebene. ip_forward steht hier bewusst auf 0 - freigegeben
   # wird es erst von /etc/init.d/firewall, nachdem der Regelsatz geladen ist.
   #
+  # Diese Datei wendet /etc/init.d/firewall zusätzlich selbst an, direkt vor der
+  # Freigabe des Forwardings. Der sysctl-Service liegt im selben Runlevel, und
+  # OpenRC startet unabhängige Services parallel - ohne das wäre es Zufall, ob
+  # rp_filter schon steht, wenn die VM zu routen beginnt.
+  #
+  # net.netfilter.nf_conntrack_helper fehlt hier bewusst: der Schlüssel
+  # existiert erst, wenn nftables das Conntrack-Modul geladen hat. Er wird
+  # deshalb ebenfalls aus /etc/init.d/firewall gesetzt.
+  #
   - path: /etc/sysctl.d/99-firewall.conf
     owner: root:root
     permissions: "0644"
