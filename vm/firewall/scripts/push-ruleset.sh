@@ -28,14 +28,31 @@ trap 'rm -f "$tmp"' EXIT
 echo "Rendere Regelsatz aus $MODULE_DIR ..."
 terraform -chdir="$MODULE_DIR" output -raw nftables_ruleset > "$tmp"
 
-echo "Übertrage nach $TARGET ..."
-scp -q "$tmp" "$TARGET:/tmp/nftables.nft.new"
+#
+# Übertragen, prüfen und installieren passieren in *einem* privilegierten
+# Aufruf, und die Zwischendatei liegt unter einem zufälligen Namen in /etc
+# statt unter /tmp/nftables.nft.new:
+#
+#   - Ein fester Pfad in einem für alle beschreibbaren Verzeichnis lässt sich
+#     zwischen `nft -c` und `install` austauschen. Geprüft würde dann etwas
+#     anderes als das, was in /etc/nftables.nft landet.
+#   - /etc ist ausschließlich für root beschreibbar. Damit gibt es keinen
+#     Moment, in dem der künftige Regelsatz an einer Stelle liegt, an die ein
+#     unprivilegierter Prozess herankommt.
+#
+payload="$(base64 < "$tmp" | tr -d '\n')"
 
-echo "Prüfe Syntax auf der VM ..."
-"${SSH[@]}" 'sudo nft -c -f /tmp/nftables.nft.new'
-
-echo "Installiere und lade neu ..."
-"${SSH[@]}" 'sudo install -o root -g root -m 0640 /tmp/nftables.nft.new /etc/nftables.nft && sudo rm -f /tmp/nftables.nft.new && sudo rc-service firewall restart'
+echo "Übertrage nach $TARGET, prüfe Syntax und installiere ..."
+"${SSH[@]}" 'sudo sh -s' <<REMOTE
+set -eu
+umask 077
+staging=\$(mktemp /etc/nftables.nft.new.XXXXXX)
+trap 'rm -f "\$staging"' EXIT
+printf %s '$payload' | base64 -d > "\$staging"
+nft -c -f "\$staging"
+install -o root -g root -m 0640 "\$staging" /etc/nftables.nft
+rc-service firewall restart
+REMOTE
 
 echo
 "$MODULE_DIR/verify/assert-ruleset.sh" "$TARGET"

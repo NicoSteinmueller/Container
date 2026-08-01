@@ -63,8 +63,22 @@ table inet filter {
     type filter hook input priority filter; policy drop;
 
     iif lo accept
-    ct state established,related accept
+
+    # --- Anti-Spoofing, vor allem anderen -----------------------------
+    #
+    # Jedes Bein nimmt nur Absender aus dem eigenen Segment an. rp_filter
+    # (sysctl) tut dasselbe, ist aber ein Schalter außerhalb dieses Regelsatzes
+    # - und genau darauf verlassen sich die SSH-Regel unten und der
+    # Panic-Regelsatz, die Management von DMZ ausschließlich über die
+    # Quelladresse unterscheiden. Ein Gast in der DMZ, der 10.10.10.x als
+    # Absender setzt, darf gar nicht erst so weit kommen.
+    iifname $mgmt_if ip saddr != $mgmt_net counter drop comment "Spoofing auf Management"
+    iifname $dmz_if ip saddr != $dmz_net counter drop comment "Spoofing in der DMZ"
+    iifname $clu_if ip saddr != $clu_net counter drop comment "Spoofing im Cluster"
+    iifname $wan_if ip saddr { $mgmt_net, $dmz_net, $clu_net } counter drop comment "Interne Absender über WAN"
+
     ct state invalid drop
+    ct state established,related accept
 
     # SSH ausschließlich über das Management-Interface, nie über WAN oder DMZ
     # (k8s/Edge-Architektur.md, Abschnitt 5). sshd bindet zusätzlich nur auf
@@ -85,6 +99,16 @@ table inet filter {
   # ------------------------------------------------------------------
   chain forward {
     type filter hook forward priority filter; policy drop;
+
+    # --- Anti-Spoofing, vor allem anderen -----------------------------
+    #
+    # Steht bewusst über dem established-Zweig: ein Paket mit einer
+    # Absenderadresse, die auf diesem Kabel nichts zu suchen hat, soll gar
+    # nicht erst bewertet werden. Begründung siehe chain input.
+    iifname $mgmt_if ip saddr != $mgmt_net counter drop comment "Spoofing auf Management"
+    iifname $dmz_if ip saddr != $dmz_net counter drop comment "Spoofing in der DMZ"
+    iifname $clu_if ip saddr != $clu_net counter drop comment "Spoofing im Cluster"
+    iifname $wan_if ip saddr { $mgmt_net, $dmz_net, $clu_net } counter drop comment "Interne Absender über WAN"
 
     ct state invalid drop
     ct state established,related accept
@@ -129,7 +153,11 @@ table inet filter {
 
 %{ for src in admin_sources ~}
     # --- Admin-Zugriff aus dem LAN auf die Cluster-API ---------------
-    iifname $wan_if ip saddr ${src} oifname $clu_if tcp dport { ${join(", ", cluster_admin_ports)} } ct state new counter accept comment "Admin ${src} -> Cluster-API"
+    #
+    # `ip daddr $clu_net` ist nicht redundant zu `oifname $clu_if`: ohne die
+    # Zielprüfung würde die Regel auch für Adressen greifen, die irgendwann
+    # zusätzlich über dieses Interface geroutet werden.
+    iifname $wan_if ip saddr ${src} oifname $clu_if ip daddr $clu_net tcp dport { ${join(", ", cluster_admin_ports)} } ct state new counter accept comment "Admin ${src} -> Cluster-API"
 %{ endfor ~}
 %{ for rule in extra_forward_rules ~}
     ${rule}

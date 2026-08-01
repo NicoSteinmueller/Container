@@ -23,6 +23,15 @@ MODULE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET="${1:-$(terraform -chdir="$MODULE_DIR" output -raw ssh_target)}"
 SSH=(ssh -o BatchMode=yes -o ConnectTimeout=10 "$TARGET")
 
+#
+# Die Diffs landen unter einem zufälligen Namen, nicht unter einem festen Pfad
+# in /tmp: Das Skript läuft auf dem Hypervisor typischerweise als root, und ein
+# vorbereiteter Symlink an einer vorhersagbaren Stelle würde die Umleitung in
+# eine beliebige Datei schreiben lassen.
+#
+workdir="$(mktemp -d)"
+trap 'rm -rf "$workdir"' EXIT
+
 fail=0
 
 info() { printf '\n\033[1m%s\033[0m\n' "$*"; }
@@ -38,11 +47,11 @@ info "1/3  Datei-Drift: /etc/nftables.nft gegen den gerenderten Regelsatz"
 expected="$(terraform -chdir="$MODULE_DIR" output -raw nftables_ruleset)"
 actual="$("${SSH[@]}" sudo cat /etc/nftables.nft)"
 
-if diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") > /tmp/fw-ruleset-file.diff; then
+if diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") > "$workdir/file.diff"; then
   ok "Datei entspricht dem Repo"
 else
   bad "Datei weicht ab:"
-  sed 's/^/        /' /tmp/fw-ruleset-file.diff
+  sed 's/^/        /' "$workdir/file.diff"
 fi
 
 # ---------------------------------------------------------------------
@@ -61,11 +70,11 @@ REMOTE
 
 live="$("${SSH[@]}" sudo nft -s list ruleset)"
 
-if diff -u <(printf '%s\n' "$canonical") <(printf '%s\n' "$live") > /tmp/fw-ruleset-live.diff; then
+if diff -u <(printf '%s\n' "$canonical") <(printf '%s\n' "$live") > "$workdir/live.diff"; then
   ok "Geladener Regelsatz entspricht der Datei"
 else
   bad "Geladener Regelsatz weicht ab:"
-  sed 's/^/        /' /tmp/fw-ruleset-live.diff
+  sed 's/^/        /' "$workdir/live.diff"
 fi
 
 # ---------------------------------------------------------------------
@@ -76,6 +85,18 @@ forward="$("${SSH[@]}" cat /proc/sys/net/ipv4/ip_forward)"
 
 v6="$("${SSH[@]}" cat /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null || echo 1)"
 [[ "$v6" == "1" ]] && ok "IPv6 abgeschaltet" || bad "IPv6 ist aktiv - siehe k8s/Edge-Architektur.md, Abschnitt 5"
+
+# Die Kernel-Härtung wird von /etc/init.d/firewall vor der Freigabe des
+# Forwardings angewendet. Steht sie hier nicht, ist der Service in der falschen
+# Reihenfolge gestartet - und rp_filter ist das, worauf sich der Panic-Regelsatz
+# verlässt, der Interfaces nur über Adressen unterscheiden kann.
+rpf="$("${SSH[@]}" cat /proc/sys/net/ipv4/conf/all/rp_filter 2>/dev/null || echo 0)"
+[[ "$rpf" == "1" ]] && ok "rp_filter strikt" || bad "rp_filter = $rpf (erwartet: 1)"
+
+# Ein zugewiesener Conntrack-Helper könnte über `ct state related` eine
+# Erwartung ins Heimnetz öffnen - oberhalb der DENY-Regeln.
+helper="$("${SSH[@]}" cat /proc/sys/net/netfilter/nf_conntrack_helper 2>/dev/null || echo 0)"
+[[ "$helper" == "0" ]] && ok "Conntrack-Helper abgeschaltet" || bad "nf_conntrack_helper = $helper (erwartet: 0)"
 
 if "${SSH[@]}" sudo rc-service firewall status 2>/dev/null | grep -q started; then
   ok "Firewall-Service läuft"

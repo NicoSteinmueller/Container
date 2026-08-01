@@ -154,6 +154,14 @@ Durchsetzungspunkt statt zwei.
 | Cluster | DMZ | nur als Antwort auf bestehende Verbindungen |
 | Management | Firewall | SSH |
 
+Vor allem anderen steht in `input` und `forward` je ein Anti-Spoofing-Block:
+jedes Bein nimmt nur Absender aus dem eigenen Segment an, und über WAN kommt
+kein Paket herein, das sich als DMZ, Cluster oder Management ausgibt. Das
+dupliziert `rp_filter` bewusst – ein Gast in der DMZ, der `10.10.10.x` als
+Absender setzt, würde sonst nur von einem sysctl außerhalb dieses Regelsatzes
+aufgehalten, und genau darauf bauen sowohl die SSH-Regel als auch der
+Panic-Regelsatz, die Management nur an der Quelladresse erkennen.
+
 Zwei Eigenheiten, die man kennen sollte:
 
 **WAN und LAN teilen sich ein Interface.** Die Firewall steht mit einem Bein im
@@ -183,6 +191,21 @@ lädt Regeln und meldet im Fehlerfall einen Fehler – zurück bleibt ein Router
 ganz ohne Regeln, also offen. Hier hängt `ip_forward` am erfolgreichen Laden:
 klappt es nicht, greift `nftables.panic.nft` (alles zu außer SSH über
 Management) und Forwarding bleibt aus. Fail-closed statt fail-open.
+
+**Der Firewall-Service wendet die Kernel-Härtung selbst an.** `firewall` und
+`sysctl` liegen beide im `boot`-Runlevel, und OpenRC startet unabhängige
+Services parallel – ohne Ordnung wäre es Zufall, ob `rp_filter` schon steht,
+wenn die VM zu routen beginnt, und ob `99-firewall.conf` danach `ip_forward`
+wieder auf `0` zieht. Der Service hat deshalb `after sysctl` in `depend()` *und*
+liest die Datei vor der Freigabe des Forwardings selbst ein. `assert-ruleset.sh`
+prüft das Ergebnis mit.
+
+Aus demselben Aufruf kommt `net.netfilter.nf_conntrack_helper = 0`. Der Schlüssel
+steht nicht in `99-firewall.conf`, weil er erst existiert, sobald nftables das
+Conntrack-Modul geladen hat. Er zählt trotzdem: `ct state related accept` steht
+in der forward-Chain über den DENY-Regeln, und ein automatisch zugewiesener
+Helper (FTP, SIP, TFTP) könnte aus DMZ oder Cluster heraus eine
+RELATED-Erwartung ins Heimnetz öffnen – vorbei an der Segmentierung.
 
 **Management-Netz ohne Verbindung zum LAN.** SSH ist ausschließlich auf
 `10.10.10.2` gebunden, erreichbar nur vom Hypervisor selbst. Der Weg von der
@@ -247,6 +270,65 @@ terraform destroy
 Entfernt VM, Disks, Cloud-Init-ISO und die drei Netze. Solange Edge-VM oder
 Talos-Nodes an `fw-dmz`/`fw-cluster` hängen, schlägt das Löschen der Netze fehl –
 diese VMs vorher abbauen.
+
+## Restrisiko außerhalb dieses Moduls
+
+Zwei Wege führen an dem Regelsatz vorbei, weil sie ihn gar nicht erst
+durchlaufen. Beide sind hier nicht zu schließen – aber sie gehören genannt,
+sonst liest sich „DMZ → LAN DENY" stärker, als es ist.
+
+**Der Hypervisor hängt selbst an den Segment-Bridges.** `fw-dmz` und
+`fw-cluster` haben keine Adresse auf dem Host, das Bridge-Interface existiert
+dort aber trotzdem. Linux ist standardmäßig ein *weak host*: Pakete, die auf
+`virbr-dmz` ankommen und an eine ganz andere lokale Adresse des Hosts gerichtet
+sind, nimmt der Kernel an. libvirt legt für isolierte Netze `FORWARD`-REJECTs
+an, aber nichts für `INPUT`. Eine kompromittierte Edge-VM kann den Unraid-Host
+damit direkt ansprechen, ohne die Firewall-VM zu passieren – blind, weil ohne
+Rückweg, aber ausreichend für alles, was keine Antwort braucht. Auf dem
+Hypervisor gegenprüfen und schließen:
+
+```bash
+# Zum Prüfen welche Netzwerke es gibt
+ip -br link 2>/dev/null | grep -E 'virbr|br0' || echo "(keine virbr*/br0 Interfaces)"; echo "=== /proc/sys/net/ipv4/conf ==="; ls /proc/sys/net/ipv4/conf/ 2>/dev/null | tr '\n' ' '; echo; echo "=== libvirt-Netze ==="; virsh -c qemu:///system net-list --all 2>&1 | head -20
+```
+
+```bash
+iptables -S INPUT | grep -E 'virbr-(dmz|cluster)'   # erwartet: nichts -> Lücke
+
+# Der Interface-Name wird erst beim Paketempfang aufgelöst - die Regeln lassen
+# sich also setzen, bevor `terraform apply` die Bridges überhaupt anlegt.
+iptables -I INPUT -i virbr-dmz     -j DROP
+iptables -I INPUT -i virbr-cluster -j DROP
+
+# Bewusst über `all` statt per Interface: /proc/sys/net/ipv4/conf/<iface>
+# entsteht erst mit dem Interface und verschwindet mit ihm wieder - ein
+# `virsh net-destroy` würde die Einstellung sonst still zurücknehmen. Beim
+# ARP-Reply bildet der Kernel max(all, iface), `all` wirkt deshalb sofort und
+# auch auf Bridges, die libvirt erst später erzeugt.
+sysctl -w net.ipv4.conf.all.arp_ignore=1
+```
+
+`arp_ignore=1` heißt „nur für Adressen antworten, die auf dem empfangenden
+Interface konfiguriert sind" und gilt über `all` für den ganzen Host. Für
+normal adressierte Interfaces ändert sich nichts; brechen würde es einen
+Aufbau, der bewusst auf ARP-Flux baut – eine VIP auf `lo` oder `dummy0`, die
+eine echte NIC beantworten soll. Auf Unraid gegenprüfen, bevor es dauerhaft
+gesetzt wird.
+
+Beides ist Laufzeitzustand und nach einem Reboot weg. Auf Unraid gehören die
+Zeilen deshalb nach `/boot/config/go`, sonst steht die Lücke beim nächsten
+Start wieder offen. Danach [verify/egress-test.sh](verify/egress-test.sh)
+laufen lassen – der Weg Gast → Firewall-VM läuft innerhalb der Bridge und
+sollte von `INPUT` unberührt bleiben, aber das ist billiger zu prüfen als
+anzunehmen.
+
+**Innerhalb eines Segments schützt der Regelsatz nichts.** Die Regel
+`Edge -> Cluster-Ingress` erkennt den Edge an `ip saddr $edge_ip`. Der
+Anti-Spoofing-Block stellt sicher, dass der Absender aus `10.10.20.0/24` kommt –
+ein *zweiter* Gast in der DMZ könnte sich aber als `10.10.20.10` ausgeben. Ein
+L3-Gateway kann das nicht unterscheiden. Konsequenz: in `fw-dmz` gehört nur die
+Edge-VM, und die zweite Durchsetzung bleiben mTLS und die Cilium-NetworkPolicy
+([Edge-Architektur](../../k8s/Edge-Architektur.md), Abschnitt 4).
 
 ## Offene Punkte
 

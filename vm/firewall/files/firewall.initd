@@ -22,19 +22,63 @@ description="nftables-Regelsatz der Firewall-VM"
 RULESET=${RULESET:-/etc/nftables.nft}
 PANIC=${PANIC:-/etc/nftables.panic.nft}
 RENDER=${RENDER:-/usr/local/sbin/fw-render-interfaces}
+HARDENING=${HARDENING:-/etc/sysctl.d/99-firewall.conf}
 
 extra_commands="check show"
 description_check="Regelsatz nur prüfen, nicht laden"
 description_show="Aktiven Regelsatz ausgeben"
 
+#
+# `after sysctl`: beide Services liegen im boot-Runlevel und OpenRC startet
+# unabhängige Services parallel. Ohne die Ordnung entscheidet der Zufall, ob
+# rp_filter schon gesetzt ist, wenn hier das Forwarding freigegeben wird - und
+# ob /etc/sysctl.d/99-firewall.conf danach ip_forward wieder auf 0 zieht.
+#
 depend() {
 	need localmount
+	after sysctl
 	before net sshd
+}
+
+#
+# Kernel-Härtung gehört vor die Freigabe des Forwardings, nicht daneben:
+# rp_filter ist das, worauf sich die adressbasierten Regeln des
+# Panic-Regelsatzes verlassen. `after sysctl` ordnet den Boot, dieser Aufruf
+# macht den Service davon unabhängig - auch bei `restart` im laufenden Betrieb.
+#
+apply_hardening() {
+	if [ -r "$HARDENING" ]; then
+		sysctl -q -p "$HARDENING" >/dev/null 2>&1 ||
+			ewarn "Kernel-Härtung aus $HARDENING nur teilweise angewendet"
+	else
+		ewarn "$HARDENING fehlt - Kernel-Härtung nicht angewendet"
+	fi
+
+	#
+	# Automatische Conntrack-Helper abschalten. Die forward-Chain akzeptiert
+	# `ct state related` oberhalb der DENY-Regeln; ein zugewiesener Helper
+	# (FTP, SIP, TFTP) könnte aus DMZ oder Cluster heraus eine RELATED-Erwartung
+	# ins Heimnetz öffnen und damit an der Segmentierung vorbeilaufen.
+	#
+	# Nicht in 99-firewall.conf, weil der Schlüssel erst existiert, seit der
+	# Regelsatz oben das Conntrack-Modul geladen hat.
+	#
+	sysctl -qw net.netfilter.nf_conntrack_helper=0 >/dev/null 2>&1 ||
+		ewarn "net.netfilter.nf_conntrack_helper konnte nicht gesetzt werden"
 }
 
 load_panic() {
 	sysctl -qw net.ipv4.ip_forward=0 >/dev/null 2>&1
-	nft -f "$PANIC"
+	nft -f "$PANIC" || return 1
+
+	#
+	# Im Panic-Modus erst recht: der Notfall-Regelsatz kennt bewusst keine
+	# Interface-Namen und unterscheidet Management von DMZ ausschließlich an
+	# der Quelladresse. Ohne rp_filter wäre die SSH-Ausnahme darin spoofbar -
+	# und der Panic-Modus ist genau der Zustand, in dem sonst nichts mehr greift.
+	#
+	apply_hardening
+	sysctl -qw net.ipv4.ip_forward=0 >/dev/null 2>&1
 }
 
 start() {
@@ -53,6 +97,8 @@ start() {
 		eend 1 "Firewall im Panic-Modus"
 		return 1
 	fi
+
+	apply_hardening
 
 	sysctl -qw net.ipv4.ip_forward=1 >/dev/null
 	eend 0

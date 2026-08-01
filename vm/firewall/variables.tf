@@ -305,6 +305,19 @@ variable "admin_sources" {
   EOT
   type        = list(string)
   default     = []
+
+  #
+  # Der Wert geht unverändert in den Regelsatz. Ohne Prüfung wird aus einem
+  # Tippfehler kein Fehler beim Apply, sondern ein Regelsatz, der auf der VM
+  # nicht lädt - und damit ein Panic-Regelsatz beim nächsten Reboot.
+  #
+  validation {
+    condition = alltrue([
+      for src in var.admin_sources :
+      can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+(/[0-9]{1,2})?$", src))
+    ])
+    error_message = "admin_sources akzeptiert nur IPv4-Adressen oder -CIDRs, z. B. 192.168.178.30/32."
+  }
 }
 
 variable "cluster_admin_ports" {
