@@ -202,17 +202,17 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
   <h2>Grundidee</h2>
   <p class="lede">Der eigentliche Knackpunkt ist nicht Kubernetes, sondern die Fritzbox: Sie kann keine VLANs, kein echtes DMZ und keine Filterregeln jenseits von Portfreigaben. Die gesamte Segmentierung muss deshalb innerhalb von Unraid passieren.</p>
   <p>Daraus folgt der Aufbau: drei getrennte Zonen auf einem einzigen Blech, realisiert über isolierte virtuelle Netze in Unraid. Internet-Traffic landet nie direkt im Cluster, sondern wird in einer vorgelagerten VM beendet, geprüft und erst dann weitergereicht.</p>
-  <p>Die zweite tragende Idee ist die Trennung nach Erreichbarkeit statt nach Konfiguration: Es gibt zwei Ingress-Controller, einen für öffentliche und einen für private Dienste. Damit kann eine falsch gesetzte Annotation Paperless nicht versehentlich ins Internet stellen — die Netzwerkgrenze verhindert es strukturell.</p>
+  <p>Die zweite tragende Idee ist die Trennung nach Erreichbarkeit statt nach Konfiguration: Es gibt zwei Ingress-Controller, einen für öffentliche und einen für private Dienste. Die Netzwerkgrenze allein leistet dabei weniger, als es zunächst aussieht — sie verhindert, dass ein privat deklarierter Dienst aus Versehen öffentlich <em>erreichbar</em> wird, aber nicht, dass jemand <code>ingressClassName: public</code> an das falsche Manifest schreibt. Genau diese Zeile bekommt deshalb eine erzwingende Regel (Kapitel Talos-Cluster), statt sich auf die Topologie zu verlassen.</p>
 </section>
 
 <section id="topologie">
   <h2>Netzzonen</h2>
-  <p>Von außen nach innen: Die Fritzbox reicht ausschließlich Port 443 an die Edge-VM weiter. Alles Private läuft über WireGuard und erreicht den internen Ingress, ohne die exponierte Zone auch nur zu berühren.</p>
+  <p>Von außen nach innen: Die Fritzbox reicht ausschließlich Port 443 an die Edge-VM weiter. Alles Private ist nur aus dem LAN erreichbar und berührt die exponierte Zone nie — es gibt derzeit bewusst keinen Fernzugriff auf die internen Dienste.</p>
 
   <figure>
     <svg viewBox="0 0 720 690" role="img" xmlns="http://www.w3.org/2000/svg" aria-labelledby="topo-t topo-d">
       <title id="topo-t">Netzzonen des Homelab-Aufbaus</title>
-      <desc id="topo-d">Drei Vertrauenszonen: Extern mit Internet und Fritzbox, DMZ mit der Edge-VM, und die interne Zone mit der Talos-VM, zwei Ingress-Controllern und dem Unraid-Array. Der öffentliche Pfad führt über die Edge-VM zum öffentlichen Ingress, der WireGuard-Pfad direkt zum internen Ingress.</desc>
+      <desc id="topo-d">Drei Vertrauenszonen: Extern mit Internet und Fritzbox, DMZ mit der Edge-VM, und die interne Zone mit der Talos-VM, zwei Ingress-Controllern und dem Unraid-Array. Der öffentliche Pfad führt aus dem Internet über die Edge-VM zum öffentlichen Ingress, der LAN-Pfad von der LAN-Seite der Fritzbox direkt zum internen Ingress.</desc>
       <defs>
         <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
@@ -236,7 +236,7 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
 
       <rect x="264" y="108" width="272" height="62" fill="#FFFFFF" stroke="#5E6C7E" stroke-width="1"/>
       <text x="400" y="132" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-weight="500" font-size="14" fill="#131B25">Fritzbox</text>
-      <text x="400" y="152" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">443 öffentlich · WireGuard privat</text>
+      <text x="400" y="152" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">443 aus dem Internet · LAN-Seite intern</text>
 
       <line x1="500" y1="170" x2="500" y2="226" stroke="#9E2E48" stroke-width="1.6" marker-end="url(#ar)"/>
       <rect x="380" y="230" width="300" height="68" fill="#FFFFFF" stroke="#9E2E48" stroke-width="1"/>
@@ -267,7 +267,7 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
       <line x1="118" y1="650" x2="150" y2="650" stroke="#9E2E48" stroke-width="1.6"/>
       <text x="160" y="655" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">öffentlicher Pfad</text>
       <line x1="300" y1="650" x2="332" y2="650" stroke="#0F5B55" stroke-width="1.6" stroke-dasharray="6 4"/>
-      <text x="342" y="655" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">WireGuard, nur privat</text>
+      <text x="342" y="655" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">LAN-Pfad, kein Internet</text>
     </svg>
     <figcaption>DMZ und interne Zone laufen beide auf demselben Unraid-Host, aber in getrennten virtuellen Netzen ohne gemeinsames Uplink. Die Edge-VM erreicht ausschließlich eine IP und einen Port im Cluster — kein LAN, keine Shares, keine Unraid-Oberfläche.</figcaption>
   </figure>
@@ -280,9 +280,13 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
     <li>Nur <strong>443/TCP</strong> an die Edge-VM freigeben. Port 80 entfällt, weil die Zertifikate per DNS-01 geholt werden.</li>
     <li><strong>IPv6 separat prüfen.</strong> Die Fritzbox filtert v6 unabhängig von v4; ein „Host komplett freigeben“ öffnet mehr, als man denkt. Das ist das häufigste Loch in solchen Aufbauten.</li>
     <li>UPnP aus, MyFRITZ!-Fernzugriff aus, Telefonie-Fernzugang aus.</li>
-    <li><strong>WireGuard direkt auf der Fritzbox</strong> — der Zugang zu allem Privaten funktioniert damit auch, wenn der Server aus ist.</li>
+    <li><strong>Kein VPN auf der Fritzbox.</strong> Sie kann Peers nicht filtern — ein VPN-Client landet dort im flachen LAN und erreicht damit Unraid-WebGUI, Talos-API und alle Shares. Genau die Segmentierung, für die dieser Aufbau existiert, wäre mit einem einzigen kompromittierten Profil hinfällig. Fernzugriff auf private Dienste ist deshalb vorerst nicht vorgesehen.</li>
     <li>DynDNS über den DNS-Anbieter, nicht über MyFRITZ!.</li>
   </ul>
+
+  <div class="note">
+    <p><strong>Offener Punkt: Fernzugriff.</strong> Paperless und die Admin-UIs sind damit nur im LAN erreichbar. Wenn das zu wenig ist, gehört der VPN-Endpunkt an eine Stelle, die filtern kann — eine eigene kleine VM mit nftables, die Peers ausschließlich auf <code>ingress-internal</code> und DNS routet, in einem eigenen Subnetz, das im Konzept als vierte Zone auftaucht. Nicht auf die Fritzbox.</p>
+  </div>
 </section>
 
 <section id="edge">
@@ -304,7 +308,7 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
       <div class="num">1</div>
       <div>
         <h5>nftables</h5>
-        <p>Eingehend nur 443/TCP. Ausgehend nur zur Talos-Ingress-IP, DNS, NTP, ACME und CrowdSec-Hub. Der Egress-Filter ist der eigentliche Wert: keine Reverse Shell, kein Nachladen von Tools, kein LAN-Scan.</p>
+        <p>Eingehend nur 443/TCP. Ausgehend nur zur Talos-Ingress-IP, zum internen Resolver, NTP, ACME und CrowdSec-Hub — letztere als IP-Sets, nicht als Hostnamen. Der Egress-Filter verhindert die bequemen Angriffe: keine Reverse Shell, kein Nachladen von Tools, kein LAN-Scan. Er verhindert kein Exfiltrieren — über DNS und die erlaubten TLS-Ziele bleibt ein Kanal offen. Deshalb DNS ausschließlich zum internen Resolver mit Query-Logging und Blocklist, und ausgehende Verbindungen zählen statt ihnen zu vertrauen.</p>
       </div>
     </div>
     <div class="stage block">
@@ -318,7 +322,7 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
       <div class="num">3</div>
       <div>
         <h5>TLS-Terminierung</h5>
-        <p>Wildcard-Zertifikat per ACME DNS-01, TLS 1.2/1.3, HSTS, OCSP Stapling.</p>
+        <p>Ein Zertifikat je öffentlichem Namen, per ACME DNS-01 über die delegierte ACME-DNS-Instanz. TLS 1.2/1.3, HSTS, OCSP Stapling.</p>
       </div>
     </div>
     <div class="stage block">
@@ -339,39 +343,54 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
       <div class="num">6</div>
       <div>
         <h5>Rate Limiting und Routing</h5>
-        <p>Streng auf Login-Pfaden, großzügig auf Sync-Pfaden. Danach Weiterleitung per mTLS an den öffentlichen Ingress, mit gesetztem <code>X-Forwarded-For</code>.</p>
+        <p>Streng auf Login-Pfaden, großzügig auf Sync-Pfaden. Danach Weiterleitung per mTLS an den öffentlichen Ingress. <code>X-Forwarded-For</code> wird dabei <strong>hart auf die TCP-Peer-Adresse überschrieben</strong>, nicht angehängt; alle vom Client mitgeschickten <code>X-Forwarded-*</code>- und <code>Forwarded</code>-Header werden vorher verworfen.</p>
       </div>
     </div>
   </div>
 
   <div class="note">
     <p><strong>Der häufigste Fehler.</strong> Wird <code>X-Forwarded-For</code> nicht sauber durchgereicht und die Edge-IP nicht als vertrauenswürdiger Proxy eingetragen, sieht CrowdSec bei jedem Angriff nur die eigene Edge-VM — und sperrt am Ende den gesamten Zugang. Vor dem Scharfschalten einmal absichtlich falsch einloggen und im Log prüfen, ob dort die echte öffentliche IP steht.</p>
+    <p><strong>Der gefährlichere Fehler ist der umgekehrte.</strong> Hängt die Edge den vom Client gelieferten Wert nur an, statt ihn zu ersetzen, dann bestimmt der Angreifer per Header, als welche IP er bewertet wird. Ein <code>X-Forwarded-For: 192.168.178.20</code> landet in jeder Whitelist, die auf LAN-Adressen aufbaut — Bruteforce, Scanner und Exploit-Versuche werden dann nie gebannt, und die zentrale Abwehrschicht ist mit einer Kopfzeile abgeschaltet. Zweiter Abnahmetest deshalb: Request mit gefälschtem <code>X-Forwarded-For</code> absetzen und prüfen, dass im Log die echte Peer-IP steht.</p>
   </div>
 
   <h3>Was die Edge-VM ausdrücklich nicht tut</h3>
   <ul>
     <li>Keine Anwendungsdaten, kein Cache von Fotos oder Dokumenten</li>
-    <li>Keine Secrets außer den TLS-Zertifikaten</li>
+    <li>Keine Secrets außer den Zertifikaten der öffentlichen Namen und den Credentials der ACME-DNS-Delegation</li>
+    <li><strong>Kein API-Token des DNS-Anbieters</strong> — der wäre wertvoller als jedes Zertifikat, das hier liegt</li>
+    <li>Kein Zertifikat und kein Schlüssel, der interne Namen abdeckt</li>
     <li>Kein kubeconfig, kein ServiceAccount-Token, keine Talos-Credentials</li>
     <li>Keine Storage-Mounts, weder NFS noch SMB</li>
   </ul>
-  <p>Der Test, ob zu viel hineingebaut wurde: Löscht man die VM und rollt sie neu aus, darf außer den ACME-Zertifikaten nichts verloren gehen.</p>
+  <p>Der Test, ob zu viel hineingebaut wurde: Löscht man die VM und rollt sie neu aus, darf außer den ACME-Zertifikaten nichts verloren gehen. Und: Was auf der VM liegt, darf nach einer Kompromittierung nichts wert sein, das die VM überlebt.</p>
 
   <div class="ask">
     <p class="q-label">Rückfrage</p>
     <p class="q">Die Zertifikate soll doch eigentlich Traefik automatisch machen — warum liegen die in der Edge-VM?</p>
     <p>Weil daran hängt, wer TLS beendet. Ohne Entschlüsselung gibt es keine WAF, kein pfadbasiertes Rate Limiting, keine Host-Whitelist und keine HTTP-Logs für CrowdSec. Bei TLS-Passthrough würde die Edge-VM zu einem reinen L4-Weiterleiter, der nur noch IP, Port und SNI sieht — von sechs Stufen blieben zwei übrig. Dann kann man sich die VM auch sparen.</p>
-    <p>cert-manager bleibt trotzdem zuständig, nur für einen anderen Bereich: die internen Dienste hinter WireGuard und das Zertifikat für die mTLS-Strecke. Zwei ACME-Clients, die nichts voneinander wissen — denn geteilte Zertifikate bräuchten entweder Cluster-Credentials auf der Edge oder Schreibzugriff vom Cluster in die DMZ. Beides hebt die Trennung auf, für die die VM überhaupt existiert.</p>
+    <p>cert-manager bleibt trotzdem zuständig, nur für einen anderen Bereich: die internen Dienste im LAN und das Zertifikat für die mTLS-Strecke. Zwei ACME-Clients, die nichts voneinander wissen — denn geteilte Zertifikate bräuchten entweder Cluster-Credentials auf der Edge oder Schreibzugriff vom Cluster in die DMZ. Beides hebt die Trennung auf, für die die VM überhaupt existiert.</p>
+  </div>
+
+  <div class="ask">
+    <p class="q-label">Rückfrage</p>
+    <p class="q">DNS-01 braucht einen Provider-Token. Der liegt dann auf der exponiertesten Maschine im Haus?</p>
+    <p>Nein — und das ist der Grund für die <strong>ACME-DNS-Delegation</strong>. Ein DNS-Token mit Schreibrecht auf die Zone ist wertvoller als jedes Zertifikat, das die Edge hält: Damit lassen sich MX-Records umbiegen, fremde Subdomains übernehmen und jederzeit neue gültige Zertifikate ausstellen. Der Schaden überlebt das Neuausrollen der VM, das sonst die Reparaturstrategie ist.</p>
+    <p>Stattdessen zeigt <code>_acme-challenge.&lt;name&gt;</code> per <strong>CNAME auf eine dedizierte ACME-DNS-Instanz</strong>. Die Edge bekommt Credentials für genau diesen einen Challenge-Record und kann die produktive Zone nicht anfassen. Wer die Edge übernimmt, kann Zertifikate für die ohnehin öffentlichen Namen ausstellen — mehr nicht.</p>
+    <p>Zweite Konsequenz: <strong>kein Wildcard über die interne Zone.</strong> Die Edge hält nur die Zertifikate für <code>immich.</code> und <code>cloud.</code>; die internen Namen bekommen ihre eigenen von cert-manager. Sonst läge der Schlüssel, der Paperless absichert, auf der Maschine mit Internetkontakt.</p>
   </div>
 
   <table>
     <thead><tr><th>Zone</th><th>Wer holt das Zertifikat</th><th>Wofür</th></tr></thead>
     <tbody>
-      <tr><td>ingress-public</td><td>Edge-VM, ACME DNS-01</td><td>Immich, Nextcloud</td></tr>
-      <tr><td>ingress-internal</td><td>cert-manager, ACME DNS-01</td><td>Paperless — nur über WireGuard erreichbar, im Browser trotzdem gültig</td></tr>
-      <tr><td>Edge → Cluster</td><td>interne CA über cert-manager</td><td>mTLS auf der Zwischenstrecke</td></tr>
+      <tr><td>ingress-public</td><td>Edge-VM, ACME DNS-01 über ACME-DNS-Delegation</td><td>Nur <code>immich.</code> und <code>cloud.</code> — kein Wildcard, keine internen Namen</td></tr>
+      <tr><td>ingress-internal</td><td>cert-manager, ACME DNS-01 mit eigenem Provider-Zugang</td><td>Paperless — nur aus dem LAN erreichbar, im Browser trotzdem gültig</td></tr>
+      <tr><td>Edge → Cluster</td><td>interne CA über cert-manager</td><td>mTLS auf der Zwischenstrecke, Laufzeit 24 h mit automatischer Erneuerung</td></tr>
     </tbody>
   </table>
+
+  <div class="note">
+    <p><strong>Warum 24 Stunden.</strong> Das Client-Zertifikat der Edge ist der alleinige Türsteher vor <code>ingress-public</code>. Eine cert-manager-CA stellt keine CRL aus, und Traefiks <code>clientAuth</code> prüft ohnehin keine Revokation — ein einmal erbeutetes Zertifikat bliebe also bis zum Ablauf gültig, auch nachdem die VM längst neu ausgerollt wurde. Bei einem einzigen Verbraucher ist kurze Laufzeit billiger als jeder Revokationsmechanismus: Ablauf ersetzt Rückruf. Die Rotation der internen CA gehört trotzdem als dokumentierter Schritt in die Incident-Response.</p>
+  </div>
 </section>
 
 <section id="cluster">
@@ -382,18 +401,24 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
     <li><strong>Single-Node Control Plane</strong> mit <code>allowSchedulingOnControlPlanes: true</code>, 4–6 vCPU, 10 GB RAM.</li>
     <li><strong>Cilium</strong> mit kube-proxy-Replacement — NetworkPolicies inklusive L7 und Hubble zur Sichtbarkeit.</li>
     <li><strong>Zwei Ingress-Controller.</strong> <code>ingress-public</code> ist nur aus dem DMZ-Netz erreichbar, <code>ingress-internal</code> nur über das LAN-Interface. Die <code>ingressClassName</code> ist damit die eine Zeile, die über öffentlich oder privat entscheidet.</li>
+    <li><strong>Kyverno erzwingt die Ingress-Klasse.</strong> <code>ingressClassName: public</code> ist nur in explizit gelabelten Namespaces zulässig, überall sonst wird das Manifest abgelehnt. Ohne diese Regel schützt die Topologie nur gegen den harmlosen Tippfehler: Ein aus Nextcloud kopiertes Ingress-Manifest, das mit <code>public</code> bei Paperless landet, exponiert es genau so, wie es verhindert werden soll — und Flux appliziert es ohne Rückfrage.</li>
+    <li><strong>Service-Bindung prüfen, nicht annehmen.</strong> Bei NodePort beziehungsweise LoadBalancer mit Cilium lauscht ein Service standardmäßig auf allen Node-IPs. <code>ingress-public</code> wird deshalb aktiv an die DMZ-Adresse gebunden, und die Abnahme umfasst <code>ss -lntp</code> auf dem Node plus einen Verbindungsversuch aus dem LAN, der scheitern muss.</li>
     <li><strong>Default-Deny NetworkPolicies</strong> pro Namespace, dann gezielt öffnen. Kein Pod erreicht das LAN.</li>
-    <li><strong>Talos-API auf 50000</strong> nur aus dem Management-Netz. Talos-Config und Secrets mit sops/age verschlüsselt in Git.</li>
+    <li><strong>Talos-API auf 50000</strong> nur aus dem LAN. Talos-Config und Secrets mit sops/age verschlüsselt in Git.</li>
     <li><strong>GitOps mit Flux</strong>, Renovate für Image-Updates. Der Clusterzustand ist damit reproduzierbar — gesichert werden muss nur, was Daten sind.</li>
   </ul>
 
   <h3>Storage und Backup</h3>
   <ul>
-    <li>Nutzerdaten auf ein PVC vom Unraid-Array, NFS ist dafür in Ordnung.</li>
+    <li>Nutzerdaten auf ein PVC vom Unraid-Array. NFS ist dafür technisch in Ordnung, autorisiert aber nur über Quell-IP und übermittelte UID — die Netzgrenze ist die einzige Kontrolle, innerhalb des Netzes gibt es keine. Daher: <strong>pro Dienst ein eigener Export</strong> auf ein eigenes Unterverzeichnis statt einer breiten Freigabe, <code>root_squash</code> und <code>all_squash</code> auf eine feste UID, und der Export geht in ein dediziertes Storage-Netz, das nur der CSI-Treiber erreicht — nicht in das Node-Netz. Wo es ohne Aufwand geht, iSCSI mit CHAP statt NFS.</li>
     <li>Postgres auf die SSD-vDisk. Datenbanken über NFS sind eine Quelle für schwer auffindbare Korruption.</li>
     <li><strong>Append-only Backup-Repository</strong> mit Kopia oder restic. Entscheidend ist, dass der Cluster seine eigenen Backups nicht löschen kann — das ist bei Ransomware der Unterschied zwischen Ärger und Totalverlust.</li>
     <li>Zusätzlich lokal auf eine Platte, die nicht dauerhaft gemountet ist.</li>
   </ul>
+
+  <div class="note">
+    <p><strong>Erkannt, noch nicht gelöst: Append-only ist eine Eigenschaft des Ziels, nicht des Clients.</strong> Weder Kopia noch restic können sich selbst am Löschen hindern. restic erreicht es nur über <code>rest-server --append-only</code> oder S3-Object-Lock, Kopia hat kein vergleichbares Gegenstück. Liegt das Repository als NFS- oder SMB-Share auf demselben Unraid-Host, hat der schreibende Prozess per Definition auch Löschrecht — die Schutzwirkung ist dann null, und zwar genau in dem Fall, für den sie gedacht war. Auch die zweite lokale Platte hilft nur, solange sie tatsächlich ungemountet ist; das ist bislang ein manueller Vorsatz ohne technische Durchsetzung. Die Wahl des erzwingenden Ziels steht noch aus und ist bewusst offen (siehe Nächste Schritte).</p>
+  </div>
 </section>
 
 <section id="crowdsec">
@@ -406,13 +431,22 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
     <p>Die saubere Lösung ist nicht, Rohlogs in die exponierte Zone zu schieben, sondern CrowdSecs eigene Architektur zu nutzen: <strong>Agents</strong> laufen dort, wo die Logs entstehen, und schicken nur fertige Alarme an die zentrale <strong>LAPI</strong>. Über die Netzgrenze gehen ein paar hundert Byte pro Vorfall statt eines Logstroms.</p>
   </div>
 
-  <p>Die LAPI gehört dabei <strong>in den Cluster, nicht auf die Edge-VM</strong> — auch wenn die Intuition etwas anderes nahelegt. Die Edge ist die Komponente mit Internetkontakt und damit die, die am ehesten kompromittiert wird. Läge die Entscheidungsdatenbank dort, könnte ein Angreifer die Sperrliste löschen, die ihn blockiert. So hat die Edge nur einen Bouncer-API-Key, und der darf ausschließlich abfragen.</p>
+  <p>Die LAPI gehört dabei <strong>in den Cluster, nicht auf die Edge-VM</strong> — auch wenn die Intuition etwas anderes nahelegt. Die Edge ist die Komponente mit Internetkontakt und damit die, die am ehesten kompromittiert wird. Läge die Entscheidungsdatenbank dort, könnte ein Angreifer die Sperrliste löschen, die ihn blockiert.</p>
+
+  <p>Die naheliegende Schlussfolgerung — „die Edge hat nur einen lesenden Bouncer-Key" — stimmt allerdings nur zur Hälfte. Auf der Edge läuft auch ein <strong>Agent</strong>, und der hat Machine-Credentials, die per Definition Alarme <em>schreiben</em> dürfen. Damit existiert vom exponierten Netz aus ein authentifizierter Schreibpfad in die zentrale Entscheidungsdatenbank der vertrauten Zone. Wer die Edge übernimmt, kann Alarme für beliebige IPs melden — etwa für die eigene öffentliche IP des Betreibers, die der Bouncer dann brav in nftables sperrt. Der LAPI-Port ist außerdem die <strong>einzige Öffnung von DMZ nach intern</strong> und verdient dieselbe Aufmerksamkeit wie der Ingress-Port, nicht die Behandlung als Nebeneffekt. Konkret:</p>
+
+  <ul>
+    <li>LAPI-Zugang aus der DMZ ausschließlich über die bestehende mTLS-Strecke, NetworkPolicy auf genau diesen Port und genau diese Quell-IP.</li>
+    <li>Agent-Credentials der Edge getrennt von denen der Cluster-Agents, einzeln rotierbar und als solche dokumentiert.</li>
+    <li>Alarme vom Edge-Agent mit niedrigerem Vertrauensgewicht bewerten als die aus dem Cluster.</li>
+    <li>Die Whitelist der eigenen Verwaltungs-IP so setzen, dass eingehende Alarme sie nicht überschreiben können.</li>
+  </ul>
 
   <table>
     <thead><tr><th>Komponente</th><th>Ort</th><th>Aufgabe</th></tr></thead>
     <tbody>
       <tr><td>Agent (Proxy-Logs)</td><td>Edge-VM</td><td>404-Stürme, CVE-Scans, 401-Muster</td></tr>
-      <tr><td>Agent (App-Logs)</td><td>Cluster, DaemonSet</td><td>Nextcloud-Loginfehler, Paperless, Authelia</td></tr>
+      <tr><td>Agent (App-Logs)</td><td>Cluster, DaemonSet</td><td>Nextcloud-Loginfehler, Paperless</td></tr>
       <tr><td>LAPI</td><td>Cluster</td><td>sammelt Alarme, hält die Sperrliste</td></tr>
       <tr><td>Firewall-Bouncer</td><td>Edge-VM</td><td>setzt nftables-Regeln</td></tr>
     </tbody>
@@ -421,7 +455,7 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
   <p>Angenehmer Nebeneffekt: Alle Verbindungen laufen in dieselbe Richtung, Edge → Cluster. Es braucht keine zusätzliche Freigabe vom Cluster in die DMZ, und das bestehende mTLS lässt sich für den LAPI-Port mitnutzen.</p>
 
   <div class="note">
-    <p><strong>Zwei Dinge vor dem Scharfschalten.</strong> Erstens eine Whitelist für LAN und WireGuard-Subnetz anlegen — sonst sperrt der erste Vertipper einen auf nftables-Ebene aus, und dann hilft nur noch der physische Zugang zum Server. Zweitens ein bis zwei Wochen im Beobachtungsmodus fahren und <code>cscli alerts list</code> auswerten: Immich-Mobile-Clients erzeugen im Hintergrund viele Requests, und die daraus entstehenden Fehlalarme will man kennen, bevor sie die Familie aus der Fotogalerie werfen.</p>
+    <p><strong>Zwei Dinge vor dem Scharfschalten.</strong> Erstens einen Weg offenhalten, der nicht über die gesperrte IP führt — sonst sperrt der erste Vertipper einen auf nftables-Ebene aus, und dann hilft nur noch der physische Zugang zum Server. Eine Whitelist auf LAN-Adressen leistet das <em>nicht</em>: Sie greift auf der aus <code>X-Forwarded-For</code> geparsten IP, und wer diesen Header setzen kann, weißt sich selbst ein. Der Notzugang gehört deshalb auf einen separaten Listener, der aus dem Internet gar nicht erreichbar ist. Zweitens ein bis zwei Wochen im Beobachtungsmodus fahren und <code>cscli alerts list</code> auswerten: Immich-Mobile-Clients erzeugen im Hintergrund viele Requests, und die daraus entstehenden Fehlalarme will man kennen, bevor sie die Familie aus der Fotogalerie werfen.</p>
   </div>
 </section>
 
@@ -456,9 +490,9 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
       <span class="zone-tag exposed">Edge-VM</span>
       <h5>Außengrenze</h5>
       <ul>
-        <li>DNS-Eintrag, Fritzbox-Freigabe, Wildcard per DNS-01.</li>
+        <li>DNS-Eintrag, Fritzbox-Freigabe, Zertifikat für <code>cloud.domain.de</code> per DNS-01 über den delegierten <code>_acme-challenge</code>-Record.</li>
         <li>Client-Zertifikat zum Cluster, Server-Zertifikat gegen die interne CA prüfen. Kein <code>insecureSkipVerify</code>.</li>
-        <li><code>X-Forwarded-For</code>, <code>-Proto</code> und <code>-Host</code> setzen.</li>
+        <li><code>X-Forwarded-For</code>, <code>-Proto</code> und <code>-Host</code> setzen — überschreiben, nicht anhängen, und Client-Header vorher verwerfen.</li>
         <li>HSTS hier setzen; die übrigen Security-Header liefert Nextcloud selbst — doppelte Header brechen Teile der Oberfläche.</li>
         <li>Rate Limiting getrennt: <code>/login</code> streng, <code>/remote.php/dav</code> großzügig.</li>
       </ul>
@@ -468,6 +502,11 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
   <div class="note">
     <p><strong>WebDAV bricht generische WAF-Regelsätze.</strong> Nextcloud nutzt Methoden, die viele Regelwerke per Default blocken — <code>PROPFIND</code>, <code>MKCOL</code>, <code>COPY</code>, <code>MOVE</code>, <code>REPORT</code>, <code>LOCK</code> —, seine Request-Bodies sind XML mit Sonderzeichen, die Injection-Regeln auslösen, und binäre Uploads laufen durch die Payload-Inspektion.</p>
     <p>Praktikabler Zuschnitt: WAF scharf auf alles, was Weboberfläche ist (<code>/</code>, <code>/login</code>, <code>/settings</code>, <code>/apps</code>), und auf <code>/remote.php/*</code> nur Virtual Patching aktiv lassen. Ein bewusster Kompromiss — die Alternative ist eine Sync-Funktion, die sporadisch und unerklärlich abbricht.</p>
+  </div>
+
+  <div class="note">
+    <p><strong>Erkannt, bewusst nicht geändert: <code>/remote.php/*</code> ist der Weg um den Login-Schutz herum.</strong> Auf demselben Pfad liegen zwei Ausnahmen übereinander — großzügiges Rate Limiting und eine faktisch abgeschaltete WAF —, und dieser Pfad akzeptiert Basic-Auth mit denselben Benutzerpasswörtern wie das Webformular. Ein Angreifer bruteforced deshalb nicht <code>/login</code>, sondern <code>PROPFIND /remote.php/dav/files/&lt;user&gt;/</code> und trifft dort auf beide Lockerungen. Erfolg bedeutet vollen Dateizugriff, ohne die Weboberfläche je zu berühren.</p>
+    <p>Der Zuschnitt bleibt vorerst so — ein abbrechender Sync ist der teurere Fehler. Die saubere Auflösung wäre, nicht nach Pfad, sondern <strong>nach Antwortcode</strong> zu staffeln: 2xx und 207 großzügig, 401 auf <code>/remote.php/*</code> scharf limitiert und an CrowdSec gemeldet (<code>nextcloud/bf_auth</code>). Ergänzend in Nextcloud App-Passwörter erzwingen, dann ist das Hauptpasswort über WebDAV gar kein gültiger Pfad mehr. Beides ist notiert, aber nicht Teil dieses Stands.</p>
   </div>
 
   <p>Wenn Push-Benachrichtigungen gewünscht sind, braucht <code>notify_push</code> einen WebSocket-Upgrade auf <code>/push/</code> durch <em>beide</em> Proxys. Ohne ihn pollen die Clients, was funktioniert, aber unnötig Last erzeugt — nachträglich sucht man den Fehler allerdings lange.</p>
@@ -511,33 +550,33 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
       </tr>
       <tr>
         <td class="id">E4</td>
-        <td>Zwei getrennte ACME-Clients</td>
-        <td>Geteilte Zertifikate erfordern entweder Cluster-Credentials auf der Edge oder Schreibzugriff vom Cluster in die DMZ. Der Mehraufwand ist gering, das Let's-Encrypt-Limit unkritisch.</td>
+        <td>Zwei getrennte ACME-Clients, Edge über ACME-DNS-Delegation</td>
+        <td>Geteilte Zertifikate erfordern entweder Cluster-Credentials auf der Edge oder Schreibzugriff vom Cluster in die DMZ. Zusätzlich bekommt die Edge keinen Provider-Token, sondern nur Credentials für ihren delegierten <code>_acme-challenge</code>-Record — ein Zonen-Token wäre wertvoller als alles andere auf der VM und würde ihr Neuausrollen überleben. Preis: eine ACME-DNS-Instanz mehr.</td>
       </tr>
       <tr>
         <td class="id">E5</td>
-        <td>mTLS auf der Strecke Edge → Cluster</td>
-        <td>Der Ingress akzeptiert nur Verbindungen mit gültigem Client-Zertifikat. Selbst wenn später etwas anderes im DMZ-Netz landet, kommt es nicht durch.</td>
+        <td>mTLS auf der Strecke Edge → Cluster, Client-Zertifikat mit 24-h-Laufzeit</td>
+        <td>Der Ingress akzeptiert nur Verbindungen mit gültigem Client-Zertifikat. Selbst wenn später etwas anderes im DMZ-Netz landet, kommt es nicht durch. Da eine cert-manager-CA keine CRL kennt, ersetzt die kurze Laufzeit den fehlenden Rückruf — bei einem Verbraucher ist das die billigere Lösung.</td>
       </tr>
       <tr>
         <td class="id">E6</td>
-        <td>Zwei Ingress-Controller statt einem</td>
-        <td>Trennung nach Erreichbarkeit statt nach Konfiguration. Eine falsche Annotation kann Paperless nicht mehr exponieren.</td>
+        <td>Zwei Ingress-Controller statt einem, plus Kyverno-Regel auf die Ingress-Klasse</td>
+        <td>Trennung nach Erreichbarkeit statt nach Konfiguration. Die Topologie allein reicht nicht: <code>ingressClassName: public</code> am falschen Manifest exponiert Paperless genau so, wie es verhindert werden soll. Erst die Policy, die diese Klasse auf gelabelte Namespaces beschränkt, macht die Trennung durchsetzbar.</td>
       </tr>
       <tr>
         <td class="id">E7</td>
         <td>CrowdSec-LAPI im Cluster, Bouncer auf der Edge</td>
-        <td>Die exponierte Komponente darf Entscheidungen nur lesen, nicht löschen. Alle Verbindungen laufen dadurch in dieselbe Richtung.</td>
+        <td>Die exponierte Komponente darf Entscheidungen nicht löschen. Sie kann über ihren Agent allerdings Alarme schreiben — der LAPI-Port ist damit die einzige Öffnung von DMZ nach intern und wird entsprechend eng gefasst: eigene Credentials, NetworkPolicy auf Port und Quell-IP, geringeres Vertrauensgewicht.</td>
       </tr>
       <tr>
         <td class="id">E8</td>
-        <td>WireGuard auf der Fritzbox</td>
-        <td>Funktioniert auch bei ausgeschaltetem Server. Der private Pfad berührt die DMZ nie.</td>
+        <td>Kein VPN auf der Fritzbox — vorerst kein Fernzugriff auf private Dienste</td>
+        <td>Die Fritzbox kann VPN-Peers nicht filtern; sie landen im flachen LAN und erreichen Unraid-WebGUI, Talos-API und Shares. Ein kompromittiertes Profil hätte die gesamte Segmentierung ausgehebelt, für die dieser Aufbau existiert. Preis: Paperless und die Admin-UIs sind nur zu Hause erreichbar. Verworfen: WireGuard auf der Fritzbox. Offen: gefilterter VPN-Endpunkt als vierte Zone.</td>
       </tr>
       <tr>
         <td class="id">E9</td>
-        <td>ACME per DNS-01 statt HTTP-01</td>
-        <td>Port 80 bleibt zu, und ein Wildcard-Zertifikat deckt auch die internen Dienste ab.</td>
+        <td>ACME per DNS-01 statt HTTP-01, ohne Wildcard</td>
+        <td>Port 80 bleibt zu. Auf ein Wildcard wird bewusst verzichtet: Es hätte den Schlüssel, der die internen Namen absichert, auf der exponierten VM abgelegt. Preis: ein Zertifikat pro öffentlichem Namen.</td>
       </tr>
     </tbody>
   </table>
@@ -550,6 +589,9 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
     <li><strong>Kein Schutz vor volumetrischen Angriffen.</strong> CrowdSec ist stark gegen Scanner, Bruteforce und Exploit-Versuche. Gegen jemanden, der die Leitung dichtmachen will, hilft nur der Upstream — das ist der bewusst in Kauf genommene Preis von E1.</li>
     <li><strong>Ein Host ist eine Fehlerdomäne.</strong> Ein Hypervisor-Escape aus der Edge-VM ist unwahrscheinlich, aber nicht ausgeschlossen. Sobald ein zweiter kleiner Rechner übrig ist, gehört die Edge-VM dorthin — das ist der größte Sicherheitsgewinn für wenig Geld.</li>
     <li><strong>Der Unraid-Host ist das Kronjuwel.</strong> WebGUI niemals exponieren, kein Passwort-Login für Root, Array-Verschlüsselung erwägen.</li>
+    <li><strong>Bruteforce über <code>/remote.php/*</code> bleibt möglich.</strong> Der WebDAV-Pfad trägt großzügiges Rate Limiting und eine bis auf Virtual Patching abgeschaltete WAF, akzeptiert aber Basic-Auth mit den regulären Passwörtern. Bewusst in Kauf genommen, um den Sync nicht zu brechen; die Auflösung über Antwortcode-Staffelung und erzwungene App-Passwörter ist notiert, aber nicht umgesetzt.</li>
+    <li><strong>Append-only Backup ist bislang eine Absicht, keine Kontrolle.</strong> Solange das Repository auf demselben Unraid-Host liegt, hat der schreibende Prozess auch Löschrecht. Der Ransomware-Schutz, der als „Unterschied zwischen Ärger und Totalverlust" beschrieben ist, greift erst mit einem Ziel, das Append-only erzwingt.</li>
+    <li><strong>Kein Fernzugriff auf private Dienste.</strong> Bewusster Verzicht statt eines VPN-Endpunkts, der nicht filtern kann (E8) — aber ein realer Funktionsverlust, der bei Bedarf sauber nachgeholt werden muss und nicht schnell nebenbei.</li>
     <li><strong>Knappes RAM-Budget.</strong> Ohne Monitoring-Stack tragfähig, mit nicht.</li>
   </ul>
 </section>
@@ -557,11 +599,16 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
 <section id="naechste-schritte">
   <h2>Nächste Schritte</h2>
   <ul>
-    <li>nftables-Regelwerk der Edge-VM ausformulieren, mit Schwerpunkt auf den Egress-Beschränkungen.</li>
-    <li>Traefik-Konfiguration der Edge-VM inklusive AppSec-Anbindung und pfadabhängigem Regelzuschnitt.</li>
-    <li>Talos <code>machineconfig</code> mit Netzwerkregeln und eingeschränktem API-Zugang.</li>
-    <li>Interne CA aufsetzen und die mTLS-Strecke zwischen Edge und Ingress testen.</li>
-    <li>CrowdSec zwei Wochen im Beobachtungsmodus fahren, danach den Bouncer scharfschalten.</li>
+    <li>nftables-Regelwerk der Edge-VM ausformulieren, mit Schwerpunkt auf den Egress-Beschränkungen als IP-Sets.</li>
+    <li>Traefik-Konfiguration der Edge-VM inklusive AppSec-Anbindung, pfadabhängigem Regelzuschnitt und hartem Überschreiben der <code>X-Forwarded-*</code>-Header. Abnahme: Request mit gefälschtem <code>X-Forwarded-For</code> muss im Log mit der echten Peer-IP auftauchen.</li>
+    <li>ACME-DNS-Instanz aufsetzen, <code>_acme-challenge</code>-CNAMEs delegieren und prüfen, dass die Edge-Credentials die produktive Zone nicht schreiben können.</li>
+    <li>Kyverno-Policy für <code>ingressClassName: public</code> schreiben und die Bindung von <code>ingress-public</code> an die DMZ-Adresse verifizieren (<code>ss -lntp</code>, Verbindungsversuch aus dem LAN muss scheitern).</li>
+    <li>Talos <code>machineconfig</code> mit Netzwerkregeln und auf das LAN eingeschränktem API-Zugang.</li>
+    <li>Interne CA aufsetzen, die mTLS-Strecke zwischen Edge und Ingress testen und die 24-h-Erneuerung des Client-Zertifikats über mindestens zwei Zyklen beobachten.</li>
+    <li>NFS-Exporte pro Dienst zuschneiden, Squash-Optionen setzen und das Storage-Netz vom Node-Netz trennen.</li>
+    <li><strong>Backup-Ziel entscheiden</strong>, das Append-only tatsächlich erzwingt (<code>rest-server --append-only</code> oder Object-Lock), und einen Restore-Test durchführen — ein ungetestetes Backup ist eine Annahme.</li>
+    <li>CrowdSec zwei Wochen im Beobachtungsmodus fahren, den Notzugang auf einen separaten, nicht öffentlich erreichbaren Listener legen, danach den Bouncer scharfschalten.</li>
+    <li>Offen: gefilterter VPN-Endpunkt als vierte Zone, falls Fernzugriff auf private Dienste doch gebraucht wird.</li>
   </ul>
 </section>
 
