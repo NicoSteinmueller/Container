@@ -1,0 +1,45 @@
+#
+# Die Strecke Edge -> Cluster - von Terraform gerendert, NICHT auf der VM
+# bearbeiten.
+#
+# Stufe 6 der Verarbeitungskette und zugleich Entscheidung E5 im Konzept: Der
+# Ingress akzeptiert nur Verbindungen mit gültigem Client-Zertifikat
+# (TLSOption mit clientAuth: RequireAndVerifyClientCert). Selbst wenn später
+# etwas anderes im DMZ-Netz landet, kommt es damit nicht durch.
+#
+# Geprüft wird in beide Richtungen:
+#   - rootCAs: die Edge prüft das Serverzertifikat des Ingress gegen die
+#     interne CA. Kein insecureSkipVerify - ohne diese Prüfung wäre die
+#     mTLS-Strecke einseitig und ein Angreifer im DMZ-Segment könnte sich
+#     als Ingress ausgeben.
+#   - certificates: das Client-Zertifikat der Edge, Laufzeit ${cert_lifetime},
+#     erneuert per systemd-Timer (edge-cert-renew.timer).
+#
+# Warum die kurze Laufzeit: Eine interne CA stellt keine CRL aus, und Traefiks
+# clientAuth prüft ohnehin keine Revokation. Ein einmal erbeutetes Zertifikat
+# bliebe bis zum Ablauf gültig - auch nachdem die VM längst neu ausgerollt
+# wurde. Bei einem einzigen Verbraucher ist Ablauf billiger als Rückruf.
+#
+# Achtung beim Erneuern: Traefik liest die Zertifikatsdateien beim Laden der
+# dynamischen Konfiguration. Ein neues Zertifikat auf der Platte allein reicht
+# nicht - der Renew-Hook fasst deshalb diese Datei an, damit der File-Watcher
+# die Konfiguration neu einliest.
+#
+http:
+  serversTransports:
+    cluster-mtls:
+      # Muss zum SAN des Ingress-Serverzertifikats passen, nicht zur IP.
+      serverName: "${ingress_server_name}"
+      insecureSkipVerify: false
+      rootCAs:
+        - ${pki_dir}/internal-ca.crt
+      certificates:
+        - certFile: ${pki_dir}/edge-client.crt
+          keyFile: ${pki_dir}/edge-client.key
+      maxIdleConnsPerHost: 32
+      forwardingTimeouts:
+        dialTimeout: 30s
+        # Großzügig: Immich- und Nextcloud-Uploads laufen als ein Request.
+        responseHeaderTimeout: ${upload_timeout}s
+        idleConnTimeout: 90s
+        readIdleTimeout: ${upload_timeout}s

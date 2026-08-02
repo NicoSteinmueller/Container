@@ -1,0 +1,231 @@
+#!/usr/sbin/nft -f
+#
+# Regelsatz der Edge-VM - von Terraform gerendert aus
+# vm/edge/templates/nftables.nft.tftpl.
+#
+# NICHT auf der VM bearbeiten. Quelle der Wahrheit ist das Repo;
+# vm/edge/verify/assert-ruleset.sh schlägt sonst an.
+#
+# Das ist Stufe 1 der Verarbeitungskette aus dem Sicherheitskonzept
+# (k8s/homelab-sicherheitskonzept.html, Abschnitt "Edge-VM"):
+#
+#   eingehend   nur ${public_https_port}/TCP, dazu SSH aus den Verwaltungsnetzen
+#   ausgehend   nur zum Ingress im Cluster, zum internen Resolver, NTP,
+#               ACME und CrowdSec-Hub
+#   alles übrige Private (LAN, Shares, Unraid-WebGUI)  verboten
+#
+# Was der Filter leistet und was nicht: Er verhindert die bequemen Angriffe -
+# keine Reverse Shell, kein Nachladen von Werkzeug, kein LAN-Scan. Er verhindert
+# kein Exfiltrieren; über DNS und die erlaubten TLS-Ziele bleibt ein Kanal offen.
+# Deshalb DNS ausschließlich zum internen Resolver und counter auf jeder
+# Egress-Regel, statt ausgehenden Verbindungen zu vertrauen.
+#
+# Kein `flush ruleset`: Der CrowdSec-Firewall-Bouncer verwaltet eine eigene
+# Tabelle mit den gesperrten IPs. Ein Flush würde sie bei jedem Reload
+# mitnehmen, und bis der Bouncer nachzieht, stünde die Sperrliste offen.
+# Die beiden Zeilen darunter sind das idempotente Gegenstück: anlegen, falls
+# nicht vorhanden, dann löschen - danach die Tabelle sauber neu aufbauen,
+# ohne fremde Tabellen anzufassen.
+#
+table inet edge
+delete table inet edge
+
+table inet edge {
+  #
+  # Alles, was nicht ins Internet gehört. Der Egress schließt diese Ziele aus -
+  # damit sind Heimnetz, Unraid-WebGUI, Shares und jedes andere interne Segment
+  # gesperrt, ohne sie einzeln aufzählen zu müssen. Die wenigen erlaubten
+  # internen Ziele (Ingress, Resolver, NTP) stehen weiter oben in der Kette.
+  #
+  set private_nets {
+    type ipv4_addr
+    flags interval
+    elements = {
+      10.0.0.0/8,
+      172.16.0.0/12,
+      192.168.0.0/16,
+      169.254.0.0/16,
+      100.64.0.0/10,
+    }
+  }
+
+  set resolvers {
+    type ipv4_addr
+    elements = { ${join(", ", dns_servers)} }
+  }
+
+  set ntp_servers {
+    type ipv4_addr
+    elements = { ${join(", ", ntp_servers)} }
+  }
+
+%{ if length(acme_check_resolvers) > 0 ~}
+  #
+  # Öffentliche Resolver ausschließlich für die Propagationsprüfung der
+  # DNS-01-Challenge. Eine bewusste Ausnahme von "DNS nur zum internen
+  # Resolver": Der interne Resolver kann eine negative Antwort auf den
+  # TXT-Record cachen und die Ausstellung damit verzögern.
+  #
+  set acme_resolvers {
+    type ipv4_addr
+    elements = { ${join(", ", acme_check_resolvers)} }
+  }
+
+%{ endif ~}
+%{ if !egress_open && length(egress_targets) > 0 ~}
+  set egress_targets {
+    type ipv4_addr
+    flags interval
+    elements = { ${join(", ", egress_targets)} }
+  }
+
+%{ endif ~}
+  # ------------------------------------------------------------------
+  # Eingehend
+  # ------------------------------------------------------------------
+  chain input {
+    type filter hook input priority filter; policy drop;
+
+    iif lo accept
+
+    #
+    # Anti-Spoofing. Die beiden Beine werden über die Zieladresse
+    # auseinandergehalten, nicht über iifname: Die Interface-Namen hängen an der
+    # PCI-Reihenfolge, die Adressen stehen in derselben Terraform-Variablen wie
+    # die cloud-init-Netzwerkkonfiguration. rp_filter (sysctl) macht dasselbe
+    # noch einmal unabhängig davon.
+    #
+    ip daddr ${lan_ip} ip saddr ${dmz_cidr} counter drop comment "DMZ-Absender auf dem LAN-Bein"
+    ip daddr ${edge_dmz_ip} ip saddr != ${dmz_cidr} counter drop comment "Fremder Absender auf dem DMZ-Bein"
+
+    ct state invalid counter drop
+    ct state established,related accept
+
+    #
+    # Der einzige Dienst, der aus dem Internet erreichbar ist. Die Quelle bleibt
+    # bewusst offen: Über denselben Weg kommen auch LAN-Clients, wenn der
+    # interne Resolver die öffentlichen Namen per Split-DNS auf diese Adresse
+    # auflöst.
+    #
+    ip daddr ${lan_ip} tcp dport ${public_https_port} ct state new counter accept comment "HTTPS aus dem Internet"
+%{ if http3_enabled ~}
+    ip daddr ${lan_ip} udp dport ${public_https_port} ct state new counter accept comment "HTTP/3"
+%{ endif ~}
+%{ for src in admin_sources ~}
+
+    # Verwaltungszugang. sshd bindet zusätzlich nur auf das LAN-Bein - zwei
+    # unabhängige Durchsetzungen derselben Regel.
+    ip daddr ${lan_ip} ip saddr ${src} tcp dport 22 ct state new counter accept comment "SSH ${src}"
+%{ endfor ~}
+
+    # Path-MTU-Discovery. Ohne das brechen große TLS-Antworten irgendwann
+    # kommentarlos ab - der klassische "es hängt nur bei manchen Seiten"-Fehler.
+    icmp type { destination-unreachable, time-exceeded, parameter-problem } accept
+    icmp type echo-request limit rate 5/second counter accept comment "Ping zur Diagnose"
+
+    limit rate 10/minute log prefix "nft-drop-input " level warn
+    counter comment "Rest verworfen (policy drop)"
+  }
+
+  # ------------------------------------------------------------------
+  # Weitergeleitet - gibt es hier nicht
+  # ------------------------------------------------------------------
+  #
+  # Die Edge-VM ist ein Proxy, kein Router: Sie beendet die Verbindung und baut
+  # eine neue auf. Wenn hier Pakete gezählt werden, ist entweder ip_forward
+  # versehentlich an oder es läuft etwas auf der VM, das dort nicht hingehört.
+  #
+  chain forward {
+    type filter hook forward priority filter; policy drop;
+
+    limit rate 10/minute log prefix "nft-drop-forward " level warn
+    counter comment "Die Edge-VM routet nicht"
+  }
+
+  # ------------------------------------------------------------------
+  # Ausgehend - der eigentliche Egress-Filter
+  # ------------------------------------------------------------------
+  chain output {
+    type filter hook output priority filter; policy drop;
+
+    oif lo accept
+
+    ct state invalid counter drop
+    ct state established,related accept
+
+    #
+    # Nach innen: genau eine Adresse, genau zwei Ports.
+    #   ${ingress_port} - ingress-public, mTLS mit Client-Zertifikat
+    #   ${lapi_port} - CrowdSec-LAPI: Alarme des lokalen Agents hinein,
+    #          Entscheidungen für den Bouncer heraus
+    # Beide Verbindungen laufen in dieselbe Richtung (Edge -> Cluster); vom
+    # Cluster in die DMZ gibt es keine Freigabe.
+    #
+    ip daddr ${ingress_ip} tcp dport { ${ingress_port}, ${lapi_port} } ct state new counter accept comment "Edge -> Ingress und CrowdSec-LAPI"
+%{ if step_ca_port > 0 ~}
+
+    #
+    # Dritte und letzte Öffnung nach innen: die interne CA. Über diesen Port
+    # holt sich die Edge alle ${cert_lifetime} ein neues Client-Zertifikat -
+    # authentifiziert mit dem noch gültigen Zertifikat, also ohne dass hier ein
+    # Provisioner-Passwort liegen muss.
+    #
+    ip daddr ${step_ca_ip} tcp dport ${step_ca_port} ct state new counter accept comment "Edge -> interne CA"
+%{ endif ~}
+
+    #
+    # Interner Resolver und Zeit. DNS ist der Kanal, den dieser Filter nicht
+    # dichtmachen kann - deshalb wenigstens nur zum eigenen Resolver, der
+    # mitloggt. Ohne korrekte Zeit schlagen ACME und die 24-h-Client-Zertifikate
+    # fehl.
+    #
+    ip daddr @resolvers udp dport 53 ct state new counter accept comment "DNS zum internen Resolver"
+    ip daddr @resolvers tcp dport 53 ct state new counter accept comment "DNS/TCP zum internen Resolver"
+    ip daddr @ntp_servers udp dport 123 ct state new counter accept comment "NTP"
+%{ if length(acme_check_resolvers) > 0 ~}
+    ip daddr @acme_resolvers udp dport 53 ct state new counter accept comment "DNS-Propagationsprüfung für ACME"
+    ip daddr @acme_resolvers tcp dport 53 ct state new counter accept comment "DNS-Propagationsprüfung für ACME"
+%{ endif ~}
+
+    #
+    # Und hier hängt "kein LAN, keine Shares, keine Unraid-Oberfläche": alles
+    # Private, das nicht in den Regeln darüber ausdrücklich erlaubt ist, endet
+    # hier - mit Logzeile, weil ein Treffer bedeutet, dass auf der Edge etwas
+    # nach innen greift.
+    #
+    ip daddr @private_nets limit rate 10/minute log prefix "nft-deny-private " level warn
+    ip daddr @private_nets counter drop comment "Edge greift nicht ins interne Netz"
+
+%{ if egress_open ~}
+    #
+    # BOOTSTRAP-ZUSTAND (egress_open = true): ausgehend zu beliebigen
+    # öffentlichen Zielen. Nötig, solange ACME-Endpunkte, CrowdSec-Hub und
+    # Paketquellen noch nicht als IP-Sets feststehen.
+    #
+    # Der counter dieser Regel ist die Datengrundlage für das Zuschnüren:
+    # `nft list table inet edge` zeigt, wie viel hier tatsächlich durchgeht.
+    #
+    tcp dport { ${join(", ", egress_tcp_ports)} } ct state new counter accept comment "BOOTSTRAP: offener Egress ins Internet"
+%{ else ~}
+%{ if length(egress_targets) > 0 ~}
+    #
+    # Zielzustand: nur noch die eingetragenen IP-Sets - ACME-DNS-Instanz,
+    # Let's Encrypt, CrowdSec-Hub, Paketquellen.
+    #
+    tcp dport { ${join(", ", egress_tcp_ports)} } ip daddr @egress_targets ct state new counter accept comment "Egress zu den eingetragenen Zielen"
+%{ else ~}
+    #
+    # egress_open = false ohne egress_targets: ausgehend ins Internet ist damit
+    # nichts erlaubt. ACME-Erneuerung und CrowdSec-Hub-Updates schlagen fehl -
+    # das ist Absicht, aber nur als Zwischenzustand sinnvoll.
+    #
+%{ endif ~}
+%{ endif ~}
+
+    # PMTUD auch in dieser Richtung
+    icmp type { destination-unreachable, time-exceeded, parameter-problem } accept
+
+    limit rate 10/minute log prefix "nft-drop-output " level warn
+    counter comment "Rest verworfen (policy drop)"
+  }
+}

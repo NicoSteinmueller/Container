@@ -1,0 +1,57 @@
+[Unit]
+Description=Traefik - Edge Proxy der DMZ
+Documentation=https://doc.traefik.io/traefik/
+After=network-online.target nftables.service
+Wants=network-online.target
+# Ohne Regelsatz kein offener Port nach außen: nftables ist vorher da.
+Requires=nftables.service
+
+[Service]
+Type=simple
+User=traefik
+Group=traefik
+ExecStart=/usr/local/bin/traefik --configFile=/etc/traefik/traefik.yml
+ExecReload=/bin/kill -USR1 $MAINPID
+Restart=on-failure
+RestartSec=5s
+
+# Arbeitsverzeichnis: Traefik legt heruntergeladene Plugins relativ dazu ab.
+WorkingDirectory=/var/lib/traefik
+StateDirectory=traefik
+LogsDirectory=traefik
+ReadWritePaths=/var/lib/traefik /var/log/traefik
+
+#
+# Der Prozess mit Internetkontakt bekommt genau eine Sonderrechtigung: sich an
+# Port 443 zu binden. Alles Weitere ist zugeschnürt - nach einem Fehler in
+# Traefik oder einem seiner Plugins soll möglichst wenig übrig bleiben.
+#
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete
+UMask=0077
+
+# Uploads und viele gleichzeitige Verbindungen brauchen Dateideskriptoren.
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

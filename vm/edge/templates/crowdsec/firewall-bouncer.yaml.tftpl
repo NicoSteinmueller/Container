@@ -1,0 +1,57 @@
+#
+# Firewall-Bouncer - von Terraform gerendert nach
+# /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml.
+#
+# Stufe 2 der Verarbeitungskette: Gesperrte IPs stehen in einem nftables-Set
+# und kosten einen Paketvergleich statt eines TLS-Handshakes. Die
+# Community-Blocklist fängt einen erheblichen Teil des Hintergrundrauschens ab,
+# bevor Traefik überhaupt Arbeit hat.
+#
+# api_key wird von edge-crowdsec-connect eingetragen - Zugangsdaten sollen
+# weder im Terraform-State noch in der Seed-ISO liegen. Solange hier
+# BITTE-EINTRAGEN steht, startet der Dienst nicht.
+#
+mode: nftables
+update_frequency: ${update_frequency}
+log_mode: file
+log_dir: /var/log/
+log_level: ${log_level}
+log_compression: true
+
+#
+# Der Weg zur LAPI ist derselbe wie für den Nutzverkehr: über die
+# DMZ-Strecke, mit Client-Zertifikat und Prüfung des Serverzertifikats gegen
+# die interne CA. insecure_skip_verify bleibt aus.
+#
+api_url: ${lapi_url}
+api_key: BITTE-EINTRAGEN
+insecure_skip_verify: false
+ca_cert_path: ${pki_dir}/internal-ca.crt
+cert_path: ${pki_dir}/edge-client.crt
+key_path: ${pki_dir}/edge-client.key
+
+#
+# Eigene Tabelle des Bouncers, Hook-Priorität vor der Filter-Tabelle. Deshalb
+# fasst der Regelsatz aus vm/edge/templates/nftables.nft.tftpl sie nicht an und
+# lädt auch nicht mit `flush ruleset` neu - ein Flush würde die Sperrliste
+# mitnehmen, bis der Bouncer sie neu synchronisiert.
+#
+nftables:
+  ipv4:
+    enabled: true
+    set-only: false
+    table: crowdsec
+    chain: crowdsec-chain
+  ipv6:
+    enabled: ${ipv6_enabled}
+    set-only: false
+    table: crowdsec6
+    chain: crowdsec6-chain
+
+blacklists_ipv4: crowdsec-blacklists
+blacklists_ipv6: crowdsec6-blacklists
+
+# Still verwerfen statt ablehnen: Ein Scanner soll keine Rückmeldung bekommen,
+# ob an dieser Adresse etwas läuft.
+deny_action: DROP
+deny_log: false

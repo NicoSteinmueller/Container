@@ -1,0 +1,17 @@
+#
+# Acquisition: SSH-Anmeldungen aus dem Journal - von Terraform ausgerollt nach
+# /etc/crowdsec/acquis.d/sshd.yaml. NICHT auf der VM bearbeiten.
+#
+# SSH ist aus dem Internet nicht erreichbar (nftables lässt nur die
+# Verwaltungsnetze durch). Trotzdem mitlesen: Ein Bruteforce-Versuch, der hier
+# auftaucht, kommt zwangsläufig aus dem eigenen LAN - und das ist eine
+# Meldung, die man sehen will.
+#
+# sshd schreibt mit LogLevel VERBOSE (sshd_config.d/99-edge.conf), damit die
+# Parser der Collection crowdsecurity/sshd die Quelladressen zuordnen können.
+#
+source: journalctl
+journalctl_filter:
+  - "_SYSTEMD_UNIT=ssh.service"
+labels:
+  type: syslog
