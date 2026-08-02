@@ -1,0 +1,23 @@
+[Unit]
+Description=Erneuert das mTLS-Client-Zertifikat der Edge-VM
+Documentation=file:///usr/local/sbin/edge-cert-renew
+After=network-online.target
+Wants=network-online.target
+# Ohne Traefik gibt es niemanden, der das Zertifikat benutzt - der Lauf ist
+# trotzdem sinnvoll, damit die Restlaufzeit nicht während einer Wartung abläuft.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/edge-cert-renew
+
+# Läuft als root, weil es in /etc/traefik/pki schreibt und den Eigentümer
+# setzt. Alles Weitere ist eingeschränkt.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/etc/traefik/pki /etc/traefik/dynamic /etc/step
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native

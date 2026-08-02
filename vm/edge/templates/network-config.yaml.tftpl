@@ -1,0 +1,41 @@
+#
+# Cloud-Init-Netzwerkkonfiguration (Version 2) - von Terraform gerendert.
+#
+# Beide Interfaces werden über ihre MAC-Adresse zugeordnet, nicht über den
+# Namen: Die Zuordnung eth0/eth1 bzw. enp1s0/enp2s0 hängt sonst an der
+# PCI-Reihenfolge. Denselben Adressen folgt der nftables-Regelsatz, der die
+# Beine ebenfalls über Adressen statt über Interface-Namen unterscheidet.
+#
+# Kein `set-name`: Das versteht nur der netplan-Renderer, und Debians
+# Cloud-Image rendert nach /etc/network/interfaces. Der MAC-Match wird von
+# cloud-init vor dem Rendern in den echten Gerätenamen aufgelöst und
+# funktioniert damit in beiden Fällen.
+#
+# Die Default-Route existiert nur über das LAN-Bein. Das DMZ-Bein ist ein
+# adressiertes, aber routing-technisch stummes Segment ohne Gateway - dort steht
+# genau eine Gegenstelle, der Talos-Node mit ingress-public.
+#
+version: 2
+ethernets:
+  lan:
+    match:
+      macaddress: "${mac_lan}"
+    dhcp4: false
+    dhcp6: false
+    accept-ra: false
+    addresses:
+      - ${lan_ip}/${lan_prefix}
+    routes:
+      - to: default
+        via: ${lan_gateway}
+    nameservers:
+      addresses: [${join(", ", dns_servers)}]
+
+  dmz:
+    match:
+      macaddress: "${mac_dmz}"
+    dhcp4: false
+    dhcp6: false
+    accept-ra: false
+    addresses:
+      - ${edge_dmz_ip}/${dmz_prefix}

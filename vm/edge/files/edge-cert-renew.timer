@@ -1,0 +1,23 @@
+[Unit]
+Description=Prüft stündlich die Restlaufzeit des mTLS-Client-Zertifikats
+Documentation=file:///usr/local/sbin/edge-cert-renew
+
+[Timer]
+#
+# Stündlich prüfen, erneuert wird erst kurz vor Ablauf (--expires-in im Skript).
+# Bei 24 h Laufzeit heißt das: rund 16 Versuche, bevor es eng wird. Ein
+# einzelner Fehlschlag - Wartung im Cluster, kurze Netzstörung - fällt damit
+# nicht auf die Erreichbarkeit der öffentlichen Dienste durch.
+#
+OnBootSec=5min
+OnUnitActiveSec=1h
+
+# Verstreute Startzeit, damit Erneuerung und andere Timer nicht kollidieren.
+RandomizedDelaySec=5min
+
+# Nach einer Ausfallzeit der VM sofort nachholen statt bis zum nächsten
+# Intervall zu warten.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

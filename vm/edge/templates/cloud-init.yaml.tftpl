@@ -1,0 +1,254 @@
+#cloud-config
+#
+# Erstkonfiguration der Edge-VM - von Terraform gerendert aus
+# vm/edge/templates/cloud-init.yaml.tftpl.
+#
+# Die VM liegt außerhalb des GitOps-Flows (bewusst, siehe Entscheidung E2 im
+# Sicherheitskonzept). Damit sie trotzdem reproduzierbar bleibt, kommt alles aus
+# Terraform: ein `terraform apply`, danach nichts von Hand. Der Prüfstein aus
+# dem Konzept - "löscht man die VM und rollt sie neu aus, darf außer den
+# ACME-Zertifikaten nichts verloren gehen" - gilt für diese Datei.
+#
+# Was hier bewusst NICHT passiert:
+#   - keine Storage-Mounts, weder NFS noch SMB
+#   - kein kubeconfig, kein Talos-Credential
+#   - keine Anwendungsdaten
+#
+
+hostname: ${vm_name}
+fqdn: ${vm_name}
+prefer_fqdn_over_hostname: false
+manage_etc_hosts: true
+timezone: ${timezone}
+
+growpart:
+  mode: auto
+  devices: ["/"]
+
+resize_rootfs: true
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - nftables
+  - chrony
+  - qemu-guest-agent
+  - ca-certificates
+  # Für vm/edge/verify/egress-test.sh - der Nachweis, dass der Egress-Filter
+  # tatsächlich greift, gehört zur Abnahme und nicht auf eine Extra-Runde.
+  - netcat-openbsd
+%{ if auto_upgrade ~}
+  - unattended-upgrades
+%{ endif ~}
+%{ if stack_enabled ~}
+  # Für edge-install-stack: Download und Prüfsummenvergleich der Binaries.
+  - curl
+  - gnupg
+%{ endif ~}
+%{ for pkg in extra_packages ~}
+  - ${pkg}
+%{ endfor ~}
+
+users:
+  - name: ${admin_user}
+    gecos: Edge-Administration
+    groups: sudo
+    shell: /bin/bash
+    lock_passwd: true
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    ssh_authorized_keys:
+%{ for key in ssh_authorized_keys ~}
+      - "${key}"
+%{ endfor ~}
+%{ if stack_enabled ~}
+
+  #
+  # Dienstkonto für Traefik. Kein Login, kein sudo: Der Prozess mit
+  # Internetkontakt läuft unprivilegiert und bekommt über die systemd-Unit
+  # genau eine Sonderrechtigung - sich an Port 443 binden zu dürfen.
+  #
+  - name: traefik
+    gecos: Traefik Edge Proxy
+    system: true
+    shell: /usr/sbin/nologin
+    lock_passwd: true
+%{ endif ~}
+
+disable_root: true
+ssh_pwauth: false
+
+write_files:
+  #
+  # Regelsatz. Quelle der Wahrheit ist das Repo - verify/assert-ruleset.sh
+  # vergleicht diese Datei und den geladenen Zustand dagegen.
+  #
+  - path: /etc/nftables.conf
+    owner: root:root
+    permissions: "0640"
+    content: |
+      ${indent(6, nftables_ruleset)}
+
+  - path: /etc/ssh/sshd_config.d/99-edge.conf
+    owner: root:root
+    permissions: "0600"
+    content: |
+      ${indent(6, sshd_config)}
+
+  #
+  # Härtung auf Kernel-Ebene.
+  #
+  # ip_forward bleibt auf 0 und wird - anders als bei einer Router-VM - auch
+  # nirgends freigegeben: Die Edge-VM ist ein Proxy. Sie beendet die Verbindung
+  # aus dem Internet und baut eine neue in die DMZ auf. Stünde hier 1, gäbe es
+  # neben dem Proxy einen zweiten Weg von außen nach innen, den weder TLS noch
+  # WAF noch CrowdSec je zu sehen bekämen.
+  #
+  - path: /etc/sysctl.d/99-edge.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      net.ipv4.ip_forward = 0
+%{ if disable_ipv6 ~}
+
+      # IPv6 aus: Die Fritzbox filtert v6 unabhängig von v4, eine globale
+      # v6-Adresse auf dieser VM wäre an der Portfreigabe vorbei direkt
+      # erreichbar. Laut Konzept das häufigste Loch in solchen Aufbauten.
+      net.ipv6.conf.all.disable_ipv6 = 1
+      net.ipv6.conf.default.disable_ipv6 = 1
+      net.ipv6.conf.lo.disable_ipv6 = 1
+%{ endif ~}
+
+      # Anti-Spoofing. Der Regelsatz unterscheidet die beiden Beine nur über
+      # Adressen; rp_filter setzt dieselbe Annahme unabhängig davon durch.
+      net.ipv4.conf.all.rp_filter = 1
+      net.ipv4.conf.default.rp_filter = 1
+      net.ipv4.conf.all.accept_redirects = 0
+      net.ipv4.conf.default.accept_redirects = 0
+      net.ipv4.conf.all.secure_redirects = 0
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.send_redirects = 0
+      net.ipv4.conf.all.accept_source_route = 0
+      net.ipv4.conf.default.accept_source_route = 0
+      net.ipv4.conf.all.log_martians = 1
+      net.ipv4.conf.all.arp_ignore = 1
+      net.ipv4.conf.all.arp_announce = 2
+      net.ipv4.icmp_echo_ignore_broadcasts = 1
+      net.ipv4.icmp_ignore_bogus_error_responses = 1
+      net.ipv4.tcp_syncookies = 1
+
+      # Kernel-Interna nicht an unprivilegierte Prozesse ausliefern. Auf einer
+      # Maschine, auf der später ein Reverse Proxy fremde Eingaben verarbeitet,
+      # ist das der billigste Teil der Härtung.
+      kernel.kptr_restrict = 2
+      kernel.dmesg_restrict = 1
+      kernel.unprivileged_bpf_disabled = 1
+
+  #
+  # Zeitquellen. Debians Standardkonfiguration zeigt auf den öffentlichen
+  # NTP-Pool - den erreicht der Egress-Filter nicht mehr. Ohne korrekte Zeit
+  # scheitern ACME-Erneuerung und die Prüfung der 24-h-Client-Zertifikate.
+  #
+  - path: /etc/chrony/conf.d/99-edge.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+%{ for server in ntp_servers ~}
+      server ${server} iburst
+%{ endfor ~}
+
+  #
+  # Logs überleben einen Reboot und laufen die kleine Disk nicht voll. Der
+  # CrowdSec-Agent liest später aus denselben Journalen.
+  #
+  - path: /etc/systemd/journald.conf.d/99-edge.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Journal]
+      Storage=persistent
+      Compress=yes
+      SystemMaxUse=300M
+      SystemMaxFileSize=50M
+      MaxRetentionSec=1month
+%{ if auto_upgrade ~}
+
+  #
+  # Security-Updates automatisch, Reboots ausdrücklich nicht: Ein Reboot dieser
+  # VM nimmt alle öffentlichen Dienste mit, und das soll zu einem Zeitpunkt
+  # passieren, den jemand gewählt hat. Kernel-Updates greifen entsprechend erst
+  # nach dem nächsten manuellen Neustart.
+  #
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root:root
+    permissions: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+
+  - path: /etc/apt/apt.conf.d/52unattended-upgrades-edge
+    owner: root:root
+    permissions: "0644"
+    content: |
+      Unattended-Upgrade::Automatic-Reboot "false";
+      Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+%{ endif ~}
+%{ for path, f in stack_files ~}
+
+  - path: ${path}
+    owner: root:root
+    permissions: "${f.mode}"
+    content: |
+      ${indent(6, f.content)}
+%{ endfor ~}
+
+runcmd:
+  # Härtung sofort aktiv, nicht erst nach dem nächsten Reboot
+  - [ sysctl, --system ]
+
+  #
+  # Der Regelsatz greift ab hier. Bis zu diesem Punkt läuft die VM im ersten
+  # Boot ungefiltert - deshalb die Portfreigabe in der Fritzbox erst setzen,
+  # nachdem der erste Lauf durch ist (siehe README, Abschnitt "Reihenfolge").
+  #
+  - [ systemctl, enable, --now, nftables.service ]
+
+  # Debians Standard-Pool zeigt nach draußen und ist durch den Egress-Filter
+  # nicht mehr erreichbar; die eigenen Quellen stehen in conf.d/99-edge.conf.
+  - [ sh, -c, "sed -i 's/^pool /#pool /' /etc/chrony/chrony.conf" ]
+  - [ systemctl, restart, chrony.service ]
+
+  - [ systemctl, enable, --now, qemu-guest-agent.service ]
+  - [ systemctl, restart, ssh.service ]
+%{ if auto_upgrade ~}
+  - [ systemctl, enable, --now, unattended-upgrades.service ]
+%{ endif ~}
+%{ if stack_enabled ~}
+
+  #
+  # Stufen 2-6. Der Aufruf lädt Traefik, step-cli und CrowdSec und legt die
+  # Konfiguration an ihren Platz - er startet aber nichts, was ohne
+  # Zugangsdaten in eine Fehlerschleife liefe.
+  #
+  - [ install, -d, -o, root, -g, traefik, -m, "0750", "${pki_dir}", "${secrets_dir}" ]
+  - [ install, -d, -o, root, -g, root, -m, "0755", "${step_path}" ]
+  - [ /usr/local/sbin/edge-install-stack ]
+  - [ systemctl, daemon-reload ]
+
+  #
+  # Traefik startet auch ohne Zertifikate und ohne Router: Ohne konfigurierte
+  # Dienste nimmt er nur Verbindungen an, die am sniStrict-Filter scheitern.
+  # Damit ist die Reihenfolge unkritisch - erst die VM, dann ACME-DNS, dann
+  # die interne CA.
+  #
+  - [ systemctl, enable, --now, traefik.service ]
+%{ endif ~}
+
+  # Abschließender Beleg im Cloud-Init-Log (/var/log/cloud-init-output.log)
+  - [ sh, -c, "nft -s list ruleset > /var/log/edge-ruleset.log 2>&1 || true" ]
+  - [ sh, -c, "ip -br address > /var/log/edge-interfaces.log 2>&1 || true" ]
+  - [ sh, -c, "ss -lntu > /var/log/edge-listeners.log 2>&1 || true" ]
+
+final_message: "Edge-VM ${vm_name} ist nach $UPTIME Sekunden fertig konfiguriert."

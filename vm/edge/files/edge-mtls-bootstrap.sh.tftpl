@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+#
+# Holt das erste Client-Zertifikat der Edge-VM von der internen CA - von
+# Terraform gerendert nach /usr/local/sbin/edge-mtls-bootstrap.
+#
+# Einmalig auszuführen, sobald step-ca im Cluster steht:
+#
+#   # im Cluster, Token erzeugen (läuft nach wenigen Minuten ab):
+#   step ca token ${cert_common_name}
+#
+#   # auf der Edge-VM:
+#   sudo edge-mtls-bootstrap <token>
+#
+# Danach übernimmt edge-cert-renew.timer. Erneuert wird über die bestehende
+# mTLS-Verbindung mit dem aktuellen Zertifikat - auf der Edge liegt deshalb
+# nie ein Provisioner-Passwort, mit dem sich Zertifikate für andere Namen
+# ausstellen ließen.
+#
+set -euo pipefail
+
+CA_URL="${step_ca_url}"
+CA_FINGERPRINT="${step_ca_fingerprint}"
+COMMON_NAME="${cert_common_name}"
+PKI_DIR="${pki_dir}"
+LIFETIME="${cert_lifetime}"
+export STEPPATH="${step_path}"
+
+token="$${1:-}"
+
+if [ -z "$token" ]; then
+  echo "Aufruf: sudo edge-mtls-bootstrap <token>" >&2
+  echo "Token im Cluster erzeugen mit: step ca token $${COMMON_NAME}" >&2
+  exit 64
+fi
+
+if [ -z "$${CA_FINGERPRINT}" ]; then
+  echo "step_ca_fingerprint ist leer - erst in terraform.tfvars eintragen." >&2
+  echo "Fingerprint im Cluster: step certificate fingerprint \$(step path)/certs/root_ca.crt" >&2
+  exit 78
+fi
+
+install -d -o root -g root -m 0755 "$${STEPPATH}"
+install -d -o root -g traefik -m 0750 "$${PKI_DIR}"
+
+echo "[edge-mtls-bootstrap] verbinde mit $${CA_URL}"
+step ca bootstrap \
+  --ca-url "$${CA_URL}" \
+  --fingerprint "$${CA_FINGERPRINT}" \
+  --force
+
+# Wurzelzertifikat für Traefik: damit prüft die Edge das Serverzertifikat des
+# Ingress. Ohne diese Datei bliebe nur insecureSkipVerify - und damit eine
+# einseitige mTLS-Strecke, die jeder im DMZ-Segment übernehmen könnte.
+step ca root "$${PKI_DIR}/internal-ca.crt"
+
+echo "[edge-mtls-bootstrap] fordere Client-Zertifikat für $${COMMON_NAME} an"
+step ca certificate "$${COMMON_NAME}" \
+  "$${PKI_DIR}/edge-client.crt" \
+  "$${PKI_DIR}/edge-client.key" \
+  --token "$token" \
+  --not-after "$${LIFETIME}" \
+  --force
+
+chown root:traefik "$${PKI_DIR}/edge-client.crt" "$${PKI_DIR}/edge-client.key" "$${PKI_DIR}/internal-ca.crt"
+chmod 0640 "$${PKI_DIR}/edge-client.crt" "$${PKI_DIR}/internal-ca.crt"
+chmod 0640 "$${PKI_DIR}/edge-client.key"
+
+echo "[edge-mtls-bootstrap] aktiviere die automatische Erneuerung"
+systemctl enable --now edge-cert-renew.timer
+
+# Traefik liest die Zertifikatsdateien beim Laden der dynamischen
+# Konfiguration - anfassen genügt, damit der File-Watcher neu einliest.
+touch /etc/traefik/dynamic/servers-transport.yml
+
+echo
+step certificate inspect "$${PKI_DIR}/edge-client.crt" --short
+echo
+echo "[edge-mtls-bootstrap] fertig. Nächster Schritt: vm/edge/verify/proxy-test.sh"

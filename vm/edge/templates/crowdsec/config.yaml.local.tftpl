@@ -1,0 +1,36 @@
+#
+# Überschreibt Teile von /etc/crowdsec/config.yaml - von Terraform gerendert
+# nach /etc/crowdsec/config.yaml.local. NICHT auf der VM bearbeiten.
+#
+# Der entscheidende Schalter ist api.server.enable.
+#
+# Der Debian-Installer richtet auf jeder Maschine eine lokale LAPI ein. Hier
+# ist das falsch: Die Entscheidungsdatenbank gehört in den Cluster
+# (Entscheidung E7 im Konzept). Läge sie auf der exponierten Maschine, könnte
+# ein Angreifer die Sperrliste löschen, die ihn blockiert - und Sperren, die in
+# derselben Zone durchgesetzt werden, die gerade kompromittiert wurde, sind
+# wertlos.
+#
+# Was hier bleibt: der Agent, der Logs liest und fertige Alarme an die LAPI im
+# Cluster schickt - ein paar hundert Byte pro Vorfall statt eines Logstroms
+# über die Zonengrenze.
+#
+api:
+  server:
+    enable: false
+
+common:
+  log_media: file
+  log_level: ${log_level}
+  log_dir: /var/log/
+
+config_paths:
+  # Eigenes Verzeichnis für die Whitelist der Verwaltungsadressen.
+  pattern_dir: /etc/crowdsec/patterns/
+
+prometheus:
+  enabled: true
+  level: full
+  # Nur Loopback - die Metriken sollen die Zone nicht verlassen.
+  listen_addr: 127.0.0.1
+  listen_port: 6060

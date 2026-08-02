@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+#
+# Installiert Traefik und CrowdSec auf der Edge-VM - von Terraform gerendert,
+# ausgeführt von cloud-init beim ersten Boot und danach idempotent bei jedem
+# Aufruf. Nach einem Versionswechsel in variables.tf einfach erneut starten:
+#
+#   sudo /usr/local/sbin/edge-install-stack
+#
+# Das Skript installiert nur; es startet nichts, was ohne Zugangsdaten in eine
+# Fehlerschleife laufen würde. CrowdSec wird von edge-crowdsec-connect
+# scharfgeschaltet, das Client-Zertifikat von edge-mtls-bootstrap.
+#
+set -euo pipefail
+
+TRAEFIK_VERSION="${traefik_version}"
+TRAEFIK_SHA256="${traefik_sha256}"
+CROWDSEC_ENABLED="${crowdsec_enabled}"
+COLLECTIONS="${crowdsec_collections}"
+STEP_CLI_VERSION="${step_cli_version}"
+STEP_CLI_SHA256="${step_cli_sha256}"
+STAGING="${staging_dir}"
+PKI_DIR="${pki_dir}"
+SECRETS_DIR="${secrets_dir}"
+BOUNCER_CFG=/etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml
+
+log() { printf '[edge-install-stack] %s\n' "$*"; }
+
+#
+# Verzeichnisse für Zertifikate und Zugangsdaten. Beide gehören root und sind
+# nur für die Gruppe traefik lesbar - der Proxy läuft als unprivilegierter
+# Benutzer und soll den privaten Schlüssel lesen, aber nicht ersetzen können.
+#
+install -d -o root -g traefik -m 0750 "$${PKI_DIR}" "$${SECRETS_DIR}"
+
+# ---------------------------------------------------------------------
+# Traefik
+# ---------------------------------------------------------------------
+#
+# Binary statt Docker: Ein Container-Daemon in der exponierten Zone wäre ein
+# zweiter root-Prozess mit eigenem Netzwerk-Stack, und Docker setzt beim Start
+# net.ipv4.ip_forward auf 1 - genau die Einstellung, die hier auf 0 stehen
+# muss, weil die Edge-VM ein Proxy ist und kein Router.
+#
+install_traefik() {
+  local current=""
+  if [ -x /usr/local/bin/traefik ]; then
+    current="$(/usr/local/bin/traefik version 2>/dev/null | awk '/^Version:/ {print $2}')"
+  fi
+
+  if [ "v$${current}" = "$${TRAEFIK_VERSION}" ]; then
+    log "Traefik $${TRAEFIK_VERSION} ist bereits installiert"
+    return 0
+  fi
+
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+
+  local tarball="traefik_$${TRAEFIK_VERSION}_linux_amd64.tar.gz"
+  local url="https://github.com/traefik/traefik/releases/download/$${TRAEFIK_VERSION}/$${tarball}"
+
+  log "lade $${url}"
+  curl -fsSL --retry 3 --retry-delay 5 -o "$tmp/$tarball" "$url"
+
+  #
+  # Prüfsumme aus variables.tf, nicht aus der neben dem Release liegenden
+  # Datei: Wer das Release austauschen kann, kann auch die Prüfsummendatei
+  # austauschen. Der Wert im Repo ist der Vergleichspunkt, den ein Angreifer
+  # nicht mitverändern kann.
+  #
+  log "prüfe SHA256"
+  echo "$${TRAEFIK_SHA256}  $tmp/$tarball" | sha256sum -c - >/dev/null
+
+  tar -xzf "$tmp/$tarball" -C "$tmp" traefik
+  install -o root -g root -m 0755 "$tmp/traefik" /usr/local/bin/traefik
+  log "Traefik $${TRAEFIK_VERSION} installiert"
+
+  if systemctl is-active --quiet traefik.service; then
+    systemctl restart traefik.service
+  fi
+}
+
+# ---------------------------------------------------------------------
+# CrowdSec
+# ---------------------------------------------------------------------
+#
+# Aus dem offiziellen Repository. Das Einrichtungsskript von crowdsec.net
+# hinterlegt Signierschlüssel und Paketquelle - eine bewusste
+# Vertrauensentscheidung, dieselbe wie beim Docker-Image im übrigen Repo.
+# Wer sie nicht treffen will, trägt Schlüssel und Quelle von Hand ein und
+# setzt crowdsec_enabled auf false.
+#
+install_crowdsec() {
+  if [ "$${CROWDSEC_ENABLED}" != "true" ]; then
+    log "CrowdSec ist abgeschaltet (crowdsec_enabled = false)"
+    return 0
+  fi
+
+  if ! [ -f /etc/apt/sources.list.d/crowdsec_crowdsec.list ] \
+    && ! [ -f /etc/apt/sources.list.d/crowdsec_crowdsec.sources ]; then
+    log "richte CrowdSec-Paketquelle ein"
+    curl -fsSL https://install.crowdsec.net | bash
+  fi
+
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+
+  #
+  # --force-confold: Die Konfiguration aus dem Repo liegt teilweise schon an
+  # ihrem Platz, bevor das Paket installiert wird. Ohne diese Option würde dpkg
+  # sie durch die Paketvorgabe ersetzen - und der Bouncer zeigte danach auf
+  # eine LAPI auf localhost, die es hier bewusst nicht gibt.
+  #
+  apt-get install -y -qq \
+    -o Dpkg::Options::=--force-confdef \
+    -o Dpkg::Options::=--force-confold \
+    crowdsec crowdsec-firewall-bouncer-nftables
+
+  #
+  # Der Installer registriert die Maschine gegen eine lokale LAPI und startet
+  # beide Dienste. Beides ist hier falsch: Die LAPI gehört in den Cluster
+  # (Entscheidung E7), und ohne Zugangsdaten würde der Agent in einer
+  # Fehlerschleife laufen. Scharf schalten tut edge-crowdsec-connect.
+  #
+  systemctl stop crowdsec.service crowdsec-firewall-bouncer.service 2>/dev/null || true
+  systemctl disable crowdsec.service crowdsec-firewall-bouncer.service 2>/dev/null || true
+
+  #
+  # Konfiguration erst jetzt an ihren Platz - nach dem postinst des Pakets,
+  # das sonst eine lokale LAPI einrichtet und die Dateien überschreibt.
+  #
+  log "rolle die CrowdSec-Konfiguration aus"
+  install -d -m 0755 /etc/crowdsec/acquis.d /etc/crowdsec/parsers/s02-enrich /etc/crowdsec/bouncers
+  install -m 0644 "$${STAGING}/crowdsec/acquis-traefik.yaml" /etc/crowdsec/acquis.d/traefik.yaml
+  install -m 0644 "$${STAGING}/crowdsec/acquis-sshd.yaml" /etc/crowdsec/acquis.d/sshd.yaml
+  install -m 0644 "$${STAGING}/crowdsec/acquis-appsec.yaml" /etc/crowdsec/acquis.d/appsec.yaml
+  install -m 0644 "$${STAGING}/crowdsec/config.yaml.local" /etc/crowdsec/config.yaml.local
+  install -m 0644 "$${STAGING}/crowdsec/edge-whitelist.yaml" \
+    /etc/crowdsec/parsers/s02-enrich/edge-whitelist.yaml
+
+  # Die Paketvorgabe von acquis.yaml liest /var/log/*.log und würde die
+  # Konfiguration aus acquis.d verdoppeln.
+  if [ -f /etc/crowdsec/acquis.yaml ] && [ ! -f /etc/crowdsec/acquis.yaml.disabled ]; then
+    mv /etc/crowdsec/acquis.yaml /etc/crowdsec/acquis.yaml.disabled
+  fi
+
+  #
+  # Beim erneuten Lauf darf der eingetragene API-Key nicht verloren gehen -
+  # sonst schaltet ein Versionsupdate den Bouncer stillschweigend ab.
+  #
+  local existing_key=""
+  if [ -f "$${BOUNCER_CFG}" ]; then
+    existing_key="$(sed -n 's/^api_key: *//p' "$${BOUNCER_CFG}" | head -1)"
+  fi
+
+  install -m 0600 "$${STAGING}/crowdsec/firewall-bouncer.yaml" "$${BOUNCER_CFG}"
+
+  if [ -n "$existing_key" ] && [ "$existing_key" != "BITTE-EINTRAGEN" ]; then
+    sed -i "s|^api_key:.*|api_key: $${existing_key}|" "$${BOUNCER_CFG}"
+    log "vorhandenen API-Key des Firewall-Bouncers übernommen"
+  fi
+
+  log "installiere Collections"
+  # shellcheck disable=SC2086
+  cscli collections install $${COLLECTIONS} --error || \
+    log "WARNUNG: mindestens eine Collection konnte nicht geladen werden (Egress zum Hub?)"
+
+  cscli hub update --error || true
+
+  # Läuft der Agent bereits mit Zugangsdaten, die neue Konfiguration übernehmen.
+  if systemctl is-enabled --quiet crowdsec.service 2>/dev/null; then
+    systemctl restart crowdsec.service
+  fi
+}
+
+# ---------------------------------------------------------------------
+# step-cli
+# ---------------------------------------------------------------------
+#
+# Client der internen CA. Holt das erste Client-Zertifikat gegen ein
+# Einmal-Token und erneuert es danach über die bestehende mTLS-Verbindung -
+# ohne dass auf der Edge je ein Provisioner-Passwort liegt.
+#
+install_step_cli() {
+  local current=""
+  if command -v step >/dev/null 2>&1; then
+    current="$(step version 2>/dev/null | awk '/Smallstep CLI/ {print $3}' | tr -d 'v/')"
+  fi
+
+  if [ "$${current}" = "$${STEP_CLI_VERSION}" ]; then
+    log "step-cli $${STEP_CLI_VERSION} ist bereits installiert"
+    return 0
+  fi
+
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+
+  local deb="step-cli_$${STEP_CLI_VERSION}-1_amd64.deb"
+  local url="https://github.com/smallstep/cli/releases/download/v$${STEP_CLI_VERSION}/$${deb}"
+
+  log "lade $${url}"
+  curl -fsSL --retry 3 --retry-delay 5 -o "$tmp/$deb" "$url"
+
+  log "prüfe SHA256"
+  echo "$${STEP_CLI_SHA256}  $tmp/$deb" | sha256sum -c - >/dev/null
+
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$tmp/$deb"
+  log "step-cli $${STEP_CLI_VERSION} installiert"
+}
+
+install_traefik
+install_step_cli
+install_crowdsec
+
+log "fertig"

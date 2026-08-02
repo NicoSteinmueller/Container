@@ -1,0 +1,2 @@
+# Enthält die eigene Netz- und Zugangskonfiguration - gehört nicht ins Repo.
+terraform.tfvars

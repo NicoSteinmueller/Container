@@ -1,0 +1,24 @@
+#
+# Whitelist der eigenen Verwaltungsadressen - von Terraform gerendert nach
+# /etc/crowdsec/parsers/s02-enrich/edge-whitelist.yaml.
+#
+# Verhindert, dass der Agent auf dieser Maschine Alarme für die eigenen
+# Verwaltungsadressen erzeugt. Ein Vertipper beim Testen soll nicht dazu
+# führen, dass man sich selbst aussperrt.
+#
+# Wichtig, was das NICHT leistet: Es ist eine Whitelist beim Erzeugen von
+# Alarmen, keine beim Durchsetzen. Entscheidungen, die aus dem Cluster kommen,
+# setzt der Firewall-Bouncer trotzdem um - und der sieht nur Adressen, keine
+# Herkunft. Dieselbe Whitelist gehört deshalb auch auf die LAPI im Cluster, und
+# zwar so, dass eingehende Alarme sie nicht überschreiben können (Konzept,
+# Abschnitt "CrowdSec-Aufteilung"). Der Notzugang bleibt in jedem Fall die
+# serielle Konsole auf dem Hypervisor.
+#
+name: edge/admin-whitelist
+description: "Verwaltungsadressen der Edge-VM"
+whitelist:
+  reason: "eigene Verwaltungsadressen"
+  cidr:
+%{ for src in admin_sources ~}
+    - "${src}"
+%{ endfor ~}

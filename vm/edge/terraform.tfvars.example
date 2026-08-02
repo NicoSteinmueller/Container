@@ -1,0 +1,124 @@
+#
+# Kopieren nach terraform.tfvars und anpassen.
+#
+# Ohne ssh_authorized_keys läuft kein Apply - das ist der einzige Wert, der
+# zwingend gesetzt werden muss. Alle übrigen Vorgaben entsprechen
+# k8s/homelab-sicherheitskonzept.html.
+#
+
+ssh_authorized_keys = [
+  "ssh-ed25519 AAAA... nico@workstation",
+]
+
+#
+# Auf Unraid: Name der vorhandenen Bridge über bond0/eth0 - vorher mit
+# `ip -br link` auf dem Host gegenprüfen.
+#
+# Für einen lokalen Testlauf stattdessen:
+#   lan_bridge          = null
+#   lan_libvirt_network = "default"
+#   lan_cidr            = "192.168.122.0/24"
+#   lan_ip              = "192.168.122.20"
+#   lan_gateway         = "192.168.122.1"
+#   dns_servers         = ["192.168.122.1"]
+#   ntp_servers         = ["192.168.122.1"]
+#   admin_sources       = ["192.168.122.0/24"]
+#
+lan_bridge = "br0"
+
+# libvirt auf Unraid statt lokal:
+# libvirt_uri  = "qemu+ssh://root@192.168.178.2/system"
+# libvirt_pool = "default"
+
+# Heimnetz. lan_ip muss außerhalb des Fritzbox-DHCP-Bereichs liegen, sonst
+# vergibt sie die Adresse irgendwann ein zweites Mal.
+lan_cidr    = "192.168.178.0/24"
+lan_ip      = "192.168.178.20"
+lan_gateway = "192.168.178.1"
+
+# Interner Resolver mit Query-Logging (AdGuard) und Zeitquelle.
+dns_servers = ["192.168.178.2"]
+ntp_servers = ["192.168.178.1"]
+
+# Verwaltungszugang. So eng wie möglich fassen - das ist der einzige
+# SSH-Zugang, und er liegt im selben Netz wie die Portfreigabe.
+admin_sources = ["192.168.178.30/32"]
+
+# Strecke Edge -> Cluster. cluster_ingress_ip ist die Adresse, an die
+# ingress-public im Talos-Node gebunden wird.
+dmz_cidr           = "10.10.20.0/29"
+edge_dmz_ip        = "10.10.20.2"
+cluster_ingress_ip = "10.10.20.3"
+
+#
+# Egress: Der Zielzustand steht unten, der Startzustand ist egress_open = true.
+# Vor dem Umschalten die Counter der Bootstrap-Regel lesen
+# (`sudo nft list table inet edge`) und prüfen, welche Ziele wirklich gebraucht
+# wurden. Alles Private ist in beiden Zuständen gesperrt.
+#
+# egress_open = false
+# egress_targets = [
+#   "203.0.113.10/32",   # eigene ACME-DNS-Instanz
+#   "23.32.0.0/11",      # Let's Encrypt (ACME v2, wechselnd - vorher prüfen)
+#   "151.101.0.0/16",    # deb.debian.org und CrowdSec-Hub liegen auf Fastly
+# ]
+
+# =====================================================================
+# Stufen 2-6: Proxy, WAF, CrowdSec, mTLS
+# =====================================================================
+
+#
+# Öffentliche Dienste. Solange die Liste leer ist, fragt Traefik keine
+# Zertifikate an - sinnvoll, bis die ACME-DNS-Delegation steht.
+#
+domain = "domain.de"
+
+public_services = [
+  {
+    name         = "immich"
+    subdomain    = "immich"
+    strict_paths = ["/api/auth/login"]
+  },
+  {
+    name          = "nextcloud"
+    subdomain     = "cloud"
+    strict_paths  = ["/login"]
+    # WebDAV: großzügiges Rate Limiting, AppSec nur mit Virtual Patching.
+    # Bewusster Kompromiss - siehe Restrisiken im Konzept.
+    relaxed_paths = ["/remote.php"]
+  },
+]
+
+#
+# ACME. Für die ersten Läufe das Staging-Verzeichnis nehmen: Das
+# Produktionsverzeichnis begrenzt fehlgeschlagene Ausstellungen hart
+# (5 pro Hostname und Stunde), und die ersten Läufe scheitern erfahrungsgemäß
+# an fehlenden CNAMEs.
+#
+acme_email = "nico@domain.de"
+# acme_ca_server = "https://acme-staging-v02.api.letsencrypt.org/directory"
+
+# Öffentliche Resolver nur für die Propagationsprüfung. Leer lassen heißt:
+# interner Resolver. Werden hier Adressen eingetragen, öffnet der
+# nftables-Regelsatz automatisch Port 53 zu genau diesen.
+# acme_check_resolvers = ["1.1.1.1", "9.9.9.9"]
+
+#
+# Interne CA (step-ca im Cluster). Erst setzen, wenn sie steht - dann
+# `terraform apply` und auf der VM:
+#   step ca token edge1.dmz        # im Cluster
+#   sudo edge-mtls-bootstrap <token>
+#
+# step_ca_url         = "https://10.10.20.3:9000"
+# step_ca_fingerprint = "<step certificate fingerprint $(step path)/certs/root_ca.crt>"
+
+#
+# CrowdSec. crowdsec_bouncer_armed erst auf true setzen, nachdem
+# edge-crowdsec-connect die Zugangsdaten hinterlegt hat - vorher verweigert
+# das Plugin den Dienst und risse jeden Router mit.
+#
+# crowdsec_bouncer_armed = true
+
+# Rate Limits nach Bedarf. Die Defaults sind: 100/min normal, 10/min auf
+# Login-Pfaden, 600/min auf Sync-Pfaden.
+# rate_limit_strict = { average = 10, burst = 5, period = "1m" }
