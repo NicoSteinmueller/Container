@@ -13,7 +13,7 @@ kubeconfig_path = "../../vm/talos/kubeconfig"
 # --- Adressen ----------------------------------------------------------
 node_dmz_ip = "10.10.20.3"
 edge_dmz_ip = "10.10.20.2"
-node_lan_ip = "192.168.178.21"
+node_lan_ip = "192.168.178.222"
 lan_cidr    = "192.168.178.0/24"
 
 # Verwaltungsadressen. Landen in der CrowdSec-Whitelist.

@@ -45,7 +45,12 @@ bad() {
 }
 
 compare() {
-  local label="$1" expected="$2" actual="$3" out="$workdir/${label//\//_}.diff"
+  local label="$1" expected="$2" actual="$3"
+
+  # Bewusst eine eigene Zeile: bash expandiert alle Wörter einer
+  # local-Anweisung, bevor es sie ausführt - ein ${label} in derselben Zeile
+  # sähe die Variable noch nicht und liefe unter `set -u` in einen Abbruch.
+  local out="$workdir/${label//\//_}.diff"
 
   if diff -u <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") > "$out"; then
     ok "$label entspricht dem Repo"

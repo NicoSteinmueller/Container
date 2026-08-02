@@ -24,15 +24,70 @@ locals {
   lan_prefix = tonumber(split("/", var.lan_cidr)[1])
   dmz_prefix = tonumber(split("/", var.dmz_cidr)[1])
 
+  # Der Pool wird entweder hier angelegt (Unraid: es gibt keinen) oder es wird
+  # ein vorhandener verwendet - siehe manage_pool.
+  pool_name = var.manage_pool ? libvirt_pool.domains[0].name : var.libvirt_pool
+
   #
   # Das LAN-Bein hängt entweder an einer vorhandenen Host-Bridge (Unraid: br0)
   # oder - für lokale Tests - an einem vorhandenen libvirt-Netz. merge() statt
   # eines ternären Ausdrucks, weil die beiden Zweige unterschiedliche
   # Objekttypen haben und Terraform die sonst nicht vereinheitlichen kann.
   #
+  #
+  # Entweder libvirt die Firmware aussuchen lassen oder feste Pfade vorgeben -
+  # siehe efi_loader. Beide Zweige führen dieselben Attribute, weil Terraform
+  # sonst die Typen der beiden Ergebnisse nicht vereinheitlichen kann; was
+  # nicht gilt, steht auf null und wird vom Provider weggelassen.
+  #
+  firmware = var.efi_loader == "" ? {
+    firmware = "efi"
+
+    firmware_info = {
+      features = [
+        # Secure Boot bleibt aus, damit libvirt nicht automatisch das
+        # OVMF-Image mit den Microsoft-Keys wählt.
+        { name = "enrolled-keys", enabled = "no" },
+        { name = "secure-boot", enabled = "no" },
+      ]
+    }
+
+    loader          = null
+    loader_type     = null
+    loader_readonly = null
+    nv_ram          = null
+    } : {
+    firmware      = null
+    firmware_info = null
+
+    loader          = var.efi_loader
+    loader_type     = "pflash"
+    loader_readonly = "yes"
+
+    # Je VM ein eigener Variablenspeicher; libvirt legt ihn beim ersten Start
+    # aus der Vorlage an.
+    nv_ram = {
+      nv_ram   = "${var.nvram_dir}/${var.vm_name}_VARS.fd"
+      template = var.efi_vars_template
+    }
+  }
+
+  #
+  # Drei Wege ins Heimnetz, in dieser Reihenfolge:
+  #
+  #   macvtap   - lan_macvtap_dev gesetzt. Für Unraid-Hosts ohne Bridging:
+  #               dort existiert kein br0, sondern nur bond0/ethX.
+  #   Bridge    - lan_bridge gesetzt (Unraid mit Bridging, sonst br0).
+  #   libvirt   - keins von beidem: vorhandenes libvirt-Netz, lokaler Test.
+  #
+  # merge() statt verschachtelter Bedingungen, weil die Zweige
+  # unterschiedliche Objekttypen haben und Terraform die sonst nicht
+  # vereinheitlichen kann.
+  #
   lan_source = merge(
-    var.lan_bridge != null ? { bridge = { bridge = var.lan_bridge } } : {},
-    var.lan_bridge == null ? { network = { network = var.lan_libvirt_network } } : {},
+    var.lan_macvtap_dev != null ? { direct = { dev = var.lan_macvtap_dev, mode = "bridge" } } : {},
+    var.lan_macvtap_dev == null && var.lan_bridge != null ? { bridge = { bridge = var.lan_bridge } } : {},
+    var.lan_macvtap_dev == null && var.lan_bridge == null ? { network = { network = var.lan_libvirt_network } } : {},
   )
 
   #
@@ -104,6 +159,7 @@ locals {
     "/etc/traefik/traefik.yml" = {
       mode = "0644"
       content = templatefile("${path.module}/templates/traefik/traefik.yml.tftpl", {
+        lan_ip                  = var.lan_ip
         public_https_port       = var.public_https_port
         http3_enabled           = var.http3_enabled
         upload_timeout          = var.upload_timeout_seconds
@@ -349,13 +405,62 @@ resource "libvirt_network" "dmz" {
 # =====================================================================
 
 #
+# Der Ablageort der VM-Disks: ein Verzeichnis-Pool auf ${var.pool_path}.
+#
+# "Pool" klingt nach mehr, als es ist - bei type = "dir" ist es nur libvirts
+# Index über ein Verzeichnis. Was dort liegt, sind gewöhnliche qcow2-Dateien:
+#
+#   /mnt/user/domains/edge1.qcow2
+#   /mnt/user/domains/debian-13-genericcloud-amd64-<snapshot>.qcow2
+#   /mnt/user/domains/edge1-seed-<hash>.iso
+#
+# Damit liegen die Disks dort, wo Unraid seine VMs erwartet (Share `domains`,
+# und damit im Blick der VM-Oberfläche und der Backup-Plugins) - und der
+# manuelle `virsh pool-define-as`-Schritt entfällt. Unraid selbst definiert
+# keine libvirt-Pools; ohne diese Ressource bricht der erste Apply mit
+# "Storage pool 'default' not found" ab.
+#
+# Ganz ohne Pool geht es mit diesem Provider nicht: `libvirt_volume` verlangt
+# einen, und daran hängen der Download des Cloud-Images, der
+# Copy-on-Write-Layer und die Seed-ISO. Der Weg über Dateipfade
+# (`source.file` in der Domain) hieße, all das per SSH auf dem Host
+# nachzubauen - mehr bewegliche Teile für dasselbe Ergebnis.
+#
+resource "libvirt_pool" "domains" {
+  count = var.manage_pool ? 1 : 0
+
+  name = var.libvirt_pool
+  type = "dir"
+
+  target = {
+    path = var.pool_path
+  }
+
+  create = {
+    # build legt das Verzeichnis an, falls es fehlt; autostart sorgt dafür,
+    # dass der Pool nach einem Neustart des Hosts wieder aktiv ist - sonst
+    # startet keine VM.
+    build     = true
+    start     = true
+    autostart = true
+  }
+
+  destroy = {
+    # ACHTUNG: Auf keinen Fall true. `delete` löscht das Zielverzeichnis
+    # mitsamt Inhalt - und das ist auf Unraid ein produktiver Share.
+    # `terraform destroy` meldet den Pool damit nur ab, die Dateien bleiben.
+    delete = false
+  }
+}
+
+#
 # Debian-Cloud-Image in der genericcloud-Variante: kein Nicht-virtio-Treiberballast,
 # cloud-init an Bord, unattended-upgrades verfügbar. Grundlast rund 400 MB - das
 # passt in die 1,5 GB, die das Konzept für die Edge-VM vorsieht.
 #
 resource "libvirt_volume" "debian_base" {
   name = local.debian_image
-  pool = var.libvirt_pool
+  pool = local.pool_name
 
   target = {
     format = {
@@ -376,7 +481,7 @@ resource "libvirt_volume" "debian_base" {
 #
 resource "libvirt_volume" "system" {
   name     = "${var.vm_name}.qcow2"
-  pool     = var.libvirt_pool
+  pool     = local.pool_name
   capacity = var.vm_disk_gib * 1024 * 1024 * 1024
 
   target = {
@@ -412,7 +517,7 @@ resource "libvirt_cloudinit_disk" "seed" {
 #
 resource "libvirt_volume" "seed" {
   name = "${var.vm_name}-seed-${local.seed_hash}.iso"
-  pool = var.libvirt_pool
+  pool = local.pool_name
 
   create = {
     content = {
@@ -445,32 +550,26 @@ resource "libvirt_domain" "edge" {
     acpi = true
   }
 
-  os = {
+  #
+  # q35 hängt alle Geräte hinter PCIe-Root-Ports, die SeaBIOS nicht enumeriert -
+  # der Gast sähe kein einziges virtio-Gerät. Deshalb UEFI/OVMF; ausführlich in
+  # vm/talos-test/README.md.
+  #
+  # Welche Firmware genau, entscheidet local.firmware: entweder libvirt sucht
+  # sie selbst aus, oder es stehen feste Pfade drin (Unraid, siehe efi_loader).
+  # Secure Boot bleibt in beiden Fällen aus - dafür braucht es signierte Images
+  # und eigene Keys, das ist ein eigener Schritt.
+  #
+  os = merge({
     type         = "hvm"
     type_arch    = "x86_64"
     type_machine = "q35"
-
-    # q35 hängt alle Geräte hinter PCIe-Root-Ports, die SeaBIOS nicht enumeriert -
-    # der Gast sähe kein einziges virtio-Gerät. Deshalb OVMF; ausführlich in
-    # vm/talos-test/README.md.
-    firmware = "efi"
-
-    firmware_info = {
-      features = [
-        # Secure Boot bleibt vorerst aus, damit libvirt nicht automatisch das
-        # OVMF-Image mit den Microsoft-Keys wählt. Debian ist zwar signiert
-        # (shim), das gehört aber zusammen mit den Talos-Secure-Boot-Images in
-        # einen eigenen Schritt.
-        { name = "enrolled-keys", enabled = "no" },
-        { name = "secure-boot", enabled = "no" },
-      ]
-    }
 
     boot_devices = [
       { dev = "hd" },
       { dev = "cdrom" },
     ]
-  }
+  }, local.firmware)
 
   devices = {
     disks = [

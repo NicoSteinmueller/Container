@@ -24,20 +24,69 @@ ssh_authorized_keys = [
 #   ntp_servers         = ["192.168.122.1"]
 #   admin_sources       = ["192.168.122.0/24"]
 #
-lan_bridge = "br0"
+#
+# Unraid ohne Bridging (Settings -> Network Settings -> "Enable bridging: No"):
+# Dann gibt es kein br0, sondern nur bond0/ethX. Gegenprüfen mit
+#   ssh root@unraid ip -br link
+#
+lan_macvtap_dev = "bond0"
 
-# libvirt auf Unraid statt lokal:
-# libvirt_uri  = "qemu+ssh://root@192.168.178.2/system"
+# Unraid mit Bridging stattdessen:
+# lan_bridge = "br0"
+
+#
+# WICHTIG: Ohne diese Zeile läuft alles gegen den libvirt der eigenen
+# Arbeitsstation - Terraform legt dort klaglos Pool und Volumes an, und der
+# Fehler fällt erst auf, wenn die VM nicht startet.
+#
+libvirt_uri = "qemu+ssh://root@192.168.178.3/system"
+
+# Lokaler Testlauf stattdessen:
+# libvirt_uri = "qemu:///system"
+
+#
+# Ablageort der VM-Disks. Unraid hat ab Werk keinen libvirt-Pool - Terraform
+# legt ihn deshalb selbst an (manage_pool) und zeigt ihn auf den Share
+# `domains`. Was dort landet, sind gewöhnliche qcow2-Dateien:
+#
+#   /mnt/user/domains/edge1.qcow2
+#
+# Liegt der Share auf einem Cache-Pool (shareUseCache="only"), ist
+# /mnt/cache/domains der direktere Weg zum selben Ort - er umgeht shfs.
+#
+manage_pool  = true
+libvirt_pool = "homelab"
+pool_path    = "/mnt/user/domains"
+
+# Lokaler Testlauf mit vorhandenem Pool:
+# manage_pool  = false
 # libvirt_pool = "default"
+
+#
+# UEFI-Firmware.
+#
+# Auf Unraid zwingend: Der mitgelieferte libvirt-Deskriptor nennt als
+# NVRAM-Vorlage /usr/share/qemu/edk2-i386-vars.fd, und genau diese Datei fehlt
+# im Paket. Ohne die beiden Zeilen scheitert der Start mit
+#   Failed to open file '/usr/share/qemu/edk2-i386-vars.fd'
+#
+# Unraid bringt sein eigenes OVMF mit - gegenprüfen mit
+#   ssh root@unraid ls /usr/share/qemu/ovmf-x64/
+#
+efi_loader        = "/usr/share/qemu/ovmf-x64/OVMF_CODE-pure-efi.fd"
+efi_vars_template = "/usr/share/qemu/ovmf-x64/OVMF_VARS-pure-efi.fd"
+
+# Lokaler Testlauf: beide Zeilen weglassen, dann sucht libvirt die Firmware
+# selbst aus.
 
 # Heimnetz. lan_ip muss außerhalb des Fritzbox-DHCP-Bereichs liegen, sonst
 # vergibt sie die Adresse irgendwann ein zweites Mal.
 lan_cidr    = "192.168.178.0/24"
-lan_ip      = "192.168.178.20"
+lan_ip      = "192.168.178.221"
 lan_gateway = "192.168.178.1"
 
 # Interner Resolver mit Query-Logging (AdGuard) und Zeitquelle.
-dns_servers = ["192.168.178.2"]
+dns_servers = ["192.168.178.3"]
 ntp_servers = ["192.168.178.1"]
 
 # Verwaltungszugang. So eng wie möglich fassen - das ist der einzige
@@ -71,7 +120,7 @@ cluster_ingress_ip = "10.10.20.3"
 # Öffentliche Dienste. Solange die Liste leer ist, fragt Traefik keine
 # Zertifikate an - sinnvoll, bis die ACME-DNS-Delegation steht.
 #
-domain = "domain.de"
+domain = "nico-steinmueller.de"
 
 public_services = [
   {
@@ -95,7 +144,7 @@ public_services = [
 # (5 pro Hostname und Stunde), und die ersten Läufe scheitern erfahrungsgemäß
 # an fehlenden CNAMEs.
 #
-acme_email = "nico@domain.de"
+acme_email = "nico.steinmueller@gmx.net"
 # acme_ca_server = "https://acme-staging-v02.api.letsencrypt.org/directory"
 
 # Öffentliche Resolver nur für die Propagationsprüfung. Leer lassen heißt:

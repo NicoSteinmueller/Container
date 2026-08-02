@@ -29,7 +29,7 @@ network:
   lanCidr: 192.168.178.0/24
   # Quelladresse der Edge-VM, als /32.
   dmzCidr: 10.10.20.2/32
-  nodeLanIp: 192.168.178.21
+  nodeLanIp: 192.168.178.222
   nodeDmzIp: 10.10.20.3
 
 localPath:

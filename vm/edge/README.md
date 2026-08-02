@@ -14,6 +14,7 @@ Läuft wahlweise lokal auf `qemu:///system` oder auf Unraid. Umgestellt wird üb
 |---|---|
 | libvirt-Netz | `edge-dmz`, isoliert, ohne Adresse auf dem Host, ohne DHCP |
 | VM | `edge1`, 2 vCPU, 1,5 GB RAM, 10 GB Disk, UEFI/q35 |
+| Disks | qcow2-Dateien in `pool_path` (Unraid: `/mnt/user/domains`) |
 | LAN-Bein | `192.168.178.20` an Bridge `br0` — Ziel der Fritzbox-Freigabe |
 | DMZ-Bein | `10.10.20.2` an Bridge `virbr-edgedmz` — Gegenstelle: `ingress-public` |
 | OS | Debian 13 genericcloud, Snapshot gepinnt in [variables.tf](variables.tf) |
@@ -48,8 +49,17 @@ CrowdSec vorbei. `verify/assert-ruleset.sh` prüft den Wert bei jedem Lauf.
 
 - `terraform`, `libvirt`/`qemu-kvm`, Benutzer in den Gruppen `libvirt` und `kvm`
   (siehe [../ubuntu-desktop/vorraussetzungen.md](../ubuntu-desktop/vorraussetzungen.md))
-- Eine Bridge ins Heimnetz auf dem Hypervisor (`ip -br link`), auf Unraid `br0`
+- Ein Weg ins Heimnetz: eine Bridge (`lan_bridge`, auf Unraid `br0`) oder -
+  wenn Bridging dort aus ist - macvtap auf dem physischen Interface
+  (`lan_macvtap_dev`, meist `bond0`). `ip -br link` auf dem Host zeigt, was es gibt
+- Ein Verzeichnis für die VM-Disks (`pool_path`, auf Unraid der Share
+  `domains`). Den libvirt-Pool darüber legt dieses Modul selbst an — Unraid
+  bringt keinen mit. Existiert schon einer, `manage_pool = false` setzen
 - Eine freie, feste Adresse im Heimnetz außerhalb des Fritzbox-DHCP-Bereichs
+- UEFI-Firmware, die libvirt findet. Auf Unraid scheitert die automatische
+  Auswahl (fehlende NVRAM-Vorlage) — dort `efi_loader` und
+  `efi_vars_template` setzen, siehe
+  [../../k8s/INBETRIEBNAHME.md](../../k8s/INBETRIEBNAHME.md)
 
 ## Erstellen
 
@@ -356,4 +366,7 @@ oben, in dieser Reihenfolge. Verloren gehen dabei die acme-dns-Kontodaten unter
 terraform destroy
 ```
 
-Entfernt VM, Disks, Seed-ISO und das DMZ-Netz. Das Basis-Image bleibt im Pool.
+Entfernt VM, Disks, Seed-ISO und das DMZ-Netz. Der Pool wird nur abgemeldet,
+nicht gelöscht (`destroy.delete = false`) — auf Unraid ist sein Ziel ein
+produktiver Share. Was an Dateien übrig bleibt, ist das Basis-Image; wer auch
+das los will, entfernt es von Hand aus `pool_path`.
