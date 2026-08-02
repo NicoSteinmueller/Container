@@ -1,0 +1,11 @@
+apiVersion: v2
+name: homelab-base
+description: |
+  Grundgerüst des Clusters: Namespaces mit ihren Vertrauensstufen, die beiden
+  IngressClasses, Default-Deny-NetworkPolicies und eine StorageClass.
+
+  Alles hier kommt ohne CRD aus und wird deshalb als Erstes angewendet -
+  cert-manager, Traefik, Kyverno und CrowdSec bauen darauf auf.
+type: application
+version: 0.1.0
+appVersion: "1.0"

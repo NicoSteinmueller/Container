@@ -1,0 +1,93 @@
+{{/*
+  hostPort und hostNetwork sind die zweite Art, an der Netzgrenze
+  vorbeizukommen: Ein Pod mit hostPort 443 auf der LAN-Adresse wäre ein
+  zweiter Ingress, den niemand konfiguriert hat, und ein Pod mit hostNetwork
+  umgeht jede NetworkPolicy - er läuft im Netzwerk-Namespace des Nodes und
+  ist damit "host", nicht "pod".
+
+  Ausgenommen sind genau die beiden Ingress-Namespaces. Dort ist hostPort
+  Absicht und der Kern der Trennung zwischen öffentlich und intern.
+
+  PodSecurity würde hostPort ab "baseline" ebenfalls ablehnen - aber die
+  beiden Ingress-Namespaces stehen auf "privileged", weil sie hostPort
+  brauchen. Diese Regel schließt die Lücke, die dadurch entsteht: hostPort ja,
+  hostNetwork und beliebige Ports nein.
+*/}}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-host-access
+  annotations:
+    policies.kyverno.io/title: hostPort und hostNetwork begrenzen
+    policies.kyverno.io/category: Homelab
+    policies.kyverno.io/severity: high
+spec:
+  background: true
+  rules:
+    #
+    # Überall außer in den Ingress-Namespaces: kein hostPort, kein
+    # hostNetwork, kein hostPID/hostIPC.
+    #
+    - name: no-host-access-outside-ingress
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - {{ .Values.namespaces.traefikPublic }}
+                - {{ .Values.namespaces.traefikInternal }}
+                - kube-system
+                - local-path-storage
+                - {{ .Values.namespaces.crowdsec }}
+      validate:
+        failureAction: Enforce
+        message: >-
+          hostPort, hostNetwork, hostPID und hostIPC sind hier nicht zulässig.
+          Ein Pod mit hostNetwork läuft im Netzwerk-Namespace des Nodes und
+          wird von keiner NetworkPolicy mehr erfasst.
+        pattern:
+          spec:
+            =(hostNetwork): false
+            =(hostPID): false
+            =(hostIPC): false
+            =(initContainers):
+              - =(ports):
+                  - =(hostPort): 0
+            =(ephemeralContainers):
+              - =(ports):
+                  - =(hostPort): 0
+            containers:
+              - =(ports):
+                  - =(hostPort): 0
+
+    #
+    # In den Ingress-Namespaces: hostPort ja, aber kein hostNetwork. Ein
+    # Traefik mit hostNetwork läge im Host-Namespace und lauschte damit auf
+    # allen Node-Adressen - genau der Zustand, den die hostIP-Bindung
+    # verhindert.
+    #
+    - name: ingress-namespaces-without-hostnetwork
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - {{ .Values.namespaces.traefikPublic }}
+                - {{ .Values.namespaces.traefikInternal }}
+      validate:
+        failureAction: Enforce
+        message: >-
+          Auch die Ingress-Controller laufen ohne hostNetwork. Die Bindung an
+          genau eine Adresse macht hostPort mit hostIP - hostNetwork würde
+          auf allen Node-Adressen lauschen und die Trennung zwischen
+          öffentlichem und privatem Ingress aufheben.
+        pattern:
+          spec:
+            =(hostNetwork): false
+            =(hostPID): false
+            =(hostIPC): false

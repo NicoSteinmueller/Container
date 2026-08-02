@@ -96,6 +96,124 @@
       datasourceTemplate: 'github-releases',
       depNameTemplate: 'kubernetes/kubernetes',
     },
+    {
+      // Talos Linux des Prod-Nodes (vm/talos/variables.tf). Ein Update ist
+      // hier kein Merge, sondern ein Wartungsfenster: `talosctl upgrade` mit
+      // der Schematic-ID aus dem Output - siehe vm/talos/README.md.
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)vm\\/talos\\/variables\\.tf$/',
+      ],
+      matchStrings: [
+        'variable "talos_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>v[0-9.]+)"',
+      ],
+      datasourceTemplate: 'github-releases',
+      depNameTemplate: 'siderolabs/talos',
+    },
+    {
+      // Kubernetes-Version im Cluster. Talos gibt vor, welche Stände zu einer
+      // Talos-Version passen - der Wert wird deshalb nicht automatisch
+      // gemergt.
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)vm\\/talos\\/variables\\.tf$/',
+      ],
+      matchStrings: [
+        'variable "kubernetes_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
+      ],
+      datasourceTemplate: 'github-releases',
+      depNameTemplate: 'kubernetes/kubernetes',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      // Cilium. Wird als Inline-Manifest in die Machine-Config gerendert -
+      // ein Update ist ein `terraform apply` auf vm/talos, kein helm upgrade.
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)vm\\/talos\\/variables\\.tf$/',
+      ],
+      matchStrings: [
+        'variable "cilium_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
+      ],
+      datasourceTemplate: 'helm',
+      depNameTemplate: 'cilium',
+      registryUrlTemplate: 'https://helm.cilium.io',
+    },
+    {
+      // Die Helm-Charts der Cluster-Ausstattung (k8s/platform/variables.tf).
+      // Ein Manager je Chart, weil jede Datasource eine eigene Registry hat.
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
+      ],
+      matchStrings: [
+        'variable "cert_manager_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>v[0-9.]+)"',
+      ],
+      datasourceTemplate: 'helm',
+      depNameTemplate: 'cert-manager',
+      registryUrlTemplate: 'https://charts.jetstack.io',
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
+      ],
+      matchStrings: [
+        'variable "step_ca_chart_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
+      ],
+      datasourceTemplate: 'helm',
+      depNameTemplate: 'step-certificates',
+      registryUrlTemplate: 'https://smallstep.github.io/helm-charts',
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
+      ],
+      matchStrings: [
+        'variable "traefik_chart_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
+      ],
+      datasourceTemplate: 'helm',
+      depNameTemplate: 'traefik',
+      registryUrlTemplate: 'https://traefik.github.io/charts',
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
+      ],
+      matchStrings: [
+        'variable "crowdsec_chart_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
+      ],
+      datasourceTemplate: 'helm',
+      depNameTemplate: 'crowdsec',
+      registryUrlTemplate: 'https://crowdsecurity.github.io/helm-charts',
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
+      ],
+      matchStrings: [
+        'variable "kyverno_chart_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
+      ],
+      datasourceTemplate: 'helm',
+      depNameTemplate: 'kyverno',
+      registryUrlTemplate: 'https://kyverno.github.io/kyverno',
+    },
+    {
+      // step-cli im Init- und Renew-Container von ingress-public. Dasselbe
+      // Werkzeug wie auf der Edge-VM - die beiden Versionen sollten nicht
+      // auseinanderlaufen.
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
+      ],
+      matchStrings: [
+        'variable "step_cli_image"[\\s\\S]*?default\\s*=\\s*"(?<depName>[^:"]+):(?<currentValue>[0-9.]+)"',
+      ],
+      datasourceTemplate: 'docker',
+    },
     // Das Debian-Cloud-Image der Edge-VM (vm/edge/variables.tf) bleibt bewusst
     // ohne Manager: Renovate hat keine Datasource für die Snapshot-Stände auf
     // cloud.debian.org, und der Docker-Tag "debian" folgt einer anderen
@@ -227,6 +345,34 @@
       prCreation: 'immediate',
       prBodyNotes: [
         '### 🛡️ Update der Edge-VM\n\n⚠️ **Vor dem Merge:** Die passende SHA256 in derselben Datei nachziehen – ohne sie schlägt `edge-install-stack` mit einem Prüfsummenfehler fehl.\n\n```bash\n# Traefik\ncurl -sL https://github.com/traefik/traefik/releases/download/<v>/traefik_<v>_checksums.txt | grep linux_amd64.tar.gz\n# step-cli\ncurl -sL https://github.com/smallstep/cli/releases/download/v<v>/checksums.txt | grep _amd64.deb\n```\n\nNach dem `terraform apply` fällig:\n- `sudo /usr/local/sbin/edge-install-stack` (oder Neuausrollen der VM)\n- `vm/edge/verify/assert-ruleset.sh`\n- `vm/edge/verify/proxy-test.sh <öffentlicher-name>`',
+      ],
+    },
+    {
+      description: 'Talos-Node: Update immer mit Review, Upgrade ist ein Wartungsfenster',
+      matchManagers: [
+        'custom.regex',
+      ],
+      matchFileNames: [
+        'vm/talos/variables.tf',
+      ],
+      automerge: false,
+      prCreation: 'immediate',
+      prBodyNotes: [
+        '### ☸️ Update des Talos-Nodes\n\n⚠️ **Ein Merge allein ändert nichts** – und ein `terraform apply` mit neuer `talos_version` baut die VM nicht neu, sondern muss über `talosctl upgrade` laufen:\n\n```bash\ncd vm/talos\nterraform apply                      # rendert Config und Installer-Image neu\ntalosctl -n <lan_ip> upgrade --image $(terraform output -raw installer_image)\ntalosctl -n <lan_ip> upgrade-k8s --to <version>   # nur bei kubernetes_version\n```\n\nWichtig: mit **derselben Schematic-ID** arbeiten, sonst verschwinden die System-Extensions.\n\nDanach fällig:\n- `vm/talos/verify/assert-cluster.sh`\n- `k8s/platform/verify/assert-platform.sh`',
+      ],
+    },
+    {
+      description: 'Cluster-Ausstattung: Charts mit Review, danach Abnahme fahren',
+      matchManagers: [
+        'custom.regex',
+      ],
+      matchFileNames: [
+        'k8s/platform/variables.tf',
+      ],
+      automerge: false,
+      prCreation: 'immediate',
+      prBodyNotes: [
+        '### 🧩 Update der Cluster-Ausstattung\n\nNach dem Merge:\n\n```bash\ncd k8s/platform && terraform apply\nverify/assert-platform.sh\n```\n\n⚠️ Bei Traefik und Kyverno lohnt der Blick in die Breaking Changes: An beiden hängt eine Sicherheitszusage – die mTLS-Pflicht auf `ingress-public` und die Regel auf `ingressClassName: public`.',
       ],
     },
     {
