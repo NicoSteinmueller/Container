@@ -1,0 +1,42 @@
+{{/*
+  Die beiden IngressClasses.
+
+  Sie werden hier angelegt und nicht von den Traefik-Charts: Mit namespaced
+  RBAC darf ein Controller keine clusterweiten Objekte anlegen oder lesen -
+  die Klasse steht deshalb statisch in seiner Konfiguration
+  (providers.kubernetesIngress.ingressClass).
+
+  Die Objekte selbst braucht trotzdem jemand: `kubectl get ingressclass` soll
+  zeigen, was es gibt, und die Kyverno-Regel prüft den Wert, der hier steht.
+
+  Bewusst ohne is-default-class-Annotation. Eine Default-Klasse wäre genau
+  der Fall, den das Konzept verhindern will: ein Ingress ohne
+  ingressClassName, der irgendwo landet.
+*/}}
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: public
+  labels:
+    homelab.io/zone: public
+  annotations:
+    homelab.io/beschreibung: >-
+      Aus dem Internet erreichbar, über die Edge-VM. Nur in Namespaces mit
+      homelab.io/zone=public zulässig - erzwungen durch die Kyverno-Policy
+      restrict-public-ingress-class.
+spec:
+  controller: traefik.io/ingress-controller
+
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: internal
+  labels:
+    homelab.io/zone: internal
+  annotations:
+    homelab.io/beschreibung: >-
+      Nur aus dem Heimnetz erreichbar. Kein Weg aus dem Internet hierher.
+spec:
+  controller: traefik.io/ingress-controller

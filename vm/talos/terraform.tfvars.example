@@ -1,0 +1,60 @@
+#
+# Beispielkonfiguration für den Talos-Node hinter der Edge-VM.
+# Kopieren nach terraform.tfvars und anpassen.
+#
+# Die Adressen müssen zu vm/edge/terraform.tfvars passen - dieselben Werte
+# stehen dort im nftables-Regelsatz und in der Traefik-Konfiguration:
+#
+#   vm/talos: node_dmz_ip  <-> vm/edge: cluster_ingress_ip, step_ca_ip
+#   vm/talos: edge_dmz_ip  <-> vm/edge: edge_dmz_ip
+#   vm/talos: dmz_cidr     <-> vm/edge: dmz_cidr
+#
+
+# --- libvirt -----------------------------------------------------------
+# Lokal:
+libvirt_uri = "qemu:///system"
+# Auf Unraid:
+# libvirt_uri = "qemu+ssh://root@192.168.178.10/system"
+
+libvirt_pool = "default"
+
+# --- LAN ---------------------------------------------------------------
+# Auf Unraid die vorhandene Bridge:
+lan_bridge = "br0"
+# Für einen lokalen Testlauf ohne Bridge stattdessen:
+# lan_bridge          = null
+# lan_libvirt_network = "default"
+
+lan_cidr    = "192.168.178.0/24"
+lan_ip      = "192.168.178.21"
+lan_gateway = "192.168.178.1"
+
+# Interner Resolver mit Query-Logging und Blocklist (AdGuard).
+dns_servers = ["192.168.178.2"]
+ntp_servers = ["192.168.178.1"]
+
+# --- DMZ ---------------------------------------------------------------
+# Das Netz wird von vm/edge angelegt - hier nur der Name.
+dmz_network_name = "edge-dmz"
+dmz_cidr         = "10.10.20.0/29"
+node_dmz_ip      = "10.10.20.3"
+edge_dmz_ip      = "10.10.20.2"
+
+# --- Zugang ------------------------------------------------------------
+# Quellen für Talos-API (50000) und Kubernetes-API (6443).
+# Eng fassen; im Zweifel die eigene Arbeitsstation statt des ganzen /24:
+# admin_sources = ["192.168.178.50/32"]
+admin_sources = ["192.168.178.0/24"]
+
+# Für die Inbetriebnahme auf false, danach auf true und erneut anwenden.
+ingress_firewall_enforced = true
+
+# --- Dimensionierung ---------------------------------------------------
+vm_memory_mib = 10240
+vm_vcpu       = 4
+vm_disk_gib   = 100
+
+# --- MACs --------------------------------------------------------------
+# Nur ändern, wenn sie mit etwas anderem im Netz kollidieren.
+mac_lan = "52:54:00:7a:20:01"
+mac_dmz = "52:54:00:7a:20:02"

@@ -1,0 +1,52 @@
+#
+# Beispielkonfiguration für die Cluster-Ausstattung.
+# Kopieren nach terraform.tfvars und anpassen.
+#
+# Die Adressen müssen zu vm/talos und vm/edge passen. Wenn eine Zeile hier
+# nicht stimmt, merkt man das nicht beim Anwenden, sondern beim ersten
+# Zugriff von außen - deshalb die Gegenprobe mit verify/assert-platform.sh.
+#
+
+# kubeconfig aus vm/talos (terraform output kubeconfig_path).
+kubeconfig_path = "../../vm/talos/kubeconfig"
+
+# --- Adressen ----------------------------------------------------------
+node_dmz_ip = "10.10.20.3"
+edge_dmz_ip = "10.10.20.2"
+node_lan_ip = "192.168.178.21"
+lan_cidr    = "192.168.178.0/24"
+
+# Verwaltungsadressen. Landen in der CrowdSec-Whitelist.
+admin_sources = ["192.168.178.0/24"]
+
+# --- Ports (müssen zu vm/edge passen) ----------------------------------
+ingress_public_port = 443
+crowdsec_lapi_port  = 8443
+step_ca_port        = 9000
+
+# --- Namen -------------------------------------------------------------
+domain = "domain.de"
+
+# Muss identisch zu cluster_ingress_server_name in vm/edge sein.
+ingress_public_server_name = "ingress-public.internal"
+
+# --- Anwendungen -------------------------------------------------------
+# zone entscheidet über Ingress-Controller, NetworkPolicies und darüber,
+# ob ingressClassName: public überhaupt zulässig ist.
+app_namespaces = [
+  { name = "nextcloud", zone = "public" },
+  { name = "immich", zone = "public" },
+  { name = "paperless", zone = "internal" },
+]
+
+# --- Zertifikate für die internen Namen --------------------------------
+# Aus: interne CA, der Browser warnt bis zum Import des Wurzelzertifikats.
+# An:  Let's Encrypt über eine eigene acme-dns-Instanz - nicht dieselbe wie
+#      auf der Edge-VM, sonst ist die Trennung der beiden ACME-Clients (E4)
+#      wieder aufgehoben.
+#
+# internal_acme = {
+#   enabled       = true
+#   email         = "post@domain.de"
+#   acme_dns_host = "https://acme-dns.domain.de"
+# }

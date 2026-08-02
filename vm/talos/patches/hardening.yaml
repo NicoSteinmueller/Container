@@ -1,0 +1,91 @@
+#
+# Härtung über die Talos-Defaults hinaus.
+#
+# Talos ist ab Werk CIS-konform (read-only rootfs, kein SSH, keine Shell,
+# KSPP-Kernel, PodSecurity-Admission aktiv). Hier steht nur, was Talos
+# standardmäßig anders setzt, als es für einen Cluster hinter einer ins
+# Internet exponierten Edge-VM sinnvoll ist.
+#
+cluster:
+  #
+  # Cluster-Member-Discovery komplett aus. Übernommen aus vm/talos-test, dort
+  # ausführlich begründet:
+  #
+  #   service    - meldet Cluster-Metadaten an discovery.talos.dev. Client-
+  #                seitig verschlüsselt, verlässt aber das eigene Netz.
+  #   kubernetes - laut Talos-Doku deprecated und nicht kompatibel mit
+  #                Kubernetes 1.32+; erzeugt eine Endlosschleife aus
+  #                "nodes is forbidden"-Warnungen.
+  #
+  # Nodes treten über ihre Machine-Config bei, nicht über Discovery. Es
+  # entfallen nur `talosctl get members` und KubeSpan.
+  #
+  # Beide Registries werden zusätzlich einzeln abgeschaltet: das globale
+  # enabled:false allein stoppt den KubernetesPullController nicht. Die
+  # Änderung greift erst nach einem Reboot.
+  #
+  discovery:
+    enabled: false
+
+    registries:
+      kubernetes:
+        disabled: true
+      service:
+        disabled: true
+
+machine:
+  #
+  # Talos hält den Kernel bereits nach KSPP-Empfehlung. Ergänzt wird nur, was
+  # für einen Node mit zwei Beinen zählt:
+  #
+  sysctls:
+    #
+    # Anders als auf der Edge-VM bleibt ip_forward hier an - ein Kubernetes-
+    # Node ist per Definition ein Router für seine Pods, und Kubelet wie
+    # Cilium setzen den Wert ohnehin. Die Grenze zwischen DMZ und LAN wird
+    # deshalb nicht über den Weiterleitungsschalter gezogen, sondern über
+    # zwei andere Kontrollen:
+    #
+    #   - die Talos-Ingress-Firewall (patches/ingress-firewall.yaml.tftpl):
+    #     eingehend nur die drei DMZ-Ports von der Edge-VM
+    #   - Default-Deny-NetworkPolicies pro Namespace mit ipBlock-Ausschluss
+    #     der privaten Netze (k8s/platform)
+    #
+    # Was das ausdrücklich nicht ist: eine Trennung auf Netzebene. Wer im
+    # Cluster Node-Rechte erlangt, hat beide Beine - das steht so auch im
+    # Konzept unter Restrisiken.
+
+    # Reverse-Path-Filter strikt: Pakete, deren Quelle über ein anderes
+    # Interface zurückliefe, werden verworfen. Verhindert, dass eine
+    # gefälschte LAN-Quelladresse über das DMZ-Bein hereinkommt.
+    net.ipv4.conf.all.rp_filter: "1"
+    net.ipv4.conf.default.rp_filter: "1"
+
+    # Keine Redirects annehmen oder senden - beides ist ein Weg, die
+    # Routingtabelle von außen zu beeinflussen.
+    net.ipv4.conf.all.accept_redirects: "0"
+    net.ipv4.conf.default.accept_redirects: "0"
+    net.ipv4.conf.all.send_redirects: "0"
+    net.ipv4.conf.default.send_redirects: "0"
+    net.ipv4.conf.all.accept_source_route: "0"
+
+    # IPv6 aus. Wie auf der Edge-VM: Die Fritzbox filtert v6 unabhängig von
+    # v4, und eine globale v6-Adresse wäre an jeder v4-Regel vorbei
+    # erreichbar. Erst einschalten, wenn der v6-Pfad bewusst durchdacht ist -
+    # dann aber auch in vm/edge und in der Ingress-Firewall.
+    net.ipv6.conf.all.disable_ipv6: "1"
+    net.ipv6.conf.default.disable_ipv6: "1"
+
+  kubelet:
+    #
+    # Seccomp-Default für alle Container ohne eigenes Profil. Ohne das läuft
+    # ein Pod ohne securityContext mit ungefiltertem Syscall-Zugang.
+    #
+    defaultRuntimeSeccompProfileEnabled: true
+
+    #
+    # Bewusst nicht gesetzt: serverTLSBootstrap. Es klingt richtiger, als es
+    # ist - ohne einen Approver für die Kubelet-Serving-CSRs bleibt die
+    # Anforderung Pending, und damit funktionieren `kubectl logs`, `exec` und
+    # jeder Metrics-Abruf nicht mehr. Wenn, dann zusammen mit
+    # kubelet-serving-cert-approver, nicht allein.

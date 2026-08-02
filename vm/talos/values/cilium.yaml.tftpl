@@ -1,0 +1,98 @@
+#
+# Cilium für den Talos-Node - wird von main.tf über `helm template` gerendert
+# und als Inline-Manifest in die Machine-Config gelegt.
+#
+# Warum Inline-Manifest und nicht `helm install` nach dem Bootstrap: Ohne CNI
+# bleibt der Node NotReady, und dann kann `terraform apply` nicht auf einen
+# gesunden Cluster warten - es käme ein halb fertiger Cluster als Erfolg
+# zurück. Als Teil der Machine-Config gehört das CNI zur Maschine, nicht zur
+# Anwendungsschicht.
+#
+
+# Talos-spezifisch, siehe https://www.talos.dev/latest/kubernetes-guides/network/deploying-cilium/
+# Talos mountet cgroup v2 selbst und lässt Cilium nicht mit einem privilegierten
+# Init-Container daran arbeiten - deshalb kein autoMount, sondern der Pfad des
+# Hosts, und ein explizit aufgezählter Capability-Satz statt "privileged".
+cgroup:
+  autoMount:
+    enabled: false
+  hostRoot: /sys/fs/cgroup
+
+securityContext:
+  capabilities:
+    ciliumAgent:
+      - CHOWN
+      - KILL
+      - NET_ADMIN
+      - NET_RAW
+      - IPC_LOCK
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    cleanCiliumState:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
+
+#
+# kube-proxy-Replacement. Talos startet den Cluster deshalb ohne kube-proxy
+# (cluster.proxy.disabled in patches/cluster.yaml.tftpl).
+#
+# Daran hängt mehr als Performance: Ohne kube-proxy übernimmt Cilium auch
+# hostPort - und zwar mit Beachtung von hostIP. Genau darauf beruht die
+# Trennung der beiden Ingress-Controller: ingress-public lauscht nur auf
+# ${node_dmz_ip}, ingress-internal nur auf ${lan_ip}.
+#
+kubeProxyReplacement: true
+
+#
+# KubePrism: der clusterinterne Endpoint der Kubernetes-API auf localhost.
+# Bewusst statt der Node-IP - so hängt Cilium nicht an einer Adresse, die
+# sich mit dem Netz ändert, und der Weg zur API verlässt den Node nicht.
+#
+k8sServiceHost: localhost
+k8sServicePort: 7445
+
+ipam:
+  mode: kubernetes
+
+# Ein Node, ein Operator. Der Default (2 Replicas mit Anti-Affinity) ließe
+# einen Pod dauerhaft Pending.
+operator:
+  replicas: 1
+  rollOutPods: true
+
+rollOutCiliumPods: true
+
+#
+# L7-Policies und Sichtbarkeit. Beides steht so im Konzept ("NetworkPolicies
+# inklusive L7 und Hubble zur Sichtbarkeit").
+#
+# Hubble-Relay und -UI bleiben aus: Das RAM-Budget ist knapp (16 GB im Host),
+# und `hubble observe` funktioniert auch ohne Relay direkt im Agent-Pod:
+#   kubectl -n kube-system exec ds/cilium -- hubble observe --follow
+#
+l7Proxy: true
+
+hubble:
+  enabled: true
+  relay:
+    enabled: ${hubble_relay_enabled}
+  ui:
+    enabled: ${hubble_ui_enabled}
+
+# Kein LoadBalancer-IPAM und keine L2-Announcements: Die beiden Ingress-
+# Controller hängen über hostPort/hostIP an festen Adressen. Ein Service-Typ
+# LoadBalancer wäre eine zweite Zuordnungsebene, die im Fehlerfall erklärt
+# werden müsste - und ARP-Announcements auf einem isolierten Bridge-Segment
+# sind schwer zu debuggen.
+
+# Ressourcen: Reservierung statt Limit. Ein gedrosseltes CNI ist ein
+# schwer zu diagnostizierender Fehler im gesamten Cluster.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi

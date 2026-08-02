@@ -1,0 +1,408 @@
+#
+# ingress-public - die Innenseite der Außengrenze.
+#
+# Alles, was aus dem Internet kommt, ist an dieser Stelle schon durch die
+# sechsstufige Kette der Edge-VM gelaufen. Dieser Controller ist trotzdem
+# nicht bloß ein Weiterleiter: Er ist die Stelle, an der geprüft wird, DASS
+# das Paket von der Edge kommt - mit einem Client-Zertifikat aus der internen
+# CA und nicht mit einer Behauptung.
+#
+# Drei Ports, alle an ${node_dmz_ip}:
+#   ${ingress_public_port}  Nutzverkehr
+#   ${lapi_port} CrowdSec-LAPI (Router in charts/homelab-policies)
+#   ${step_ca_port} step-ca, TCP-Passthrough
+#
+
+deployment:
+  kind: Deployment
+  replicas: 1
+
+  #
+  # Holt beim Start das Serverzertifikat von step-ca, wenn keines (mehr)
+  # gültig ist, und legt die dynamische Konfiguration auf das PVC.
+  #
+  # Warum die Konfiguration nicht direkt aus der ConfigMap gelesen wird: Nach
+  # jeder Erneuerung muss der File-Watcher die Konfiguration neu einlesen -
+  # Traefik liest Zertifikatsdateien nur beim Laden der dynamischen
+  # Konfiguration, ein neues Zertifikat auf der Platte allein reicht nicht.
+  # Eine ConfigMap ist read-only, dort lässt sich nichts anfassen.
+  #
+  initContainers:
+    - name: pki-bootstrap
+      image: ${step_cli_image}
+      command:
+        - /bin/sh
+        - -c
+        - |
+          set -eu
+
+          CA_URL="${step_ca_url}"
+          CN="${server_name}"
+
+          mkdir -p /pki/dynamic /pki/step
+          cp /dynamic-src/tls.yml /pki/dynamic/tls.yml
+          cp /ca/root_ca.crt /pki/internal-ca.crt
+
+          echo "warte auf step-ca unter $CA_URL"
+          until step ca health --ca-url "$CA_URL" --root /pki/internal-ca.crt >/dev/null 2>&1; do
+            sleep 5
+          done
+
+          # Vorhandenes Zertifikat gegen die interne CA prüfen - schlägt auch
+          # bei abgelaufenem Zertifikat fehl und führt dann zu einem neuen.
+          if step certificate verify /pki/tls.crt --roots /pki/internal-ca.crt >/dev/null 2>&1; then
+            echo "vorhandenes Serverzertifikat ist gültig"
+            exit 0
+          fi
+
+          echo "fordere Serverzertifikat für $CN an"
+          step ca certificate "$CN" /pki/tls.crt /pki/tls.key \
+            --ca-url "$CA_URL" \
+            --root /pki/internal-ca.crt \
+            --provisioner homelab \
+            --provisioner-password-file /prov/password \
+            --san "$CN" \
+            --san "${node_dmz_ip}" \
+            --not-after "${cert_lifetime}" \
+            --force
+      env:
+        - name: STEPPATH
+          value: /pki/step
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+      volumeMounts:
+        - name: data
+          mountPath: /pki
+        - name: internal-ca
+          mountPath: /ca
+          readOnly: true
+        - name: step-provisioner
+          mountPath: /prov
+          readOnly: true
+        - name: dynamic-src
+          mountPath: /dynamic-src
+          readOnly: true
+
+  #
+  # Erneuerung. Derselbe Mechanismus wie auf der Edge-VM: authentifiziert
+  # wird mit dem noch gültigen Zertifikat über mTLS, nicht mit dem
+  # Provisioner-Passwort. Ein abgelaufenes Zertifikat kann sich damit nicht
+  # selbst wiederbeleben - dafür startet der Init-Container den Pod neu ein.
+  #
+  # Nach einer Erneuerung wird die dynamische Konfiguration angefasst, damit
+  # der File-Watcher neu einliest. Erkannt wird das an der Änderungszeit der
+  # Zertifikatsdatei, nicht am Exit-Code - `step ca renew` ist auch dann
+  # erfolgreich, wenn es nichts zu tun gab.
+  #
+  additionalContainers:
+    - name: pki-renew
+      image: ${step_cli_image}
+      command:
+        - /bin/sh
+        - -c
+        - |
+          set -u
+          while true; do
+            before=$(stat -c %Y /pki/tls.crt 2>/dev/null || echo 0)
+            step ca renew /pki/tls.crt /pki/tls.key \
+              --ca-url "${step_ca_url}" \
+              --root /pki/internal-ca.crt \
+              --expires-in "${cert_renew_before}" \
+              --force >/dev/null 2>&1 || true
+            after=$(stat -c %Y /pki/tls.crt 2>/dev/null || echo 0)
+            if [ "$after" != "$before" ]; then
+              echo "Zertifikat erneuert - Konfiguration neu einlesen lassen"
+              touch /pki/dynamic/tls.yml
+            fi
+            sleep 1800
+          done
+      env:
+        - name: STEPPATH
+          value: /pki/step
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+      resources:
+        requests:
+          cpu: 5m
+          memory: 32Mi
+      volumeMounts:
+        - name: data
+          mountPath: /pki
+
+  additionalVolumes:
+    - name: internal-ca
+      configMap:
+        name: internal-ca
+    - name: step-provisioner
+      secret:
+        secretName: step-ca-provisioner
+        defaultMode: 0400
+    - name: dynamic-src
+      configMap:
+        name: traefik-public-dynamic
+
+#
+# Das PVC hält Zertifikat, Schlüssel und die dynamische Konfiguration. Es
+# überlebt einen Neustart des Pods - sonst würde bei jedem Rollout ein neues
+# Zertifikat gezogen.
+#
+persistence:
+  enabled: true
+  name: data
+  path: /pki
+  size: 128Mi
+  accessMode: ReadWriteOnce
+  storageClass: local-path
+
+podSecurityContext:
+  runAsUser: 65532
+  runAsGroup: 65532
+  runAsNonRoot: true
+  # Sorgt dafür, dass das PVC dem Traefik-Benutzer gehört - sonst kann der
+  # Init-Container den Schlüssel nicht schreiben.
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+    # Nicht nötig: Traefik lauscht im Pod auf Ports > 1024, die Zuordnung auf
+    # 443/8443/9000 macht hostPort.
+    add: []
+
+#
+# Die dynamische Konfiguration. Sie kommt aus der Datei und nicht aus
+# Kubernetes-Objekten, weil TLS-Optionen über den File-Provider global gelten
+# und Dateien als Vertrauensanker referenzieren können - eine TLSOption-CRD
+# bräuchte den Wurzel dafür in einem Secret, das dieser Controller dann auch
+# lesen dürfte.
+#
+extraObjects:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: traefik-public-dynamic
+      namespace: ${namespace}
+    data:
+      tls.yml: |
+        tls:
+          options:
+            #
+            # "default" gilt für jeden Router auf diesem Controller, egal aus
+            # welchem Provider er kommt. Damit ist die mTLS-Pflicht keine
+            # Eigenschaft einzelner Ingress-Objekte, die man vergessen kann.
+            #
+            default:
+              minVersion: VersionTLS12
+              #
+              # sniStrict bewusst aus: Die CrowdSec-LAPI wird von der Edge
+              # über die IP angesprochen (https://${node_dmz_ip}:${lapi_port}),
+              # und eine Verbindung ohne SNI würde bei sniStrict im Handshake
+              # enden. Die Namensprüfung leistet hier ohnehin die Edge - sie
+              # erwartet ${server_name} im Serverzertifikat.
+              #
+              sniStrict: false
+              clientAuth:
+                caFiles:
+                  - /pki/internal-ca.crt
+                #
+                # Entscheidung E5: Ohne gültiges Client-Zertifikat aus der
+                # internen CA endet die Verbindung im Handshake. Selbst wenn
+                # später etwas anderes im DMZ-Segment landet, kommt es damit
+                # nicht durch.
+                #
+                clientAuthType: RequireAndVerifyClientCert
+          stores:
+            default:
+              defaultCertificate:
+                certFile: /pki/tls.crt
+                keyFile: /pki/tls.key
+
+additionalArguments:
+  - "--providers.file.directory=/pki/dynamic"
+  - "--providers.file.watch=true"
+
+#
+# Ports und Bindungen.
+#
+# hostIP ist hier die tragende Zeile: Ohne sie lauscht der Controller auf
+# allen Node-IPs, also auch im Heimnetz - und die Trennung zwischen
+# öffentlichem und privatem Ingress wäre aufgehoben. Cilium wertet hostIP im
+# eBPF-Datapath aus (kube-proxy-Replacement).
+#
+ports:
+  traefik:
+    # Ping- und Dashboard-Port, nur im Pod. Nichts davon nach außen.
+    port: 8080
+    expose:
+      default: false
+
+  web:
+    # Kein Port 80 auf der DMZ-Seite: Die Edge-VM spricht ausschließlich
+    # HTTPS, und ACME läuft über DNS-01. Der Entrypoint bleibt bestehen, aber
+    # ohne hostPort ist er von außen nicht erreichbar.
+    port: 8000
+    expose:
+      default: false
+
+  websecure:
+    port: 8443
+    hostPort: ${ingress_public_port}
+    hostIP: ${node_dmz_ip}
+    expose:
+      default: false
+    http:
+      tls:
+        enabled: true
+    forwardedHeaders:
+      #
+      # Der einzige vertrauenswürdige Proxy ist die Edge-VM. Sie überschreibt
+      # X-Forwarded-For hart auf die TCP-Peer-Adresse und verwirft alles, was
+      # der Client selbst mitgeschickt hat - erst dadurch ist der Wert hier
+      # überhaupt etwas wert.
+      #
+      # Das ist die Zeile, an der laut Konzept der häufigste Fehler hängt:
+      # Fehlt sie, sieht CrowdSec bei jedem Angriff nur die Edge-VM und
+      # sperrt am Ende den gesamten Zugang.
+      #
+      trustedIPs:
+        - ${edge_dmz_ip}/32
+      insecure: false
+
+  lapi:
+    #
+    # Die CrowdSec-LAPI, erreichbar über dieselbe mTLS-Strecke wie der
+    # Nutzverkehr. Das ist die einzige Öffnung von der DMZ nach innen, die
+    # nicht Nutzverkehr ist - und sie verdient dieselbe Aufmerksamkeit wie
+    # der Ingress-Port, nicht die Behandlung als Nebeneffekt (E7).
+    #
+    port: 8444
+    hostPort: ${lapi_port}
+    hostIP: ${node_dmz_ip}
+    protocol: TCP
+    expose:
+      default: false
+    http:
+      tls:
+        enabled: true
+
+  stepca:
+    #
+    # step-ca als TCP-Passthrough. Traefik terminiert hier nicht: Die Edge
+    # prüft beim Bootstrap den Fingerprint des Wurzelzertifikats, und eine
+    # terminierende Zwischenstation würde genau diese Prüfung aushebeln.
+    #
+    port: 9001
+    hostPort: ${step_ca_port}
+    hostIP: ${node_dmz_ip}
+    protocol: TCP
+    expose:
+      default: false
+
+#
+# Kein Service. Der gesamte Verkehr kommt über hostPort von genau einer
+# Adresse - ein ClusterIP- oder LoadBalancer-Objekt wäre ein zweiter Weg
+# hinein, den niemand braucht.
+#
+service:
+  enabled: false
+
+#
+# RBAC und Sichtfeld.
+#
+# Das Konzept nennt als stärkstes Argument für die Edge-VM, dass ein
+# Ingress-Controller mehr Rechte hat, als man annimmt - insbesondere
+# Lesezugriff auf Secrets, weil dort die TLS-Zertifikate liegen. Mit
+# namespaced RBAC gilt das nur noch für die Namespaces, die dieser Controller
+# tatsächlich bedient: ${join(", ", watch_namespaces)}.
+#
+# Nicht darunter sind step-ca und crowdsec - deren Dienste werden über
+# ExternalName-Services angesprochen (charts/homelab-policies), damit hier
+# kein Leserecht im Namespace der CA entsteht.
+#
+rbac:
+  enabled: true
+  namespaced: true
+
+# Mit namespaced RBAC kann der Controller keine IngressClass-Objekte lesen.
+# Die Klasse wird deshalb statisch gesetzt, und das IngressClass-Objekt legt
+# charts/homelab-base an (für kubectl und für die Kyverno-Regel).
+ingressClass:
+  enabled: false
+
+providers:
+  kubernetesIngress:
+    enabled: true
+    ingressClass: public
+    allowExternalNameServices: false
+    namespaces:
+%{ for ns in watch_namespaces ~}
+      - ${ns}
+%{ endfor ~}
+
+  kubernetesCRD:
+    enabled: true
+    allowCrossNamespace: false
+    # Für die beiden ExternalName-Services zu LAPI und step-ca.
+    allowExternalNameServices: true
+    namespaces:
+      # Der eigene Namespace muss dabei sein: Dort liegen die beiden Router
+      # zu CrowdSec-LAPI und step-ca (charts/homelab-policies). Ohne diesen
+      # Eintrag würde Traefik sie nicht sehen, und beide Ports blieben stumm.
+      - ${namespace}
+%{ for ns in watch_namespaces ~}
+      - ${ns}
+%{ endfor ~}
+
+  kubernetesGateway:
+    enabled: false
+
+#
+# Kein Dashboard und kein Healthcheck-Router. Beides wären Routen auf einem
+# Entrypoint, der aus der DMZ erreichbar ist.
+#
+ingressRoute:
+  dashboard:
+    enabled: false
+  healthcheck:
+    enabled: false
+
+log:
+  level: INFO
+
+accessLog:
+  enabled: true
+  format: json
+  fields:
+    general:
+      defaultMode: keep
+    headers:
+      defaultMode: drop
+      names:
+        User-Agent: keep
+        X-Forwarded-For: keep
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 256Mi

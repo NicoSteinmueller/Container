@@ -1,0 +1,39 @@
+#
+# Alle Werte werden von k8s/platform/main.tf gesetzt. Was hier steht, ist die
+# Dokumentation der erwarteten Struktur - und der Stand, mit dem sich das
+# Chart notfalls auch von Hand anwenden lässt:
+#
+#   helm upgrade --install homelab-base charts/homelab-base -n kube-system
+#
+
+namespaces:
+  traefikPublic: traefik-public
+  traefikInternal: traefik-internal
+  certManager: cert-manager
+  stepCa: step-ca
+  crowdsec: crowdsec
+  kyverno: kyverno
+  storage: local-path-storage
+
+# Anwendungs-Namespaces mit ihrer Zone. "public" heißt: aus dem Internet
+# erreichbar, und nur dort ist ingressClassName: public zulässig.
+apps:
+  - name: nextcloud
+    zone: public
+  - name: immich
+    zone: public
+  - name: paperless
+    zone: internal
+
+network:
+  lanCidr: 192.168.178.0/24
+  # Quelladresse der Edge-VM, als /32.
+  dmzCidr: 10.10.20.2/32
+  nodeLanIp: 192.168.178.21
+  nodeDmzIp: 10.10.20.3
+
+localPath:
+  enabled: true
+  path: /var/local-path-provisioner
+  image: docker.io/rancher/local-path-provisioner:v0.0.36
+  helperImage: docker.io/library/busybox:1.37.0

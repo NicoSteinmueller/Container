@@ -218,27 +218,26 @@ Bis dahin laufen die Router mit TLS, Header-Hygiene und Rate Limiting, aber
 ohne Bouncer und ohne WAF. Das ist ein sichtbarer Zwischenzustand, kein
 stiller.
 
-## Was auf der Cluster-Seite fehlt
+## Die Cluster-Seite
 
-Dieses Modul ist die Außengrenze. Damit die Kette geschlossen ist, gehört
-folgendes in den Talos-Cluster — geschrieben wird es, wenn er steht:
+Dieses Modul ist die Außengrenze. Die Gegenstelle steht in
+[../talos](../talos) (Node und Talos-Config) und
+[../../k8s/platform](../../k8s/platform) (alles, was im Cluster läuft). Was
+dort die Zusagen dieses Moduls beantwortet:
 
-- **`ingress-public` an die DMZ-Adresse binden** (`10.10.20.3`), nicht an alle
-  Node-IPs. Abnahme: `ss -lntp` auf dem Node plus ein Verbindungsversuch aus
-  dem LAN, der scheitern muss.
-- **TLSOption mit `clientAuth: RequireAndVerifyClientCert`** gegen die interne
-  CA. Ohne sie ist das Client-Zertifikat der Edge nur Dekoration.
-- **NetworkPolicy** auf den LAPI-Port: genau dieser Port, genau die Quell-IP
-  `10.10.20.2`. Das ist die einzige Öffnung von der DMZ nach innen und
-  verdient dieselbe Aufmerksamkeit wie der Ingress-Port.
-- **step-ca** als interne CA mit einer Provisioner-Laufzeit, die 24 h erlaubt.
-- **CrowdSec-LAPI** mit getrennten Credentials für Edge- und Cluster-Agents,
-  geringerem Vertrauensgewicht für die Edge-Alarme und einer Whitelist der
-  eigenen Verwaltungs-IP, die eingehende Alarme nicht überschreiben können.
-- **App-Parser dort, wo die Logs entstehen**: Ein fehlgeschlagener
-  Nextcloud-Login über das Webformular liefert HTTP 200 — aus Proxy-Sicht sieht
-  Bruteforce wie normales Surfen aus. Nur WebDAV mit Basic-Auth liefert 401.
-- **Kyverno-Regel** auf `ingressClassName: public`.
+| Hier | Dort |
+|---|---|
+| `cluster_ingress_ip` = `10.10.20.3` | `ingress-public` per `hostPort`/`hostIP` an genau diese Adresse gebunden, Talos-Ingress-Firewall lässt nur `10.10.20.2` durch |
+| Client-Zertifikat der Edge | `tls.options.default` mit `clientAuth: RequireAndVerifyClientCert` gegen die interne CA — gilt für jeden Router auf `ingress-public` |
+| `step_ca_url` / `step_ca_fingerprint` | step-ca im Cluster, über `ingress-public` als TCP-Passthrough auf Port 9000 |
+| `crowdsec_lapi_port` = `8443` | LAPI hinter derselben mTLS-Strecke, plus NetworkPolicy auf Port und Quell-Namespace |
+| Agent auf der Edge | eigene Machine-Credentials, kürzere Sperrdauer für Edge-Alarme, Whitelist der Verwaltungs-IP als LAPI-Profil |
+| — | Kyverno-Regel auf `ingressClassName: public`, App-Parser als DaemonSet dort, wo die Logs entstehen |
+
+Die Reihenfolge über alle drei Module steht in
+[../../k8s/platform/README.md](../../k8s/platform/README.md); die drei
+Bootstrap-Schritte oben (`edge-mtls-bootstrap`, `edge-crowdsec-connect`)
+bekommen ihre Werte aus `k8s/platform/scripts/`.
 
 ## Was die Kette nicht leistet
 
