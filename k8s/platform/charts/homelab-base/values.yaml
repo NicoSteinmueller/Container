@@ -25,6 +25,16 @@ apps:
   - name: paperless
     zone: internal
 
+# Ausgehenden Verkehr der Infrastruktur-Namespaces auf "clusterintern plus
+# öffentliches Internet" begrenzen - kein Heimnetz, keine DMZ. Löst die Zusage
+# "kein Pod erreicht das LAN" auch für ingress-public und die übrigen
+# Infrastrukturdienste ein, nicht nur für die Anwendungen.
+#
+# Auf false nur, wenn sich beim Aufbau zeigt, dass eine Komponente doch ins
+# LAN muss - dann aber gezielt eine Ausnahme schreiben statt den Schalter
+# umzulegen. Siehe templates/cilium-egress-infra.yaml.
+restrictInfraEgress: true
+
 network:
   lanCidr: 192.168.178.0/24
   # Quelladresse der Edge-VM, als /32.

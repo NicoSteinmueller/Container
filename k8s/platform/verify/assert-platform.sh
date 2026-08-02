@@ -67,11 +67,16 @@ info "2. Serverzertifikat von ingress-public"
 # Edge fehl (serverName in servers-transport.yml) oder die Verbindung der
 # CrowdSec-Agenten, die die LAPI über die IP ansprechen.
 #
-cert="$(kubectl -n traefik-public exec deploy/traefik-public -c pki-renew -- \
-  step certificate inspect /pki/tls.crt --format text 2>/dev/null || true)"
+# Gelesen wird aus dem Secret und nicht aus dem Pod: So funktioniert die
+# Probe auch dann, wenn der Ingress gerade nicht startet - und das ist der
+# Moment, in dem man sie braucht.
+#
+cert="$(kubectl -n traefik-public get secret ingress-public-tls \
+  -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d 2>/dev/null |
+  openssl x509 -noout -text 2>/dev/null || true)"
 
 if [ -z "$cert" ]; then
-  warn "Zertifikat nicht lesbar - kubectl -n traefik-public logs deploy/traefik-public -c pki-bootstrap"
+  warn "Zertifikat nicht lesbar - kubectl -n step-ca logs job/ingress-cert-bootstrap"
 else
   for san in "ingress-public.internal" "10.10.20.3"; do
     if grep -q "$san" <<<"$cert"; then
@@ -84,8 +89,47 @@ else
   if grep -q "Homelab Internal CA" <<<"$cert"; then
     pass "Aussteller ist die interne CA"
   else
-    warn "Aussteller unerwartet - step certificate inspect von Hand ansehen"
+    warn "Aussteller unerwartet - Zertifikat von Hand ansehen"
   fi
+fi
+
+# ---------------------------------------------------------------------
+info "2b. Kein CA-Zugang im Namespace von ingress-public"
+# ---------------------------------------------------------------------
+
+#
+# Der Kern der Trennung: Traefik bekommt mit namespaced RBAC Leserecht auf
+# Secrets in seinem eigenen Namespace. Läge dort ein Provisioner-Passwort,
+# wäre eine Übernahme des Ingress gleichbedeutend mit Zertifikaten auf
+# beliebige Namen - auch auf den der Edge-VM.
+#
+# Das Passwort gehört deshalb ausschließlich in den Namespace step-ca. Diese
+# Probe ist die Gegenprobe dazu und die einzige, die einen Rückschritt
+# bemerken würde.
+#
+found=""
+for s in $(kubectl -n traefik-public get secrets -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+  case "$s" in
+    *provisioner* | *step-ca*) found="$found $s" ;;
+  esac
+done
+
+if [ -n "$found" ]; then
+  bad "Secret mit CA-Bezug in traefik-public:$found - Traefik darf es lesen"
+else
+  pass "kein Provisioner-Passwort im Namespace von ingress-public"
+fi
+
+if kubectl -n step-ca get secret step-ca-provisioner-password >/dev/null 2>&1; then
+  pass "das Provisioner-Passwort liegt in step-ca"
+else
+  warn "step-ca-provisioner-password nicht gefunden - Chartversion geändert?"
+fi
+
+if kubectl -n step-ca get cronjob ingress-cert-renew >/dev/null 2>&1; then
+  pass "der Aussteller erneuert turnusmäßig"
+else
+  bad "CronJob ingress-cert-renew fehlt - das Zertifikat läuft in Stunden ab"
 fi
 
 # ---------------------------------------------------------------------
@@ -163,6 +207,71 @@ else
     bad "internal-Ingress in $internal_ns wird abgelehnt - die Regel ist zu streng"
   fi
 fi
+
+# ---------------------------------------------------------------------
+info "4b. Kyverno: die DMZ-Entrypoints"
+# ---------------------------------------------------------------------
+
+#
+# lapi und stepca führen zur Entscheidungsdatenbank und zur internen CA. Eine
+# IngressRoute darauf aus einem Anwendungs-Namespace könnte die vorhandene
+# Route überstimmen und die Edge-VM auf einen eigenen Dienst umlenken - beim
+# TCP-Passthrough von step-ca wäre das der Punkt, an dem die
+# Fingerprint-Prüfung der Edge ins Leere liefe.
+#
+# Der öffentliche Namespace ist hier der interessante Fall: Für `websecure`
+# ist er ausgenommen, für diese beiden darf er es nicht sein.
+#
+probe_route_tcp() {
+  local ns="$1" entrypoint="$2"
+  cat <<EOF | kubectl apply --dry-run=server -f - >/dev/null 2>&1
+apiVersion: traefik.io/v1alpha1
+kind: IngressRouteTCP
+metadata:
+  name: kyverno-probe
+  namespace: $ns
+spec:
+  entryPoints:
+    - $entrypoint
+  routes:
+    - match: HostSNI(\`probe.invalid\`)
+      services:
+        - name: probe
+          port: 9000
+EOF
+}
+
+if [ -z "$public_ns" ]; then
+  warn "Kein öffentlicher Namespace gefunden - Probe übersprungen"
+else
+  for ep in stepca lapi; do
+    if probe_route_tcp "$public_ns" "$ep"; then
+      bad "Entrypoint $ep aus $public_ns wurde angenommen - er gehört nur nach traefik-public"
+    else
+      pass "Entrypoint $ep aus $public_ns wird abgelehnt"
+    fi
+  done
+fi
+
+# ---------------------------------------------------------------------
+info "4c. Egress der Infrastruktur-Namespaces"
+# ---------------------------------------------------------------------
+
+#
+# Ohne diese Policies hätte ausgerechnet ingress-public freien Egress ins
+# Heimnetz - der Pod, der die Verbindungen aus der DMZ beendet.
+#
+for ns in traefik-public traefik-internal cert-manager step-ca crowdsec kyverno local-path-storage; do
+  if ! kubectl get ns "$ns" >/dev/null 2>&1; then
+    continue
+  fi
+
+  if kubectl -n "$ns" get cnp egress-no-lan >/dev/null 2>&1; then
+    pass "$ns hat egress-no-lan"
+  else
+    bad "$ns ohne egress-no-lan - der Namespace erreicht das Heimnetz"
+  fi
+done
 
 # ---------------------------------------------------------------------
 info "5. Default-Deny in den Anwendungs-Namespaces"

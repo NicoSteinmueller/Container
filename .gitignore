@@ -51,9 +51,15 @@ build/
 !**/data/
 !**/data/**/
 !**/data/**/.gitkeep
-**/.terraform.lock.hcl
 /vm/volume_schema.json
 **/terraform.tfstate
 **/terraform.tfstate.backup
 **/.terraform/
 **/.terraform.tfstate.lock.info
+
+# .terraform.lock.hcl gehoert bewusst NICHT hierher: Die Datei haelt die
+# Pruefsummen der Provider fest. Ohne sie nimmt `terraform init` auf einem
+# frischen Klon, was die Registry gerade ausliefert - und Constraints wie
+# "~> 2.17" waehlen dabei eine andere Version als die laufende. Das ist
+# dieselbe Ueberlegung, aus der vm/edge die SHA256 von Traefik und step-cli
+# im Repo festhaelt statt sie neben dem Release abzuholen.

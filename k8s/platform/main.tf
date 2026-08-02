@@ -45,19 +45,25 @@ locals {
   step_ca_service = "step-ca.${local.ns_step_ca}.svc.cluster.local"
   step_ca_url     = "https://${local.step_ca_service}:9000"
   lapi_service    = "crowdsec-service.${local.ns_crowdsec}.svc.cluster.local"
+
+  # Serverzertifikat von ingress-public. Gefüllt aus dem Namespace step-ca,
+  # gelesen im Namespace traefik-public - siehe helm_release.pki.
+  ingress_public_tls_secret = "ingress-public-tls"
 }
 
 #
 # Passwörter der internen CA.
 #
 # Sie liegen im Terraform-State (der ist per .gitignore ausgeschlossen und
-# gleichbedeutend mit Cluster-Admin). Der Grund, sie hier zu erzeugen statt
-# vom Chart würfeln zu lassen: Das Provisioner-Passwort wird ein zweites Mal
-# gebraucht - ingress-public holt sich damit sein eigenes Serverzertifikat.
+# gleichbedeutend mit Cluster-Admin) und sonst nur in zwei Secrets im
+# Namespace step-ca, die der Chart dort anlegt. Aus diesem Namespace kommen
+# sie nicht heraus: Weder die Edge-VM noch ingress-public bekommen ein
+# Provisioner-Passwort.
 #
-# Was hier ausdrücklich NICHT entsteht: irgendetwas, das auf die Edge-VM
-# gehört. Deren Client-Zertifikat holt sie sich selbst mit einem Token, das
-# nach Minuten abläuft (vm/edge: edge-mtls-bootstrap).
+# Die Edge holt ihr Client-Zertifikat mit einem Token, das nach Minuten
+# abläuft (vm/edge: edge-mtls-bootstrap). Das Serverzertifikat von
+# ingress-public stellt ein Aussteller im Namespace der CA aus und legt es
+# als Secret in den Namespace des Ingress (charts/homelab-pki).
 #
 resource "random_password" "step_ca" {
   length  = 32
@@ -217,25 +223,59 @@ resource "kubernetes_config_map" "internal_ca" {
 }
 
 #
-# Provisioner-Passwort für ingress-public.
+# Das Serverzertifikat von ingress-public.
 #
-# Damit holt sich der Init-Container sein Serverzertifikat selbst, ohne dass
-# jemand von Hand ein Token erzeugen muss. Das ist eine bewusste Abweichung
-# von der Edge-VM: Dort liegt kein Provisioner-Passwort, weil die Maschine im
-# Internet steht. ingress-public steht in der vertrauten Zone und ist
-# ohnehin der einzige Verbraucher dieser CA im Cluster.
+# Es entsteht im Namespace step-ca und kommt als fertiges TLS-Secret hier an.
+# Der frühere Weg - ein Init-Container im Ingress-Pod, der es sich mit dem
+# Provisioner-Passwort selbst holt - war bequemer und an einer Stelle falsch:
+# Traefik bekommt mit namespaced RBAC Leserecht auf Secrets in seinem eigenen
+# Namespace. Ein Provisioner-Passwort dort wäre nach einer Übernahme des
+# Ingress ein Schlüssel zur internen CA gewesen, mit dem sich Zertifikate auf
+# beliebige Namen ausstellen lassen - auch auf den der Edge-VM.
 #
-resource "kubernetes_secret" "step_provisioner" {
-  metadata {
-    name      = "step-ca-provisioner"
-    namespace = local.ns_traefik_public
-  }
+# Ausführlich in charts/homelab-pki/templates/ingress-cert.yaml.
+#
+# Muss vor traefik_public laufen: Ohne das Secret käme dessen Pod nicht über
+# ContainerCreating hinaus. Der Hook-Job im Chart stellt sicher, dass Helm auf
+# die erste Ausstellung wartet.
+#
+resource "helm_release" "pki" {
+  name      = "homelab-pki"
+  chart     = "${path.module}/charts/homelab-pki"
+  namespace = local.ns_step_ca
 
-  data = {
-    password = random_password.step_provisioner.result
-  }
+  wait    = true
+  timeout = 600
 
-  depends_on = [helm_release.base]
+  values = [yamlencode({
+    namespaces = {
+      stepCa        = local.ns_step_ca
+      traefikPublic = local.ns_traefik_public
+    }
+
+    stepCa = {
+      url         = local.step_ca_url
+      provisioner = "homelab"
+    }
+
+    ingressPublic = {
+      serverName = var.ingress_public_server_name
+      nodeDmzIp  = var.node_dmz_ip
+      tlsSecret  = local.ingress_public_tls_secret
+    }
+
+    certLifetime = var.cert_lifetime
+
+    images = {
+      step    = var.step_cli_image
+      kubectl = var.kubectl_image
+    }
+  })]
+
+  depends_on = [
+    helm_release.step_ca,
+    kubernetes_config_map.internal_ca,
+  ]
 }
 
 # =====================================================================
@@ -294,16 +334,14 @@ resource "helm_release" "traefik_public" {
     lapi_port           = var.crowdsec_lapi_port
     step_ca_port        = var.step_ca_port
     server_name         = var.ingress_public_server_name
-    step_ca_url         = local.step_ca_url
     step_cli_image      = var.step_cli_image
-    cert_lifetime       = var.cert_lifetime
-    cert_renew_before   = var.cert_renew_before
+    tls_secret          = local.ingress_public_tls_secret
     watch_namespaces    = local.public_namespaces
   })]
 
   depends_on = [
     kubernetes_config_map.internal_ca,
-    kubernetes_secret.step_provisioner,
+    helm_release.pki,
     helm_release.kyverno,
   ]
 }

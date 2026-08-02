@@ -147,6 +147,13 @@ public_services = [
 acme_email = "nico.steinmueller@gmx.net"
 # acme_ca_server = "https://acme-staging-v02.api.letsencrypt.org/directory"
 
+# Die delegierte acme-dns-Instanz. Ohne diesen Wert legt Traefik den Resolver
+# `acmedns` gar nicht erst an - der lego-Provider liest die Adresse
+# ausschließlich aus der Umgebung, und die systemd-Unit setzt sie von hier.
+# Bewusst eine acme-dns-Instanz und kein Token des DNS-Anbieters: Entscheidung
+# E4 im Konzept.
+# acme_dns_api_base = "https://acme-dns.nico-steinmueller.de"
+
 # Öffentliche Resolver nur für die Propagationsprüfung. Leer lassen heißt:
 # interner Resolver. Werden hier Adressen eingetragen, öffnet der
 # nftables-Regelsatz automatisch Port 53 zu genau diesen.

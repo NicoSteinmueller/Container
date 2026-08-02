@@ -94,11 +94,19 @@ locals {
   # Ableitungen, damit dieselbe Adresse nicht an drei Stellen gepflegt werden
   # muss: Regelsatz, Traefik-Konfiguration und die Skripte auf der VM.
   #
-  step_ca_ip           = var.step_ca_ip != "" ? var.step_ca_ip : var.cluster_ingress_ip
-  cert_common_name     = var.cert_common_name != "" ? var.cert_common_name : "${var.vm_name}.dmz"
-  lapi_url             = "https://${var.cluster_ingress_ip}:${var.crowdsec_lapi_port}"
-  pki_dir              = "/etc/traefik/pki"
-  secrets_dir          = "/etc/traefik/secrets"
+  step_ca_ip       = var.step_ca_ip != "" ? var.step_ca_ip : var.cluster_ingress_ip
+  cert_common_name = var.cert_common_name != "" ? var.cert_common_name : "${var.vm_name}.dmz"
+  lapi_url         = "https://${var.cluster_ingress_ip}:${var.crowdsec_lapi_port}"
+  pki_dir          = "/etc/traefik/pki"
+  secrets_dir      = "/etc/traefik/secrets"
+
+  #
+  # Die acme-dns-Kontodaten legt lego beim ersten Lauf selbst an. Deshalb
+  # /var/lib/traefik und nicht ${local.secrets_dir}: Das StateDirectory der
+  # Unit gehört dem Dienstkonto, /etc/traefik ist für den Prozess nur lesbar.
+  # Dort liegt auch acme.json - beides sind Dateien, die Traefik schreibt.
+  #
+  acme_dns_storage     = "/var/lib/traefik/acme-dns.json"
   step_path            = "/etc/step"
   staging_dir          = "/usr/local/share/edge"
   appsec_strict_addr   = "127.0.0.1:7422"
@@ -167,7 +175,7 @@ locals {
         acme_email              = var.acme_email
         acme_ca_server          = var.acme_ca_server
         acme_check_resolvers    = [for r in var.acme_check_resolvers : "${r}:53"]
-        acme_dns_storage        = "${local.secrets_dir}/acme-dns.json"
+        acme_dns_storage        = local.acme_dns_storage
         crowdsec_plugin_version = var.crowdsec_plugin_version
         sanitize_path           = var.entrypoint_sanitize_path
       })
@@ -226,8 +234,11 @@ locals {
     }
 
     "/etc/systemd/system/traefik.service" = {
-      mode    = "0644"
-      content = file("${path.module}/files/traefik.service")
+      mode = "0644"
+      content = templatefile("${path.module}/files/traefik.service.tftpl", {
+        acme_dns_api_base = var.acme_dns_api_base
+        acme_dns_storage  = local.acme_dns_storage
+      })
     }
 
     "/etc/systemd/system/edge-cert-renew.service" = {

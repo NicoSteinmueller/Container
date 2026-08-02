@@ -204,10 +204,18 @@ sudo edge-crowdsec-connect --arm-firewall-bouncer
 
 **ACME über acme-dns.** Traefik holt je öffentlichem Namen ein Zertifikat per
 DNS-01, mit dem lego-Provider `acmedns`. Die Kontodaten liegen unter
-`/etc/traefik/secrets/acme-dns.json`; beim ersten Lauf registriert lego dort ein
+`/var/lib/traefik/acme-dns.json`; beim ersten Lauf registriert lego dort ein
 Konto und nennt die Subdomain, auf die der `_acme-challenge`-CNAME zeigen muss.
 Die Edge bekommt damit **keinen** Provider-Token: Wer sie übernimmt, kann
 Zertifikate für die ohnehin öffentlichen Namen ausstellen — mehr nicht.
+
+Dazu gehört `acme_dns_api_base` in `terraform.tfvars`. Der lego-Provider liest
+Adresse und Ablageort seiner Kontodaten **ausschließlich aus der Umgebung**, in
+`traefik.yml` lässt sich das nicht ausdrücken; die systemd-Unit setzt beides als
+`ACME_DNS_API_BASE` und `ACME_DNS_STORAGE_PATH`. Bleibt die Variable leer, legt
+Traefik den Resolver `acmedns` gar nicht erst an und jeder Router bleibt ohne
+Zertifikat — sichtbar daran, dass `proxy-test.sh` schon an der ersten Probe
+scheitert.
 
 **Erneuerung des Client-Zertifikats.** `edge-cert-renew.timer` prüft stündlich,
 `step ca renew` schreibt erst bei weniger als `cert_renew_before` Restlaufzeit.
@@ -256,6 +264,15 @@ bekommen ihre Werte aus `k8s/platform/scripts/`.
   Traefik-Plugin (`clientTrustedIPs`) schützt davor nicht — sie greift eine
   Ebene höher. Der Notzugang ist deshalb bewusst keiner, der über das Netz
   führt: `virsh console edge1` auf dem Hypervisor.
+- **`admin_sources` beantwortet zwei Fragen auf einmal.** Die Liste steuert, wer
+  SSH erreichen darf — und sie landet als `clientTrustedIPs` im
+  CrowdSec-Plugin, wo sie Bouncer *und* AppSec überspringt. Steht dort wie im
+  Standardfall das ganze Heimnetz, hat jedes Gerät darin die Abwehrschicht nicht
+  mehr vor sich, denn über Split-DNS erreichen LAN-Clients dieselben
+  öffentlichen Namen wie das Internet. Das passt zum Konzept, das das LAN als
+  vertraute Zone führt, und verhindert, dass ein Test aus dem eigenen Netz den
+  eigenen Zugang sperrt. Wer es enger will, trägt einzelne Adressen ein — das
+  verschärft dann aber auch die SSH-Regel.
 - **`/remote.php/*` bleibt der Weg um den Login-Schutz herum.** Auf demselben
   Pfad liegen großzügiges Rate Limiting und eine bis auf Virtual Patching
   abgeschaltete WAF, und er akzeptiert Basic-Auth mit denselben Passwörtern wie
