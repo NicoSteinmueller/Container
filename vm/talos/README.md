@@ -13,8 +13,8 @@ beiden Ingress-Controller, die interne CA, CrowdSec, Kyverno — steht in
 
 | Ressource | Wert |
 |---|---|
-| VM | `homelab-cp1`, 4 vCPU, 10 GB RAM, 100 GB Disk, UEFI/q35 |
-| LAN-Bein | `192.168.178.21` an Bridge `br0` — Talos-API, Kubernetes-API, `ingress-internal` |
+| VM | `homelab-cp1`, 4 vCPU, 4 GB RAM (wächst mit, siehe unten), 100 GB Disk, UEFI/q35 |
+| LAN-Bein | `192.168.178.222` per macvtap auf `bond0` — Talos-API, Kubernetes-API, `ingress-internal` |
 | DMZ-Bein | `10.10.20.3` im Netz `edge-dmz` — `ingress-public`, CrowdSec-LAPI, step-ca |
 | OS | Talos Linux, Version gepinnt in [variables.tf](variables.tf) |
 | CNI | Cilium mit kube-proxy-Replacement, als Inline-Manifest in der Machine-Config |
@@ -29,11 +29,62 @@ Das DMZ-Netz legt **[../edge](../edge)** an — isoliert, ohne Adresse auf dem
 Host, ohne DHCP. Dieses Modul hängt sich nur hinein. Deshalb: erst `vm/edge`,
 dann `vm/talos`.
 
+## Der RAM wächst mit den Diensten
+
+Das Konzept nennt 10 GB für diese VM. Das ist der Endausbau — der Zustand,
+in dem Nextcloud, Immich und Paperless im Cluster laufen. Beim Bootstrap
+laufen sie aber noch als Container auf dem Host, und ihr Speicher ist damit
+schlicht nicht frei:
+
+| | |
+|---|---|
+| Host gesamt | 16 GB |
+| Docker-Container | ~7,5 GB |
+| Edge-VM | 1,5 GB |
+| bleibt | ~5 GB |
+
+Deshalb startet dieses Modul mit **4 GB** — genug für Talos, Cilium und den
+kompletten Plattform-Stack aus [../../k8s/platform](../../k8s/platform), aber
+noch ohne Nutzlast.
+
+Der Weg nach oben, pro migriertem Dienst:
+
+```bash
+# 1. Dienst im Cluster hochziehen und prüfen
+# 2. Container auf dem Host stoppen — erst dann ist der Speicher frei
+ssh root@unraid docker stop nextcloud nextcloud_postgres nextcloud_redis
+
+# 3. RAM nachziehen
+vim terraform.tfvars      # vm_memory_mib = 6144
+terraform apply           # libvirt_domain.cp1 will be updated in-place
+
+# 4. Wirksam beim nächsten Start
+talosctl -n <lan_ip> shutdown
+ssh root@unraid virsh start homelab-cp1
+```
+
+`memory` ist **nicht** ForceNew — der Apply schreibt nur die Domain-Definition
+neu, die VM wird nicht ersetzt und die Disk bleibt. Aber libvirt kann die
+Obergrenze einer laufenden Domain nicht anheben, also braucht es den Neustart.
+
+Die Reihenfolge in Schritt 2 und 3 ist nicht beliebig: Wer erst den RAM erhöht
+und dann den Container stoppt, lässt beide gleichzeitig um denselben Speicher
+konkurrieren — auf einem Host ohne Swap endet das im OOM-Killer, und der trifft
+statistisch den größten Prozess. Das ist dann qemu.
+
 ## Voraussetzungen
 
 - `terraform`, `talosctl`, `kubectl`, `libvirt`/`qemu-kvm`
-- `vm/edge` ist angewendet — das libvirt-Netz `edge-dmz` muss existieren
+- Ein Weg ins Heimnetz: `lan_bridge` oder `lan_macvtap_dev` - dieselbe
+  Einstellung wie in `vm/edge`
+- `vm/edge` ist angewendet — von dort kommen das libvirt-Netz `edge-dmz` und
+  der Storage-Pool, den dieses Modul mitbenutzt (`libvirt_pool` muss in beiden
+  Modulen gleich lauten)
 - Eine freie feste Adresse im Heimnetz außerhalb des Fritzbox-DHCP-Bereichs
+- UEFI-Firmware, die libvirt findet. Auf Unraid scheitert die automatische
+  Auswahl (fehlende NVRAM-Vorlage) — dort `efi_loader` und
+  `efi_vars_template` setzen, siehe
+  [../../k8s/INBETRIEBNAHME.md](../../k8s/INBETRIEBNAHME.md)
 
 ## Erstellen
 
@@ -58,7 +109,7 @@ Danach:
 ```bash
 export TALOSCONFIG=$PWD/talosconfig
 export KUBECONFIG=$PWD/kubeconfig
-talosctl -n 192.168.178.21 health
+talosctl -n 192.168.178.222 health
 kubectl get nodes -o wide
 verify/assert-cluster.sh
 ```
@@ -73,9 +124,9 @@ Edge-VM: Nicht die Topologie trennt, sondern was auf welcher Adresse lauscht.
 
 | Adresse | Was hängt daran | Wer darf hin |
 |---|---|---|
-| `192.168.178.21:50000` | Talos-API | nur `admin_sources` |
-| `192.168.178.21:6443` | Kubernetes-API | `admin_sources` und das Pod-Netz |
-| `192.168.178.21:443` | `ingress-internal` | das Heimnetz |
+| `192.168.178.222:50000` | Talos-API | nur `admin_sources` |
+| `192.168.178.222:6443` | Kubernetes-API | `admin_sources` und das Pod-Netz |
+| `192.168.178.222:443` | `ingress-internal` | das Heimnetz |
 | `10.10.20.3:443` | `ingress-public` | nur `10.10.20.2` (Edge-VM) |
 | `10.10.20.3:8443` | CrowdSec-LAPI | nur `10.10.20.2` |
 | `10.10.20.3:9000` | step-ca | nur `10.10.20.2` |
@@ -94,7 +145,7 @@ Durchgesetzt wird das doppelt:
    und das Segment ist die Zone, in der die exponierte Maschine steht.
 
 Die Abnahme dazu steht in [verify/assert-cluster.sh](verify/assert-cluster.sh):
-Auf `192.168.178.21:443` muss `ingress-internal` antworten, erkennbar am
+Auf `192.168.178.222:443` muss `ingress-internal` antworten, erkennbar am
 Serverzertifikat — steht dort `ingress-public.internal`, greift die Bindung
 nicht.
 
@@ -189,11 +240,11 @@ damit funktionieren `kubectl logs`, `exec` und jeder Metrics-Abruf nicht mehr.
 ```bash
 export TALOSCONFIG=$PWD/talosconfig KUBECONFIG=$PWD/kubeconfig
 
-talosctl -n 192.168.178.21 health
-talosctl -n 192.168.178.21 dmesg -f              # Kernel-Log
-talosctl -n 192.168.178.21 get addresses         # beide Beine
-talosctl -n 192.168.178.21 get nftableschains    # die Ingress-Firewall
-talosctl -n 192.168.178.21 logs kubelet
+talosctl -n 192.168.178.222 health
+talosctl -n 192.168.178.222 dmesg -f              # Kernel-Log
+talosctl -n 192.168.178.222 get addresses         # beide Beine
+talosctl -n 192.168.178.222 get nftableschains    # die Ingress-Firewall
+talosctl -n 192.168.178.222 logs kubelet
 
 # Cilium
 kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose
@@ -209,13 +260,13 @@ System-Extensions:
 
 ```bash
 terraform output installer_image
-talosctl -n 192.168.178.21 upgrade --image <installer_image>
+talosctl -n 192.168.178.222 upgrade --image <installer_image>
 ```
 
 **Kubernetes-Upgrade** getrennt davon:
 
 ```bash
-talosctl -n 192.168.178.21 upgrade-k8s --to 1.36.4
+talosctl -n 192.168.178.222 upgrade-k8s --to 1.36.4
 ```
 
 Danach `kubernetes_version` in [variables.tf](variables.tf) nachziehen, damit

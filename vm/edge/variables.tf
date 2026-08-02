@@ -23,9 +23,62 @@ variable "libvirt_uri" {
 }
 
 variable "libvirt_pool" {
-  description = "Storage-Pool für Basis-Image, System-Disk und Seed-ISO."
+  description = <<-EOT
+    Name des Storage-Pools für Basis-Image, System-Disk und Seed-ISO.
+    Bei manage_pool = true wird er unter diesem Namen angelegt, sonst muss er
+    bereits existieren (`virsh pool-list --all`).
+  EOT
   type        = string
-  default     = "default"
+  default     = "homelab"
+}
+
+variable "manage_pool" {
+  description = <<-EOT
+    Den Storage-Pool von Terraform anlegen lassen.
+
+    Auf Unraid nötig: Dort gibt es ab Werk keinen einzigen libvirt-Pool - VMs
+    werden über absolute Pfade definiert -, und ohne Pool bricht der erste
+    Apply mit "Storage pool not found" ab.
+
+    Auf false setzen, wenn ein Pool schon existiert (typisch bei einem
+    lokalen Testlauf auf qemu:///system, wo "default" auf
+    /var/lib/libvirt/images zeigt) - dann zusätzlich libvirt_pool anpassen.
+
+    Genau ein Modul soll den Pool verwalten. vm/talos verwendet denselben
+    Pool und legt ihn deshalb standardmäßig nicht an.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "pool_path" {
+  description = <<-EOT
+    Verzeichnis, in dem die Disks liegen. Auf Unraid der Share `domains` -
+    dort erwartet die VM-Oberfläche ihre Images, und dorthin schauen die
+    Backup-Plugins.
+
+    Liegt der Share wie üblich auf einem Cache-Pool
+    (shareUseCache="only" in /boot/config/shares/domains.cfg), ist
+    /mnt/cache/domains der schnellere Weg zum selben Ort: Er umgeht die
+    shfs-FUSE-Schicht. /mnt/user/domains funktioniert ebenso und bleibt
+    richtig, falls der Share später auf das Array wandert.
+  EOT
+  type        = string
+  default     = "/mnt/user/domains"
+
+  #
+  # Kreuzprobe gegen den häufigsten Fehlgriff: Unraid-Pfad, aber der lokale
+  # Hypervisor. Ohne diese Prüfung legt Terraform den Pool klaglos auf der
+  # Arbeitsstation an - und der Fehler fällt erst auf, wenn die VM nicht
+  # startet, weil dort weder die Bridge noch die OVMF-Dateien existieren.
+  #
+  validation {
+    condition = !(
+      (startswith(var.pool_path, "/mnt/user/") || startswith(var.pool_path, "/mnt/cache/")) &&
+      (var.libvirt_uri == "qemu:///system" || var.libvirt_uri == "qemu:///session")
+    )
+    error_message = "pool_path zeigt auf einen Unraid-Share, libvirt_uri aber auf den lokalen Hypervisor. Entweder libvirt_uri auf qemu+ssh://root@<unraid>/system setzen oder pool_path auf ein lokales Verzeichnis."
+  }
 }
 
 #
@@ -101,6 +154,29 @@ variable "lan_libvirt_network" {
   description = "Vorhandenes libvirt-Netz als LAN-Ersatz, wenn lan_bridge null ist (lokaler Test: \"default\")."
   type        = string
   default     = "default"
+}
+
+variable "lan_macvtap_dev" {
+  description = <<-EOT
+    Physisches Interface für ein macvtap-Bein statt einer Bridge - der Weg für
+    Unraid-Hosts, auf denen Bridging abgeschaltet ist (Settings -> Network
+    Settings -> "Enable bridging: No"). Dort gibt es kein br0, sondern nur
+    bond0 bzw. ethX und Unraids eigenes vhost0.
+
+    Gesetzt (z. B. "bond0") hat Vorrang vor lan_bridge und
+    lan_libvirt_network. Gegenprüfen mit `ip -br link` auf dem Host.
+
+    Was macvtap bedeutet, und das ist kein Detail: Die VM erreicht das LAN
+    und das LAN erreicht die VM - aber die VM und der Hypervisor-Host sehen
+    einander nicht. Für die Edge-VM ist das eher erwünscht (das Konzept
+    verlangt ohnehin "kein LAN, keine Shares, keine Unraid-Oberfläche"), für
+    den Talos-Node heißt es: NFS-Exporte vom selben Host sind über dieses
+    Bein nicht erreichbar. Docker-Container in einem macvlan-Netz auf
+    demselben Parent (auf Unraid der Netzwerktyp "bond0") sind dagegen
+    erreichbar - der interne Resolver darf also dort liegen.
+  EOT
+  type        = string
+  default     = null
 }
 
 variable "lan_cidr" {
@@ -684,4 +760,53 @@ variable "entrypoint_sanitize_path" {
   EOT
   type        = bool
   default     = true
+}
+
+#
+# UEFI-Firmware
+#
+# Standardmäßig sucht libvirt sich die Firmware selbst aus (`firmware = "efi"`
+# plus die Feature-Angaben unten). Das funktioniert auf gängigen Distributionen
+# - auf Unraid nicht: Dort liegt in /usr/share/qemu/firmware zwar ein
+# Deskriptor 60-edk2-x86_64.json, der als NVRAM-Vorlage
+# /usr/share/qemu/edk2-i386-vars.fd nennt, aber genau diese Datei liefert das
+# Paket nicht mit. Der Start scheitert dann mit
+#
+#   Failed to open file '/usr/share/qemu/edk2-i386-vars.fd': No such file or directory
+#
+# Unraid bringt stattdessen sein eigenes OVMF mit, und seine VM-Oberfläche
+# schreibt die Pfade explizit ins XML. Genau das machen diese beiden Variablen.
+#
+variable "efi_loader" {
+  description = <<-EOT
+    Pfad zum OVMF-Code (schreibgeschützt, pflash). Leer bedeutet: libvirt
+    wählt die Firmware selbst aus.
+
+    Auf Unraid: "/usr/share/qemu/ovmf-x64/OVMF_CODE-pure-efi.fd"
+    Gegenprüfen mit: ls /usr/share/qemu/ovmf-x64/
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "efi_vars_template" {
+  description = <<-EOT
+    Vorlage für den NVRAM-Speicher der Firmware. libvirt kopiert sie beim
+    ersten Start nach nvram_dir. Muss zusammen mit efi_loader gesetzt werden.
+
+    Auf Unraid: "/usr/share/qemu/ovmf-x64/OVMF_VARS-pure-efi.fd"
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = (var.efi_loader == "") == (var.efi_vars_template == "")
+    error_message = "efi_loader und efi_vars_template gehören zusammen - entweder beide setzen oder beide leer lassen."
+  }
+}
+
+variable "nvram_dir" {
+  description = "Verzeichnis für den NVRAM-Speicher je VM. Nur relevant, wenn efi_loader gesetzt ist. Muss auf dem Hypervisor existieren und beschreibbar sein."
+  type        = string
+  default     = "/etc/libvirt/qemu/nvram"
 }

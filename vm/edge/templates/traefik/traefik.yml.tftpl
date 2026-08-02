@@ -16,7 +16,19 @@ global:
 
 entryPoints:
   websecure:
-    address: ":${public_https_port}"
+    #
+    # Bewusst an die LAN-Adresse gebunden statt an ":${public_https_port}".
+    #
+    # Der nftables-Regelsatz lässt eingehend ohnehin nur ${lan_ip}:${public_https_port} zu -
+    # aber "an alle Adressen gebunden, aber gefiltert" ist eine Zusage, die an
+    # einer einzigen Regel hängt. Mit der Bindung lauscht der Proxy gar nicht
+    # erst auf dem DMZ-Bein, und beide Kontrollen müssten gleichzeitig
+    # ausfallen. Dieselbe Überlegung wie bei ingress-public im Cluster
+    # (hostPort mit hostIP).
+    #
+    # verify/assert-ruleset.sh prüft genau das: kein Dienst auf 0.0.0.0.
+    #
+    address: "${lan_ip}:${public_https_port}"
 
     #
     # Der wichtigste Block der ganzen Datei.

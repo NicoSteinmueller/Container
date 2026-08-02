@@ -11,26 +11,66 @@
 #
 
 # --- libvirt -----------------------------------------------------------
-# Lokal:
-libvirt_uri = "qemu:///system"
-# Auf Unraid:
-# libvirt_uri = "qemu+ssh://root@192.168.178.10/system"
+#
+# WICHTIG: Ohne diese Zeile läuft alles gegen den libvirt der eigenen
+# Arbeitsstation. Muss dieselbe Adresse sein wie in vm/edge - sonst landen
+# Node und Edge-VM auf verschiedenen Hosts und finden einander nie.
+#
+libvirt_uri = "qemu+ssh://root@192.168.178.3/system"
 
-libvirt_pool = "default"
+# Lokaler Testlauf stattdessen:
+# libvirt_uri = "qemu:///system"
+
+
+#
+# Derselbe Pool wie in vm/edge - dort wird er angelegt, hier nur verwendet.
+# (manage_pool bleibt deshalb aus; nur für einen Laborlauf ohne Edge-VM auf
+# true setzen, dann zusätzlich pool_path angeben.)
+#
+libvirt_pool = "homelab"
+
+#
+# UEFI-Firmware.
+#
+# Auf Unraid zwingend: Der mitgelieferte libvirt-Deskriptor nennt als
+# NVRAM-Vorlage /usr/share/qemu/edk2-i386-vars.fd, und genau diese Datei fehlt
+# im Paket. Ohne die beiden Zeilen scheitert der Start mit
+#   Failed to open file '/usr/share/qemu/edk2-i386-vars.fd'
+#
+# Unraid bringt sein eigenes OVMF mit - gegenprüfen mit
+#   ssh root@unraid ls /usr/share/qemu/ovmf-x64/
+#
+efi_loader        = "/usr/share/qemu/ovmf-x64/OVMF_CODE-pure-efi.fd"
+efi_vars_template = "/usr/share/qemu/ovmf-x64/OVMF_VARS-pure-efi.fd"
+
+# Lokaler Testlauf: beide Zeilen weglassen, dann sucht libvirt die Firmware
+# selbst aus.
 
 # --- LAN ---------------------------------------------------------------
-# Auf Unraid die vorhandene Bridge:
-lan_bridge = "br0"
-# Für einen lokalen Testlauf ohne Bridge stattdessen:
+#
+# Unraid ohne Bridging: macvtap auf dem physischen Interface. Muss dieselbe
+# Einstellung sein wie in vm/edge.
+#
+lan_macvtap_dev = "bond0"
+
+# Unraid mit Bridging stattdessen:
+# lan_bridge = "br0"
+# Lokaler Testlauf ohne Bridge:
 # lan_bridge          = null
 # lan_libvirt_network = "default"
 
-lan_cidr    = "192.168.178.0/24"
-lan_ip      = "192.168.178.21"
+lan_cidr = "192.168.178.0/24"
+
+# Feste Adresse außerhalb des Fritzbox-DHCP-Bereichs, direkt neben der
+# Edge-VM (.221). Nicht in den unteren Bereich legen: dort stehen die
+# Arbeitsstation und die macvlan-Container.
+lan_ip      = "192.168.178.222"
 lan_gateway = "192.168.178.1"
 
-# Interner Resolver mit Query-Logging und Blocklist (AdGuard).
-dns_servers = ["192.168.178.2"]
+# Interner Resolver mit Query-Logging und Blocklist (AdGuard). Das ist der
+# macvlan-Container, nicht der Unraid-Host - der beantwortet keine Anfragen
+# auf Port 53.
+dns_servers = ["192.168.178.4"]
 ntp_servers = ["192.168.178.1"]
 
 # --- DMZ ---------------------------------------------------------------
@@ -50,7 +90,15 @@ admin_sources = ["192.168.178.0/24"]
 ingress_firewall_enforced = true
 
 # --- Dimensionierung ---------------------------------------------------
-vm_memory_mib = 10240
+#
+# Startwert für den leeren Cluster. Das Konzept nennt 10 GB - das ist der
+# Endausbau, wenn Nextcloud, Immich und Paperless migriert sind. Solange die
+# noch als Container auf dem Host laufen, ist der Speicher belegt. Nach jeder
+# Migration den Container stoppen und hier erhöhen: `memory` ist nicht
+# ForceNew, ein Apply schreibt nur die Domain-Definition, wirksam beim
+# nächsten Start der VM.
+#
+vm_memory_mib = 4096
 vm_vcpu       = 4
 vm_disk_gib   = 100
 

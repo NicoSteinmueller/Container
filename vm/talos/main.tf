@@ -40,15 +40,69 @@ locals {
   lan_prefix = tonumber(split("/", var.lan_cidr)[1])
   dmz_prefix = tonumber(split("/", var.dmz_cidr)[1])
 
+  # Der Pool gehört normalerweise vm/edge - siehe manage_pool.
+  pool_name = var.manage_pool ? libvirt_pool.domains[0].name : var.libvirt_pool
+
   #
   # Das LAN-Bein hängt entweder an einer vorhandenen Host-Bridge (Unraid: br0)
   # oder - für lokale Tests - an einem vorhandenen libvirt-Netz. merge() statt
   # eines ternären Ausdrucks, weil die beiden Zweige unterschiedliche
   # Objekttypen haben (identisch zu vm/edge/main.tf).
   #
+  #
+  # Entweder libvirt die Firmware aussuchen lassen oder feste Pfade vorgeben -
+  # siehe efi_loader. Beide Zweige führen dieselben Attribute, weil Terraform
+  # sonst die Typen der beiden Ergebnisse nicht vereinheitlichen kann; was
+  # nicht gilt, steht auf null und wird vom Provider weggelassen.
+  #
+  firmware = var.efi_loader == "" ? {
+    firmware = "efi"
+
+    firmware_info = {
+      features = [
+        # Secure Boot bleibt aus, damit libvirt nicht automatisch das
+        # OVMF-Image mit den Microsoft-Keys wählt.
+        { name = "enrolled-keys", enabled = "no" },
+        { name = "secure-boot", enabled = "no" },
+      ]
+    }
+
+    loader          = null
+    loader_type     = null
+    loader_readonly = null
+    nv_ram          = null
+    } : {
+    firmware      = null
+    firmware_info = null
+
+    loader          = var.efi_loader
+    loader_type     = "pflash"
+    loader_readonly = "yes"
+
+    # Je VM ein eigener Variablenspeicher; libvirt legt ihn beim ersten Start
+    # aus der Vorlage an.
+    nv_ram = {
+      nv_ram   = "${var.nvram_dir}/${local.node_name}_VARS.fd"
+      template = var.efi_vars_template
+    }
+  }
+
+  #
+  # Drei Wege ins Heimnetz, in dieser Reihenfolge:
+  #
+  #   macvtap   - lan_macvtap_dev gesetzt. Für Unraid-Hosts ohne Bridging:
+  #               dort existiert kein br0, sondern nur bond0/ethX.
+  #   Bridge    - lan_bridge gesetzt (Unraid mit Bridging, sonst br0).
+  #   libvirt   - keins von beidem: vorhandenes libvirt-Netz, lokaler Test.
+  #
+  # merge() statt verschachtelter Bedingungen, weil die Zweige
+  # unterschiedliche Objekttypen haben und Terraform die sonst nicht
+  # vereinheitlichen kann.
+  #
   lan_source = merge(
-    var.lan_bridge != null ? { bridge = { bridge = var.lan_bridge } } : {},
-    var.lan_bridge == null ? { network = { network = var.lan_libvirt_network } } : {},
+    var.lan_macvtap_dev != null ? { direct = { dev = var.lan_macvtap_dev, mode = "bridge" } } : {},
+    var.lan_macvtap_dev == null && var.lan_bridge != null ? { bridge = { bridge = var.lan_bridge } } : {},
+    var.lan_macvtap_dev == null && var.lan_bridge == null ? { network = { network = var.lan_libvirt_network } } : {},
   )
 
   cilium_values = templatefile("${path.module}/values/cilium.yaml.tftpl", {
@@ -122,12 +176,45 @@ data "helm_template" "cilium" {
 # =====================================================================
 
 #
+# Ablageort der Disks. Angelegt wird der Pool normalerweise von vm/edge - das
+# Modul läuft zuerst und bringt auch das DMZ-Netz mit. Hier steht die
+# Ressource nur für den Fall, dass dieser Node allein betrieben wird
+# (manage_pool = true).
+#
+# Bei type = "dir" ist ein Pool nichts weiter als libvirts Index über ein
+# Verzeichnis: Was dort liegt, ist eine gewöhnliche qcow2-Datei unter
+# ${var.pool_path}. Auf Unraid ist das der Share `domains`.
+#
+resource "libvirt_pool" "domains" {
+  count = var.manage_pool ? 1 : 0
+
+  name = var.libvirt_pool
+  type = "dir"
+
+  target = {
+    path = var.pool_path
+  }
+
+  create = {
+    build     = true
+    start     = true
+    autostart = true
+  }
+
+  destroy = {
+    # Niemals true: `delete` würde das Zielverzeichnis mitsamt Inhalt
+    # entfernen - auf Unraid ein produktiver Share.
+    delete = false
+  }
+}
+
+#
 # Boot-ISO aus der Image Factory. Talos startet daraus in den Maintenance-Mode
 # und wartet auf eine Machine-Config.
 #
 resource "libvirt_volume" "talos_iso" {
   name = "${var.cluster_name}-${var.talos_version}.iso"
-  pool = var.libvirt_pool
+  pool = local.pool_name
 
   target = {
     format = {
@@ -148,7 +235,7 @@ resource "libvirt_volume" "talos_iso" {
 #
 resource "libvirt_volume" "system" {
   name     = "${local.node_name}.qcow2"
-  pool     = var.libvirt_pool
+  pool     = local.pool_name
   capacity = var.vm_disk_gib * 1024 * 1024 * 1024
 
   target = {
@@ -184,26 +271,20 @@ resource "libvirt_domain" "cp1" {
     acpi = true
   }
 
-  os = {
+  #
+  # q35 hängt alle Geräte hinter PCIe-Root-Ports, die SeaBIOS nicht enumeriert -
+  # der Gast sähe kein einziges virtio-Gerät. Deshalb UEFI/OVMF; ausführlich in
+  # vm/talos-test/README.md.
+  #
+  # Welche Firmware genau, entscheidet local.firmware: entweder libvirt sucht
+  # sie selbst aus, oder es stehen feste Pfade drin (Unraid, siehe efi_loader).
+  # Secure Boot bleibt in beiden Fällen aus - dafür braucht es signierte Images
+  # und eigene Keys, das ist ein eigener Schritt.
+  #
+  os = merge({
     type         = "hvm"
     type_arch    = "x86_64"
     type_machine = "q35"
-
-    # q35 hängt alle Geräte hinter PCIe-Root-Ports, die SeaBIOS nicht
-    # enumeriert - der Gast sähe kein einziges virtio-Gerät. Deshalb OVMF;
-    # ausführlich in vm/talos-test/README.md.
-    firmware = "efi"
-
-    firmware_info = {
-      features = [
-        # Secure Boot bleibt vorerst aus, sonst wählt libvirt automatisch das
-        # OVMF-Image mit den Microsoft-Keys und die Talos-ISO wird abgelehnt.
-        # Für Secure Boot braucht es die secureboot-Varianten aus der Image
-        # Factory und eigene Keys - ein eigener Schritt.
-        { name = "enrolled-keys", enabled = "no" },
-        { name = "secure-boot", enabled = "no" },
-      ]
-    }
 
     # Reihenfolge ist Absicht: Bei leerer Disk fällt die Firmware auf die ISO
     # zurück (Maintenance-Mode). Nach der Installation bootet die VM von Disk,
@@ -212,7 +293,7 @@ resource "libvirt_domain" "cp1" {
       { dev = "hd" },
       { dev = "cdrom" },
     ]
-  }
+  }, local.firmware)
 
   devices = {
     disks = [

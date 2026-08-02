@@ -158,6 +158,26 @@ write_files:
 %{ endfor ~}
 
   #
+  # systemd-resolved: nur Resolver sein, nichts annoncieren.
+  #
+  # Ab Werk lauscht es zusätzlich auf 5355 (LLMNR) und 5353 (mDNS) - auf allen
+  # Adressen, also auch auf dem DMZ-Bein. Gebraucht wird davon nichts: Die VM
+  # fragt genau einen internen Resolver und soll im Netz nicht auffindbar sein,
+  # sondern nur antworten, wenn sie gefragt wird. Zwei lauschende Sockets
+  # weniger in der exponierten Zone.
+  #
+  - path: /etc/systemd/resolved.conf.d/99-edge.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Resolve]
+      LLMNR=no
+      MulticastDNS=no
+      # Kein DNSSEC-Bypass und kein Fallback auf öffentliche Resolver: Was der
+      # interne Resolver nicht auflöst, soll auch nicht aufgelöst werden.
+      FallbackDNS=
+
+  #
   # Logs überleben einen Reboot und laufen die kleine Disk nicht voll. Der
   # CrowdSec-Agent liest später aus denselben Journalen.
   #
@@ -219,6 +239,9 @@ runcmd:
   # nicht mehr erreichbar; die eigenen Quellen stehen in conf.d/99-edge.conf.
   - [ sh, -c, "sed -i 's/^pool /#pool /' /etc/chrony/chrony.conf" ]
   - [ systemctl, restart, chrony.service ]
+
+  # Nimmt LLMNR und mDNS aus der Luft - siehe write_files oben.
+  - [ systemctl, restart, systemd-resolved.service ]
 
   - [ systemctl, enable, --now, qemu-guest-agent.service ]
   - [ systemctl, restart, ssh.service ]

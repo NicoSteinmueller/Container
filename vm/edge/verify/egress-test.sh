@@ -63,12 +63,37 @@ probe() {
   fi
 }
 
+#
+# Ein Timeout heißt nicht zwingend "von nftables verworfen". Steht am Ziel
+# schlicht keine Maschine, läuft schon die ARP-Auflösung ins Leere - und das
+# sieht von hier aus genauso aus.
+#
+# Der Unterschied ist über die Nachbartabelle sichtbar: FAILED bzw. ein
+# fehlender Eintrag bedeutet "niemand da", nicht "nicht gedurft". Genau dieser
+# Fall ist beim Aufbau der Normalzustand - der Talos-Node entsteht erst nach
+# der Edge-VM (siehe README, Abschnitt "Reihenfolge").
+#
+absent_on_link() {
+  local host="$1" state
+  state="$(ip -4 neigh show "$host" 2>/dev/null | awk '{print $NF}')"
+  [ -z "$state" ] || [ "$state" = "FAILED" ] || [ "$state" = "INCOMPLETE" ]
+}
+
 expect_reachable() {
   local host="$1" port="$2" what="$3" r
   r="$(probe "$host" "$port")"
   case "$r" in
-    open|refused) pass "$what ($host:$port -> $r)" ;;
-    *) flunk "$what ($host:$port -> $r) - der Regelsatz sperrt ein Ziel, das gebraucht wird" ;;
+    open | refused) pass "$what ($host:$port -> $r)" ;;
+    *)
+      if absent_on_link "$host"; then
+        printf '  \033[33mOFFEN\033[0m %s (%s:%s) - unter dieser Adresse antwortet noch niemand.\n' \
+          "$what" "$host" "$port"
+        printf '          Der Regelsatz erlaubt es; nachprüfbar am Zähler der Regel:\n'
+        printf '          sudo nft list table inet edge | grep %s\n' "$host"
+      else
+        flunk "$what ($host:$port -> $r) - der Regelsatz sperrt ein Ziel, das gebraucht wird"
+      fi
+      ;;
   esac
 }
 

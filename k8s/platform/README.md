@@ -124,7 +124,7 @@ Trennung nach Erreichbarkeit statt nach Konfiguration (E6):
 
 | | `ingress-public` | `ingress-internal` |
 |---|---|---|
-| Bindung | `10.10.20.3:443` | `192.168.178.21:80,443` |
+| Bindung | `10.10.20.3:443` | `192.168.178.222:80,443` |
 | Erreichbar für | nur die Edge-VM | das Heimnetz |
 | Client-Zertifikat | Pflicht | nein |
 | IngressClass | `public` | `internal` |

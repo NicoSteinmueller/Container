@@ -39,7 +39,7 @@ variable "edge_dmz_ip" {
 variable "node_lan_ip" {
   description = "Adresse des Nodes im Heimnetz. Hier hängt ingress-internal."
   type        = string
-  default     = "192.168.178.21"
+  default     = "192.168.178.222"
 }
 
 variable "lan_cidr" {
