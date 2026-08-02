@@ -18,56 +18,34 @@ deployment:
   replicas: 1
 
   #
-  # Holt beim Start das Serverzertifikat von step-ca, wenn keines (mehr)
-  # gültig ist, und legt die dynamische Konfiguration auf das PVC.
+  # Kein Zugang zur CA in diesem Pod - und das ist der Kern.
   #
-  # Warum die Konfiguration nicht direkt aus der ConfigMap gelesen wird: Nach
-  # jeder Erneuerung muss der File-Watcher die Konfiguration neu einlesen -
-  # Traefik liest Zertifikatsdateien nur beim Laden der dynamischen
-  # Konfiguration, ein neues Zertifikat auf der Platte allein reicht nicht.
-  # Eine ConfigMap ist read-only, dort lässt sich nichts anfassen.
+  # Vorher holte sich ein Init-Container hier das Serverzertifikat selbst und
+  # brauchte dafür das Provisioner-Passwort der internen CA, abgelegt als
+  # Secret in diesem Namespace. Traefik bekommt mit namespaced RBAC aber
+  # Leserecht auf Secrets in seinem eigenen Namespace - wer den Ingress
+  # übernimmt, hätte damit Zertifikate auf beliebige Namen ausstellen können,
+  # insbesondere auf den der Edge-VM. Genau diese Rechte nennt das Konzept als
+  # stärkstes Argument für die Edge-VM (E2); eine CA-Berechtigung in dieselbe
+  # Komponente zu legen, hebt das auf.
+  #
+  # Das Zertifikat kommt deshalb fertig als Secret aus dem Namespace step-ca -
+  # ausgestellt dort, wo das Passwort ohnehin liegt
+  # (charts/homelab-pki). Was Traefik hier lesen kann, ist sein eigener
+  # Schlüssel, und den hat es ohnehin.
+  #
+  # Bleibt eine Aufgabe: Traefik liest Zertifikatsdateien nur beim Laden der
+  # dynamischen Konfiguration. Rotiert das Secret, muss jemand die
+  # Konfigurationsdatei anfassen - dafür liegt sie in einem emptyDir statt in
+  # der ConfigMap, die read-only ist.
   #
   initContainers:
-    - name: pki-bootstrap
+    - name: dynamic-config
       image: ${step_cli_image}
       command:
         - /bin/sh
         - -c
-        - |
-          set -eu
-
-          CA_URL="${step_ca_url}"
-          CN="${server_name}"
-
-          mkdir -p /pki/dynamic /pki/step
-          cp /dynamic-src/tls.yml /pki/dynamic/tls.yml
-          cp /ca/root_ca.crt /pki/internal-ca.crt
-
-          echo "warte auf step-ca unter $CA_URL"
-          until step ca health --ca-url "$CA_URL" --root /pki/internal-ca.crt >/dev/null 2>&1; do
-            sleep 5
-          done
-
-          # Vorhandenes Zertifikat gegen die interne CA prüfen - schlägt auch
-          # bei abgelaufenem Zertifikat fehl und führt dann zu einem neuen.
-          if step certificate verify /pki/tls.crt --roots /pki/internal-ca.crt >/dev/null 2>&1; then
-            echo "vorhandenes Serverzertifikat ist gültig"
-            exit 0
-          fi
-
-          echo "fordere Serverzertifikat für $CN an"
-          step ca certificate "$CN" /pki/tls.crt /pki/tls.key \
-            --ca-url "$CA_URL" \
-            --root /pki/internal-ca.crt \
-            --provisioner homelab \
-            --provisioner-password-file /prov/password \
-            --san "$CN" \
-            --san "${node_dmz_ip}" \
-            --not-after "${cert_lifetime}" \
-            --force
-      env:
-        - name: STEPPATH
-          value: /pki/step
+        - cp /dynamic-src/tls.yml /dynamic/tls.yml
       securityContext:
         runAsUser: 65532
         runAsGroup: 65532
@@ -78,54 +56,41 @@ deployment:
           drop:
             - ALL
       volumeMounts:
-        - name: data
-          mountPath: /pki
-        - name: internal-ca
-          mountPath: /ca
-          readOnly: true
-        - name: step-provisioner
-          mountPath: /prov
-          readOnly: true
+        - name: dynamic
+          mountPath: /dynamic
         - name: dynamic-src
           mountPath: /dynamic-src
           readOnly: true
 
   #
-  # Erneuerung. Derselbe Mechanismus wie auf der Edge-VM: authentifiziert
-  # wird mit dem noch gültigen Zertifikat über mTLS, nicht mit dem
-  # Provisioner-Passwort. Ein abgelaufenes Zertifikat kann sich damit nicht
-  # selbst wiederbeleben - dafür startet der Init-Container den Pod neu ein.
+  # Der Nachfolger des früheren pki-renew: Er erneuert nichts mehr und kennt
+  # die CA nicht. Er sieht nur, wann das eingehängte Secret gewechselt hat,
+  # und fasst dann die dynamische Konfiguration an, damit der File-Watcher
+  # neu einliest. Kein Zugangsdatum, kein Netzzugriff.
   #
-  # Nach einer Erneuerung wird die dynamische Konfiguration angefasst, damit
-  # der File-Watcher neu einliest. Erkannt wird das an der Änderungszeit der
-  # Zertifikatsdatei, nicht am Exit-Code - `step ca renew` ist auch dann
-  # erfolgreich, wenn es nichts zu tun gab.
+  # Erkannt wird die Rotation an der Änderungszeit: Kubelet tauscht bei einem
+  # Secret-Update den ..data-Symlink, und die Zeitstempel wandern mit.
   #
   additionalContainers:
-    - name: pki-renew
+    - name: tls-reload
       image: ${step_cli_image}
       command:
         - /bin/sh
         - -c
         - |
           set -u
+          last=""
           while true; do
-            before=$(stat -c %Y /pki/tls.crt 2>/dev/null || echo 0)
-            step ca renew /pki/tls.crt /pki/tls.key \
-              --ca-url "${step_ca_url}" \
-              --root /pki/internal-ca.crt \
-              --expires-in "${cert_renew_before}" \
-              --force >/dev/null 2>&1 || true
-            after=$(stat -c %Y /pki/tls.crt 2>/dev/null || echo 0)
-            if [ "$after" != "$before" ]; then
-              echo "Zertifikat erneuert - Konfiguration neu einlesen lassen"
-              touch /pki/dynamic/tls.yml
+            now="$(stat -L -c %Y /tls/tls.crt 2>/dev/null || echo 0)"
+            if [ "$now" != "$last" ]; then
+              if [ -n "$last" ]; then
+                echo "Serverzertifikat gewechselt - Konfiguration neu einlesen lassen"
+              fi
+              touch /dynamic/tls.yml
+              last="$now"
             fi
-            sleep 1800
+            sleep 60
           done
-      env:
-        - name: STEPPATH
-          value: /pki/step
       securityContext:
         runAsUser: 65532
         runAsGroup: 65532
@@ -138,42 +103,57 @@ deployment:
       resources:
         requests:
           cpu: 5m
-          memory: 32Mi
+          memory: 16Mi
       volumeMounts:
-        - name: data
-          mountPath: /pki
+        - name: dynamic
+          mountPath: /dynamic
+        - name: tls
+          mountPath: /tls
+          readOnly: true
 
   additionalVolumes:
-    - name: internal-ca
-      configMap:
-        name: internal-ca
-    - name: step-provisioner
-      secret:
-        secretName: step-ca-provisioner
-        defaultMode: 0400
+    # Beschreibbare Kopie der dynamischen Konfiguration - siehe oben.
+    - name: dynamic
+      emptyDir: {}
     - name: dynamic-src
       configMap:
         name: traefik-public-dynamic
+    # Nur das Wurzelzertifikat, öffentlich. Der Vertrauensanker für clientAuth.
+    - name: internal-ca
+      configMap:
+        name: internal-ca
+    # Serverzertifikat und Schlüssel, gestellt von charts/homelab-pki.
+    - name: tls
+      secret:
+        secretName: ${tls_secret}
 
 #
-# Das PVC hält Zertifikat, Schlüssel und die dynamische Konfiguration. Es
-# überlebt einen Neustart des Pods - sonst würde bei jedem Rollout ein neues
-# Zertifikat gezogen.
+# Kein PVC mehr. Es hielt Zertifikat und Schlüssel, damit ein Rollout nicht
+# jedes Mal ein neues Zertifikat zog - das erledigt jetzt das Secret, und der
+# Node hat ein Volume weniger zu verwalten.
 #
 persistence:
-  enabled: true
-  name: data
-  path: /pki
-  size: 128Mi
-  accessMode: ReadWriteOnce
-  storageClass: local-path
+  enabled: false
+
+#
+# Was der Traefik-Container selbst sieht: die dynamische Konfiguration, den
+# Vertrauensanker und sein eigenes Zertifikat.
+#
+additionalVolumeMounts:
+  - name: dynamic
+    mountPath: /dynamic
+  - name: internal-ca
+    mountPath: /ca
+    readOnly: true
+  - name: tls
+    mountPath: /tls
+    readOnly: true
 
 podSecurityContext:
   runAsUser: 65532
   runAsGroup: 65532
   runAsNonRoot: true
-  # Sorgt dafür, dass das PVC dem Traefik-Benutzer gehört - sonst kann der
-  # Init-Container den Schlüssel nicht schreiben.
+  # Damit der Init-Container in das emptyDir schreiben darf.
   fsGroup: 65532
   seccompProfile:
     type: RuntimeDefault
@@ -222,7 +202,7 @@ extraObjects:
               sniStrict: false
               clientAuth:
                 caFiles:
-                  - /pki/internal-ca.crt
+                  - /ca/root_ca.crt
                 #
                 # Entscheidung E5: Ohne gültiges Client-Zertifikat aus der
                 # internen CA endet die Verbindung im Handshake. Selbst wenn
@@ -233,11 +213,11 @@ extraObjects:
           stores:
             default:
               defaultCertificate:
-                certFile: /pki/tls.crt
-                keyFile: /pki/tls.key
+                certFile: /tls/tls.crt
+                keyFile: /tls/tls.key
 
 additionalArguments:
-  - "--providers.file.directory=/pki/dynamic"
+  - "--providers.file.directory=/dynamic"
   - "--providers.file.watch=true"
 
 #

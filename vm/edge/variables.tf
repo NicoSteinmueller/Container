@@ -565,6 +565,30 @@ variable "acme_ca_server" {
   default     = "https://acme-v02.api.letsencrypt.org/directory"
 }
 
+variable "acme_dns_api_base" {
+  description = <<-EOT
+    Basis-URL der delegierten acme-dns-Instanz, z. B.
+    "https://acme-dns.domain.de".
+
+    Das ist der Kern von Entscheidung E4: Die Edge bekommt keinen Token des
+    DNS-Anbieters, sondern Zugang zu genau ihren _acme-challenge-Records. Ein
+    Zonen-Token wäre wertvoller als jedes Zertifikat auf dieser Maschine und
+    würde ihr Neuausrollen überleben.
+
+    Der lego-Provider liest diesen Wert ausschließlich aus der Umgebung; die
+    systemd-Unit setzt ihn deshalb als ACME_DNS_API_BASE. Leer lassen heißt:
+    kein Resolver `acmedns` und damit keine Zertifikate - sinnvoll nur,
+    solange die acme-dns-Instanz noch nicht steht. Die Router laufen dann
+    weiter, scheitern aber am sniStrict-Filter.
+
+    Die Kontodaten selbst legt lego beim ersten Lauf unter
+    /var/lib/traefik/acme-dns.json an und nennt dort die Subdomain, auf die
+    der _acme-challenge-CNAME zeigen muss.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "acme_check_resolvers" {
   description = <<-EOT
     Resolver für die Propagationsprüfung der DNS-01-Challenge, ohne Portangabe.

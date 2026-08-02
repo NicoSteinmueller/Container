@@ -1,0 +1,46 @@
+#
+# Gesetzt von k8s/platform/main.tf. Siehe charts/homelab-base/values.yaml.
+#
+
+namespaces:
+  stepCa: step-ca
+  traefikPublic: traefik-public
+
+stepCa:
+  # Clusterinterner Weg zur CA. Nicht der Umweg über die DMZ-Adresse: Der
+  # Aussteller läuft im selben Namespace wie die CA.
+  url: https://step-ca.step-ca.svc.cluster.local:9000
+  provisioner: homelab
+
+  # Beide legt der step-certificates-Chart an. Sie bleiben, wo sie sind -
+  # der ganze Sinn dieses Charts ist, dass sie den Namespace nicht verlassen.
+  provisionerPasswordSecret: step-ca-provisioner-password
+  rootConfigMap: step-ca-certs
+
+ingressPublic:
+  # Muss zu serverName in vm/edge/templates/traefik/dynamic/servers-transport.yml
+  # passen - die Edge prüft gegen diesen Namen, nicht gegen die IP.
+  serverName: ingress-public.internal
+  # Als IP-SAN, weil die CrowdSec-Agenten die LAPI über die Adresse ansprechen
+  # und dabei keinen Servernamen senden.
+  nodeDmzIp: 10.10.20.3
+  tlsSecret: ingress-public-tls
+
+certLifetime: 24h
+
+#
+# Alle sechs Stunden neu ausstellen. Bei 24 h Laufzeit bleiben damit drei
+# Fehlversuche Puffer, bevor das Zertifikat im Ingress abläuft - und ein Pod,
+# der nach einem längeren Ausfall startet, findet immer ein gültiges
+# Zertifikat vor. Genau das leistet der Weg über die Edge-VM nicht: Dort
+# braucht ein abgelaufenes Zertifikat ein neues Token von Hand.
+#
+schedule: "17 */6 * * *"
+
+images:
+  # Dasselbe Werkzeug wie auf der Edge-VM.
+  step: smallstep/step-cli:0.30.6
+  # Offizielles Image des Kubernetes-Projekts, ohne Shell (distroless).
+  # Deshalb schreibt der step-Container das fertige Manifest und dieser
+  # Container führt genau einen Befehl darauf aus.
+  kubectl: registry.k8s.io/kubectl:v1.36.3

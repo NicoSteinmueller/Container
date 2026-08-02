@@ -159,12 +159,27 @@ variable "kyverno_chart_version" {
 
 variable "step_cli_image" {
   description = <<-EOT
-    Image mit step-cli. Holt und erneuert das Serverzertifikat von
-    ingress-public - dasselbe Werkzeug, das auf der Edge-VM das
+    Image mit step-cli. Stellt im Namespace step-ca das Serverzertifikat von
+    ingress-public aus - dasselbe Werkzeug, das auf der Edge-VM das
     Client-Zertifikat holt.
   EOT
   type        = string
   default     = "smallstep/step-cli:0.30.6"
+}
+
+variable "kubectl_image" {
+  description = <<-EOT
+    Image mit kubectl. Legt das ausgestellte Serverzertifikat als Secret in
+    den Namespace von ingress-public - der Schritt, der das
+    Provisioner-Passwort dort überflüssig macht.
+
+    Das offizielle Image des Kubernetes-Projekts, bewusst nicht eines der
+    verbreiteten Drittanbieter-Images: Es läuft mit den Rechten, ein Secret
+    in einem fremden Namespace zu schreiben. Version passend zu
+    kubernetes_version in vm/talos.
+  EOT
+  type        = string
+  default     = "registry.k8s.io/kubectl:v1.36.3"
 }
 
 #

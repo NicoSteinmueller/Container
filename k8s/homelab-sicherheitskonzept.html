@@ -384,7 +384,7 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
     <tbody>
       <tr><td>ingress-public</td><td>Edge-VM, ACME DNS-01 über ACME-DNS-Delegation</td><td>Nur <code>immich.</code> und <code>cloud.</code> — kein Wildcard, keine internen Namen</td></tr>
       <tr><td>ingress-internal</td><td>cert-manager, ACME DNS-01 mit eigenem Provider-Zugang</td><td>Paperless — nur aus dem LAN erreichbar, im Browser trotzdem gültig</td></tr>
-      <tr><td>Edge → Cluster</td><td>interne CA über cert-manager</td><td>mTLS auf der Zwischenstrecke, Laufzeit 24 h mit automatischer Erneuerung</td></tr>
+      <tr><td>Edge → Cluster</td><td>eigene interne CA im Cluster (step-ca)</td><td>mTLS auf der Zwischenstrecke, Laufzeit 24 h mit automatischer Erneuerung. Eine Online-CA mit API, weil die Edge außerhalb des Clusters steht und selbst erneuern muss — cert-manager könnte das nur, wenn die Edge Cluster-Zugangsdaten hätte.</td></tr>
     </tbody>
   </table>
 
@@ -578,6 +578,11 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
         <td>ACME per DNS-01 statt HTTP-01, ohne Wildcard</td>
         <td>Port 80 bleibt zu. Auf ein Wildcard wird bewusst verzichtet: Es hätte den Schlüssel, der die internen Namen absichert, auf der exponierten VM abgelegt. Preis: ein Zertifikat pro öffentlichem Namen.</td>
       </tr>
+      <tr>
+        <td class="id">E10</td>
+        <td>Kein Zugang zur internen CA im Namespace von <code>ingress-public</code></td>
+        <td>Dieselbe Überlegung wie E2, eine Ebene tiefer: Ein Ingress-Controller darf Secrets in den Namespaces lesen, die er bedient — auch im eigenen. Ein Provisioner-Passwort dort wäre nach einer Übernahme ein Schlüssel zur CA, mit dem sich Zertifikate auf jeden Namen ausstellen lassen, auch auf den der Edge-VM; das Client-Zertifikat als alleiniger Türsteher (E5) wäre damit wertlos. Das Serverzertifikat entsteht deshalb im Namespace der CA und kommt als fertiges Secret an. Preis: ein kleiner Aussteller dort, der es turnusmäßig erneuert. Verworfen: Token-Bootstrap wie auf der Edge — ein Token lebt fünf Minuten, hier müsste es niemand von Hand eintragen können.</td>
+      </tr>
     </tbody>
   </table>
 </section>
@@ -591,6 +596,7 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
     <li><strong>Der Unraid-Host ist das Kronjuwel.</strong> WebGUI niemals exponieren, kein Passwort-Login für Root, Array-Verschlüsselung erwägen.</li>
     <li><strong>Bruteforce über <code>/remote.php/*</code> bleibt möglich.</strong> Der WebDAV-Pfad trägt großzügiges Rate Limiting und eine bis auf Virtual Patching abgeschaltete WAF, akzeptiert aber Basic-Auth mit den regulären Passwörtern. Bewusst in Kauf genommen, um den Sync nicht zu brechen; die Auflösung über Antwortcode-Staffelung und erzwungene App-Passwörter ist notiert, aber nicht umgesetzt.</li>
     <li><strong>Append-only Backup ist bislang eine Absicht, keine Kontrolle.</strong> Solange das Repository auf demselben Unraid-Host liegt, hat der schreibende Prozess auch Löschrecht. Der Ransomware-Schutz, der als „Unterschied zwischen Ärger und Totalverlust" beschrieben ist, greift erst mit einem Ziel, das Append-only erzwingt.</li>
+    <li><strong>Das LAN umgeht CrowdSec und die WAF.</strong> Die Verwaltungsadressen stehen auf der Edge in <code>clientTrustedIPs</code> — für den Plugin-Bouncer heißt das: keine Prüfung gegen die Sperrliste und keine AppSec. Steht dort wie im Standardfall das gesamte Heimnetz, gilt das für jedes Gerät darin, denn über Split-DNS erreichen LAN-Clients dieselben öffentlichen Namen. Das ist die Konsequenz daraus, das LAN als vertraute Zone zu führen, und es ist gewollt: Sonst sperrt ein Test aus dem eigenen Netz den eigenen Zugang. Der Preis ist, dass ein übernommenes Gerät im Heimnetz — ein Fernseher, ein Telefon — die zentrale Abwehrschicht nicht vor sich hat. Wer das nicht will, trägt dort einzelne Adressen statt des Netzes ein.</li>
     <li><strong>Kein Fernzugriff auf private Dienste.</strong> Bewusster Verzicht statt eines VPN-Endpunkts, der nicht filtern kann (E8) — aber ein realer Funktionsverlust, der bei Bedarf sauber nachgeholt werden muss und nicht schnell nebenbei.</li>
     <li><strong>Knappes RAM-Budget.</strong> Ohne Monitoring-Stack tragfähig, mit nicht.</li>
   </ul>

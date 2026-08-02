@@ -16,6 +16,7 @@ einmal als Regel.
 |---|---|---|
 | 1 | `homelab-base` (lokales Chart) | Namespaces mit Vertrauensstufen, IngressClasses, Default-Deny-NetworkPolicies, StorageClass |
 | 2 | cert-manager, step-ca | Zertifikate: intern für das LAN, step-ca für die Strecke Edge → Cluster |
+| 3 | `homelab-pki` (lokales Chart) | stellt das Serverzertifikat von `ingress-public` aus — im Namespace der CA, damit dort kein Provisioner-Passwort landet, wo Traefik lesen darf (E10) |
 | 3 | Kyverno | erzwingt `ingressClassName: public` nur in gekennzeichneten Namespaces |
 | 4 | `ingress-public`, `ingress-internal` | zwei Traefik-Instanzen, an je eine Adresse gebunden |
 | 5 | CrowdSec | LAPI und Agent für die Anwendungslogs |
@@ -105,18 +106,41 @@ Fingerprint des Wurzelzertifikats prüft. Eine terminierende Zwischenstation
 würde genau diese Prüfung aushebeln — und ein Client-Zertifikat kann die Edge
 zu diesem Zeitpunkt noch nicht haben, sie holt es sich ja gerade.
 
-**Das Serverzertifikat von `ingress-public`** holt sich ein Init-Container mit
-`step-cli` bei step-ca und erneuert es mit einem Sidecar — derselbe
-Mechanismus wie auf der Edge-VM, mit denselben 24 Stunden Laufzeit (E5).
-Erneuert wird über mTLS mit dem noch gültigen Zertifikat; nach jeder
-Erneuerung wird die dynamische Konfiguration angefasst, weil Traefik
-Zertifikatsdateien nur beim Laden der Konfiguration liest.
+**Das Serverzertifikat von `ingress-public`** entsteht dort, wo das
+Provisioner-Passwort ohnehin liegt: im Namespace `step-ca`. Ein CronJob stellt
+es alle sechs Stunden aus und legt es als gewöhnliches TLS-Secret in den
+Namespace des Ingress ([charts/homelab-pki](charts/homelab-pki)). Laufzeit
+sind dieselben 24 Stunden wie beim Client-Zertifikat der Edge (E5).
 
-Der Unterschied zur Edge: Hier liegt das Provisioner-Passwort im Pod. Das ist
-eine bewusste Abweichung — `ingress-public` steht in der vertrauten Zone, und
-der Preis wäre sonst ein Token von Hand bei jedem Pod-Neustart. Wer die
-Abweichung nicht will, entfernt das Secret aus [main.tf](main.tf) und
-bootstrappt den Pod wie die Edge-VM.
+Das ist Entscheidung E10, und der Grund steht direkt daneben im selben Chart:
+Traefik bekommt mit namespaced RBAC **Leserecht auf Secrets in seinem eigenen
+Namespace**. Zwei Absätze weiter oben ist genau das der Grund, warum der
+Wurzel als ConfigMap kopiert wird statt Traefik den Namespace der CA lesen zu
+lassen — dieselbe Überlegung gilt in die andere Richtung. Ein
+Provisioner-Passwort in `traefik-public` wäre nach einer Übernahme des Ingress
+ein Schlüssel zur internen CA gewesen: Zertifikate auf jeden beliebigen Namen,
+insbesondere auf `edge1.dmz`. Damit wäre das Client-Zertifikat als alleiniger
+Türsteher (E5) wertlos, und das Argument aus E2 — der Ingress hat mehr Rechte,
+als man annimmt — hätte sich gegen den eigenen Aufbau gerichtet.
+
+Was jetzt in `traefik-public` liegt, ist der eigene Schlüssel des Ingress. Den
+hat er ohnehin.
+
+| | wo | was liegt dort |
+|---|---|---|
+| Aussteller | Namespace `step-ca` | Provisioner-Passwort, Wurzel, Schlüssel der CA |
+| `ingress-public` | Namespace `traefik-public` | nur das eigene Zertifikat und der öffentliche Wurzel |
+
+Ein Sidecar im Ingress-Pod bemerkt die Rotation und fasst die dynamische
+Konfiguration an — Traefik liest Zertifikatsdateien nur beim Laden der
+Konfiguration. Er kennt weder die CA noch ein Zugangsdatum; er sieht nur den
+Zeitstempel der eingehängten Datei.
+
+Verworfen wurde ein Token-Bootstrap wie auf der Edge-VM: Ein Token lebt fünf
+Minuten. Auf der Edge trägt es ein Mensch ein, hier müsste es alle paar
+Minuten erneuert werden — und ein Pod, der nach einem längeren Ausfall
+startet, fände ein abgelaufenes vor. Der CronJob löst genau das: Im Secret
+liegt immer ein Zertifikat, das höchstens sechs Stunden alt ist.
 
 ## Die zwei Ingress-Controller
 
@@ -188,6 +212,33 @@ Traefik-Charts aktivieren die Dashboard-API auf einem Port, der zwar nicht
 exponiert ist, den aber jeder Pod im Cluster über die Pod-Adresse ansprechen
 könnte.
 
+**Die Zusage gilt auch für die Infrastruktur.** Sie nur für die
+Anwendungs-Namespaces einzulösen wäre die falsche Hälfte gewesen: Freien Egress
+ins Heimnetz hätte damit ausgerechnet `ingress-public` behalten — der Pod, der
+die Verbindungen aus der DMZ beendet, und laut Konzept genau die Komponente,
+deren Rechte man unterschätzt (E2). `egress-no-lan` in
+[charts/homelab-base](charts/homelab-base) begrenzt deshalb den ausgehenden
+Verkehr beider Ingress-Namespaces sowie von cert-manager, step-ca, CrowdSec,
+Kyverno und local-path auf „clusterintern plus öffentliches Internet".
+
+Das ist eine `CiliumNetworkPolicy` und keine gewöhnliche `NetworkPolicy`, und
+zwar aus dem Grund, der zwei Absätze weiter oben steht: Eine NetworkPolicy kann
+Egress nur über `ipBlock` beschreiben, und `ipBlock` greift bei Cilium nicht auf
+`host`, `remote-node` und `kube-apiserver`. Ein Default-Deny daraus würde den
+Weg zur Kubernetes-API mit abschneiden und jeden Controller stillstellen.
+`toEntities` ist das Gegenstück, das die Kubernetes-API nicht kennt.
+
+Die Objekte tragen nur Egress-Regeln. Eine `CiliumNetworkPolicy` ohne
+Ingress-Abschnitt schaltet die Ingress-Durchsetzung nicht ein — die Webhooks von
+Kyverno und cert-manager bleiben unberührt. Das ist Absicht: Kyverno läuft mit
+`failurePolicy: Fail`, ein Fehler an dieser Stelle wäre ein clusterweiter
+Stillstand. Wenn nach dem Anwenden etwas nicht mehr erreichbar ist:
+
+```bash
+kubectl -n kube-system exec ds/cilium -- hubble observe --verdict DROPPED
+kubectl -n traefik-public delete cnp egress-no-lan     # Notbremse
+```
+
 ## CrowdSec
 
 | Komponente | Ort | Aufgabe |
@@ -242,6 +293,12 @@ Ehrlicher Stand — das hier deckt nicht alles ab, was im Konzept steht:
   Bootstrap-Job des step-certificates-Charts. Es schützt den Schlüssel auf der
   Platte, und der liegt im selben Namespace — der Gewinn wäre gering, der
   Hinweis gehört trotzdem hierher.
+- **Ingress-Regeln fehlen für cert-manager und Kyverno.** Beide bekommen
+  `egress-no-lan`, aber kein Default-Deny auf der Eingangsseite. Ihre Webhooks
+  hängen im Admission-Pfad, Kyverno mit `failurePolicy: Fail` — eine falsche
+  Regel dort legt den ganzen Cluster still, und der Gewinn wäre gering, weil
+  beide ohnehin nur clusterintern erreichbar sind. Bewusst offengelassen, nicht
+  übersehen.
 
 ## Betrieb
 
@@ -250,15 +307,16 @@ export KUBECONFIG=../../vm/talos/kubeconfig
 
 kubectl get pods -A
 kubectl -n traefik-public logs deploy/traefik-public -f
-kubectl -n traefik-public logs deploy/traefik-public -c pki-renew   # Zertifikatserneuerung
+kubectl -n step-ca logs -l job-name --tail=50            # Zertifikatsausstellung
+kubectl -n step-ca get cronjob ingress-cert-renew
 kubectl -n crowdsec exec deploy/crowdsec-lapi -- cscli alerts list
 kubectl -n crowdsec exec deploy/crowdsec-lapi -- cscli decisions list
 kubectl -n kyverno get clusterpolicy
 kubectl get policyreport -A                     # was Kyverno gesehen hat
 
 # Zertifikat von ingress-public ansehen
-kubectl -n traefik-public exec deploy/traefik-public -c pki-renew -- \
-  step certificate inspect /pki/tls.crt --short
+kubectl -n traefik-public get secret ingress-public-tls \
+  -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -subject -dates -ext subjectAltName
 
 # Nach jeder Änderung
 terraform apply && verify/assert-platform.sh

@@ -122,6 +122,12 @@ config:
     # der Edge aufzugeben - aber es lässt sich gewichten: kürzere Sperren,
     # damit ein missbrauchter Edge-Agent keine dauerhaften Sperren erzeugt.
     #
+    # Alert.Remediation == true gehört auch hier in den Filter, und zwar aus
+    # demselben Grund wie unten: Ohne diese Bedingung würde das Profil auch
+    # auf Alarme greifen, für die das Szenario gar keine Sperre vorsieht -
+    # ausgerechnet für die Maschine, der weniger vertraut werden soll, wäre
+    # es damit großzügiger als das Standardprofil.
+    #
     # Beim Scharfschalten einmal gegenprüfen, dass der Filter tatsächlich
     # greift - ein Ausdruck, der nie zutrifft, fällt sonst nicht auf:
     #   cscli alerts list --machine ${edge_machine_id}
@@ -129,7 +135,7 @@ config:
     #
     name: edge_agent_lower_trust
     filters:
-      - Alert.GetScope() == "Ip" && Alert.MachineID == "${edge_machine_id}"
+      - Alert.Remediation == true && Alert.GetScope() == "Ip" && Alert.MachineID == "${edge_machine_id}"
     decisions:
       - type: ban
         duration: 1h

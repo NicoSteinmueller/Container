@@ -263,9 +263,13 @@ und `terraform apply`. Der **Firewall**-Bouncer bleibt noch aus.
 
 1. `immich.domain.de` und `cloud.domain.de` per DynDNS auf die eigene IP —
    über den DNS-Anbieter, nicht über MyFRITZ!.
-2. ACME-DNS-Instanz aufsetzen, `_acme-challenge`-CNAMEs anlegen
-   (`terraform output acme_challenge_cnames` in `vm/edge`), Zertifikate erst
-   gegen Staging holen, dann `acme_ca_server` auf Produktion umstellen.
+2. ACME-DNS-Instanz aufsetzen, ihre Adresse als `acme_dns_api_base` in
+   `vm/edge/terraform.tfvars` eintragen und anwenden — ohne diesen Wert legt
+   Traefik den Resolver `acmedns` gar nicht erst an. Danach
+   `_acme-challenge`-CNAMEs anlegen (`terraform output acme_challenge_cnames`
+   in `vm/edge`; das Ziel steht nach dem ersten Lauf in
+   `/var/lib/traefik/acme-dns.json` auf der VM), Zertifikate erst gegen
+   Staging holen, dann `acme_ca_server` auf Produktion umstellen.
 3. Fritzbox: **nur 443/TCP** auf `192.168.178.221`. Port 80 bleibt zu.
 4. **IPv6 getrennt prüfen** — „Host komplett freigeben" öffnet mehr als
    gedacht. UPnP aus, MyFRITZ!-Fernzugriff aus.
@@ -338,7 +342,7 @@ Danach in `vm/edge/terraform.tfvars` den Egress zumachen: Counter lesen
 | Node nicht mehr erreichbar | `admin_sources` falsch → serielle Konsole, siehe vm/talos/README.md |
 | Edge erreicht den Cluster nicht | `vm/edge/verify/egress-test.sh`, dann `talosctl -n … get nftableschains` |
 | ACME schlägt fehl | Zeit (NTP), CNAME-Delegation, Staging-Verzeichnis verwenden |
-| Ingress antwortet nicht | `kubectl -n traefik-public logs deploy/traefik-public`, Zertifikat im Container `pki-renew` ansehen |
+| Ingress antwortet nicht | `kubectl -n traefik-public logs deploy/traefik-public`; fehlt das Secret `ingress-public-tls`, dann `kubectl -n step-ca logs job/ingress-cert-bootstrap` |
 | Alles tot nach Policy-Änderung | `kubectl -n traefik-public delete networkpolicy allow-from-edge` |
 
 ## Was danach noch fehlt

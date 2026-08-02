@@ -10,6 +10,29 @@ Requires=nftables.service
 Type=simple
 User=traefik
 Group=traefik
+%{ if acme_dns_api_base != "" ~}
+
+#
+# Der lego-Provider `acmedns` liest seine beiden Pflichtangaben ausschließlich
+# aus der Umgebung - in traefik.yml lässt sich das nicht ausdrücken. Fehlen
+# sie, legt Traefik den Resolver `acmedns` gar nicht erst an, und jeder Router
+# mit `certResolver: acmedns` bleibt ohne Zertifikat.
+#
+#   ACME_DNS_API_BASE     - die delegierte acme-dns-Instanz. Bewusst nicht der
+#                           DNS-Anbieter: Die Edge bekommt Zugang zu genau
+#                           ihren _acme-challenge-Records, nicht zur Zone
+#                           (Entscheidung E4).
+#   ACME_DNS_STORAGE_PATH - die Kontodaten. Sie liegen unter /var/lib/traefik,
+#                           weil lego sie beim ersten Lauf selbst anlegt und
+#                           das Verzeichnis dem Dienstkonto gehört
+#                           (StateDirectory). /etc/traefik ist für den Prozess
+#                           nur lesbar - dort könnte er die Datei nicht
+#                           schreiben.
+#
+Environment=ACME_DNS_API_BASE=${acme_dns_api_base}
+Environment=ACME_DNS_STORAGE_PATH=${acme_dns_storage}
+%{ endif ~}
+
 ExecStart=/usr/local/bin/traefik --configFile=/etc/traefik/traefik.yml
 ExecReload=/bin/kill -USR1 $MAINPID
 Restart=on-failure

@@ -94,3 +94,50 @@ spec:
                   - websecure
                   - lapi
                   - stepca
+
+    {{/*
+      Dritte Regel, und sie deckt genau die Lücke der zweiten ab: Dort sind
+      die öffentlichen Namespaces ausgenommen, weil `websecure` bei Nextcloud
+      und Immich der Normalfall ist. `lapi` und `stepca` sind es nicht.
+
+      Diese beiden Entrypoints tragen die CrowdSec-Entscheidungsdatenbank und
+      die interne CA - eine IngressRoute darauf aus einem Anwendungs-Namespace
+      könnte die vorhandene Route überstimmen und die Edge-VM auf einen
+      eigenen Dienst umlenken. Beim TCP-Passthrough von step-ca wäre das der
+      Punkt, an dem die Fingerprint-Prüfung der Edge ins Leere liefe.
+
+      Sie gehören deshalb ausschließlich in den Namespace von ingress-public,
+      wo sie charts/homelab-policies selbst anlegt - unabhängig davon, welche
+      Zone der Namespace trägt.
+    */}}
+    - name: dmz-entrypoints-only-in-traefik-public
+      match:
+        any:
+          - resources:
+              kinds:
+                - IngressRoute
+                - IngressRouteTCP
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - {{ .Values.namespaces.traefikPublic }}
+      preconditions:
+        all:
+          - key: {{ `"{{ request.object.spec.entryPoints[] | length(@) }}"` }}
+            operator: GreaterThan
+            value: 0
+      validate:
+        failureAction: Enforce
+        message: >-
+          Die Entrypoints lapi und stepca führen zur CrowdSec-LAPI und zur
+          internen CA. Sie sind nur im Namespace von ingress-public zulässig -
+          auch in öffentlichen Namespaces nicht.
+        deny:
+          conditions:
+            any:
+              - key: {{ `"{{ request.object.spec.entryPoints[] }}"` }}
+                operator: AnyIn
+                value:
+                  - lapi
+                  - stepca
