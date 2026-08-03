@@ -1,0 +1,91 @@
+# Default-Deny: ohne explizite allow-Regel darf whoami weder angesprochen
+# werden noch selbst etwas ansprechen (Zero-Trust innerhalb des Clusters).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: whoami-default-deny
+  namespace: {{ .Values.namespace }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+{{- if .Values.networkPolicy.ingressControllerNamespace }}
+---
+# Erlaubt eingehenden Traffic ausschließlich vom Ingress-Controller der
+# jeweiligen Umgebung (values-<env>.yaml, networkPolicy.ingressControllerNamespace).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: whoami-allow-ingress-from-controller
+  namespace: {{ .Values.namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: whoami
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressControllerNamespace }}
+      ports:
+        - protocol: TCP
+          port: 80
+{{- end }}
+
+{{- if eq .Values.service.type "NodePort" }}
+---
+# Erlaubt eingehenden Traffic für den NodePort-Zugriff aus dem LAN.
+#
+# Bewusst ohne Quellen-Einschränkung (ipBlock auf die Heimnetz-CIDR o.ä.):
+# Bei NodePort-Traffic wertet Cilium ipBlock-Regeln nicht gegen die
+# reservierten Identitäten "host"/"remote-node" aus (siehe dieselbe
+# Einschränkung in k8s/platform/charts/homelab-base/templates/networkpolicies.yaml)
+# - eine vermeintliche IP-Beschränkung hier würde entweder nichts bewirken
+# oder den Zugriff ganz blockieren, je nach externalTrafficPolicy. Whoami ist
+# ein Testdienst ohne schützenswerte Daten; die eigentliche Grenze ist "nur
+# aus dem LAN erreichbar", nicht "nur von bestimmten LAN-Clients".
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: whoami-allow-ingress-nodeport
+  namespace: {{ .Values.namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: whoami
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 80
+{{- end }}
+
+---
+# whoami braucht selbst keine Verbindungen nach außen, außer DNS-Auflösung
+# (z.B. für spätere gesundheits-/Update-Checks). Alles andere bleibt verboten.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: whoami-allow-egress-dns
+  namespace: {{ .Values.namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: whoami
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

@@ -1,44 +1,38 @@
 # k8s/whoami
 
-Kubernetes-Variante des `whoami`-Dienstes, parallel zum bestehenden Docker-Compose-Setup (`whoami/compose*.yml`). Läuft eigenständig in Minikube, ersetzt die Docker-Container nicht.
+Kubernetes-Variante des `whoami`-Dienstes, parallel zum bestehenden Docker-Compose-Setup (`whoami/compose*.yml`). Läuft eigenständig, ersetzt die Docker-Container nicht.
 
-Die Struktur folgt bewusst dem gleichen Muster wie die Compose-Dateien: **`base/`** entspricht `compose.yml` (Grundkonfiguration, gilt überall), **`overlays/`** entsprechen `compose.override.yml`/`compose.prod.yml` (umgebungsspezifische Ergänzungen). [Kustomize](https://kustomize.io) baut daraus die finalen Manifeste zusammen.
+Als Helm-Chart (`chart/`) statt Kustomize – der Grund ist derselbe wie beim Docker-Compose-Setup: mehrere Umgebungen (lokal in Minikube, später weitere), die sich nur in wenigen Werten unterscheiden (Ingress-Controller, Host, IP-Beschränkung). Ein Chart mit `values-<env>.yaml` pro Umgebung bildet das direkter ab als Kustomize-Overlays mit teils dupliziertem YAML.
 
-## `base/` – gilt in jeder Umgebung
-
-| Datei | Zweck |
-|---|---|
-| `namespace.yaml` | Eigener Namespace `whoami` – isoliert den Dienst von anderen. Trägt das Label `pod-security.kubernetes.io/enforce: restricted`, das Kubernetes zwingt, jeden Pod in diesem Namespace gegen den strengsten Sicherheitsstandard zu prüfen (non-root, keine Privilege-Escalation, Capabilities gedroppt etc.) – verstößt ein Pod dagegen, lehnt die API ihn direkt ab. |
-| `deployment.yaml` | Der eigentliche Workload: welches Image (`traefik/whoami:v1.12.0`, per Digest gepinnt), wie viele Replicas, Resource-Limits, Security-Context (read-only Filesystem, non-root User 1000:1000, alle Linux-Capabilities gedroppt, Seccomp `RuntimeDefault`), Liveness-/Readiness-Probes. |
-| `service.yaml` | Stabiler interner DNS-Name (`whoami.whoami.svc.cluster.local`) + Load-Balancing zwischen den Pods. Nur clusterintern erreichbar (`ClusterIP`), kein direkter Außenzugriff. |
-| `networkpolicy.yaml` | Drei Regeln: (1) Default-Deny – ohne explizite Erlaubnis darf nichts rein oder raus, (2) Ingress nur vom Ingress-Controller erlaubt, (3) Egress nur zu CoreDNS (Port 53) erlaubt. **Hinweis:** wird von Minikube aktuell nicht durchgesetzt (fehlendes NetworkPolicy-fähiges CNI), greift aber sobald ins Produktiv-Cluster mit Calico/Cilium gewechselt wird. |
-| `kustomization.yaml` | Fasst die vier Dateien oben zu einer Einheit zusammen, die `overlays/` referenzieren können. |
-
-## `overlays/minikube/` – nur für lokale Tests
+## `chart/` – das Chart
 
 | Datei | Zweck |
 |---|---|
-| `ingress.yaml` | Macht den Service über HTTP von außen (aus dem lokalen Netz) erreichbar unter `whoami.k8s.local`, via NGINX-Ingress-Controller. Kein TLS, keine IP-Beschränkung – reines Testsetup. Erfordert einen `/etc/hosts`-Eintrag auf die Minikube-IP (wird von `ansible/minikube-install.yml` automatisch verwaltet, siehe Variable `k8s_local_hosts`). |
-| `kustomization.yaml` | Nimmt `base/` und ergänzt die minikube-spezifische Ingress. |
+| `Chart.yaml` | Metadaten (Name, Version). |
+| `values.yaml` | Sichere Voreinstellung: kein Ingress, `networkPolicy.ingressControllerNamespace` leer – niemand darf whoami ansprechen, solange keine Umgebung das gezielt öffnet. |
+| `values-minikube.yaml` | Lokales Testsetup: NGINX-Ingress, Host `whoami.k8s.local`, kein TLS. |
+| `values-prod.yaml` | Produktiv-Cluster (talos-cp1). **Aktuell:** `service.type: NodePort` auf Port `30083` – direkt im LAN erreichbar, ohne Ingress/Hostname/TLS. Die Traefik-Ingress-Variante (`ingressClassName: internal`, Host `whoami.nico-steinmueller.de`) steht auskommentiert für den nächsten Schritt bereit. |
+| `templates/namespace.yaml` | Eigener Namespace `whoami`, Label `pod-security.kubernetes.io/enforce: restricted`. |
+| `templates/deployment.yaml` | Workload: Image `traefik/whoami:v1.12.0`, per Digest gepinnt, Security-Context (read-only Filesystem, non-root 1000:1000, alle Capabilities gedroppt, Seccomp `RuntimeDefault`), Liveness-/Readiness-Probes. |
+| `templates/service.yaml` | DNS-Name `whoami.whoami.svc.cluster.local`. `service.type`/`service.nodePort` steuern `ClusterIP` (Default) vs. `NodePort`. |
+| `templates/networkpolicy.yaml` | Default-Deny + Egress nur zu CoreDNS. Ingress erlaubt entweder nur vom `networkPolicy.ingressControllerNamespace` (Ingress-Betrieb) oder – bei `service.type: NodePort` – ohne Quellen-Einschränkung auf Port 80 (Begründung im Template-Kommentar: Cilium wertet ipBlock-Regeln nicht gegen NodePort-Traffic aus). |
+| `templates/ingress.yaml` | Nur gerendert, wenn `ingress.enabled: true`. |
 
-## `overlays/prod/` – Vorbereitung fürs spätere Produktiv-Cluster
+## Warum kein Ingress-Controller-Wert fest im Chart steht
 
-| Datei | Zweck |
-|---|---|
-| `ingress.yaml` | Wie oben, aber mit `whoami.nico-steinmueller.de`, IP-Allowlist `192.168.178.0/24` (Äquivalent zur `local-only`-Traefik-Middleware) und einem TLS-Block, der aktiv wird, sobald cert-manager im Ziel-Cluster installiert ist (aktuell auskommentiert). |
-| `kustomization.yaml` | Nimmt `base/` und ergänzt die Prod-Ingress. |
+`ingressClassName`, Host und die Ingress-Controller-Namespace für die NetworkPolicy unterscheiden sich pro Umgebung (NGINX in Minikube, Traefik im Produktiv-Cluster) – deshalb Werte, keine Vorlage, die pro Umgebung kopiert wird.
 
 ## Deployen
 
-```bash
-# lokal in Minikube
-kubectl apply -k k8s/whoami/overlays/minikube
+**Lokal in Minikube** (kein Flux, direktes `helm`):
 
-# später im Produktiv-Cluster
-kubectl apply -k k8s/whoami/overlays/prod
+```bash
+helm upgrade --install whoami k8s/whoami/chart \
+  -f k8s/whoami/chart/values.yaml \
+  -f k8s/whoami/chart/values-minikube.yaml
 ```
 
-Kustomize baut daraus automatisch alle Objekte (Namespace, Deployment, Service, NetworkPolicies, Ingress) und wendet sie an.
+**Im Produktiv-Cluster (talos-cp1):** über Flux, nicht von Hand – siehe `k8s/flux/clusters/talos-cp1/whoami.yaml` und `k8s/flux/clusters/talos-cp1/README.md`. Push auf `master` reicht. Erreichbar danach unter `http://<node-ip>:30083` aus dem LAN.
 
 ## Sicherheits-Mapping gegenüber Docker Compose
 
@@ -49,7 +43,7 @@ Kustomize baut daraus automatisch alle Objekte (Namespace, Deployment, Service, 
 | `read_only: true` | `readOnlyRootFilesystem: true` |
 | `user: 1000:1000` | `runAsNonRoot`, `runAsUser/Group: 1000` |
 | `deploy.resources.limits` | `resources.requests/limits` |
-| Traefik `ipallowlist` (local-only) | `nginx.ingress.kubernetes.io/whitelist-source-range` |
+| Traefik `ipallowlist` (local-only) | noch offen, siehe unten |
 | – (kein Äquivalent in Compose) | Namespace-PodSecurity „restricted", Default-Deny-NetworkPolicy, `seccompProfile: RuntimeDefault` |
 
-**Offen:** Ob im echten Produktiv-Cluster Traefik (wie aktuell) oder NGINX als Ingress-Controller läuft, ist noch nicht entschieden. `overlays/prod/ingress.yaml` geht aktuell von NGINX aus. Falls ihr bei Traefik bleibt, müsste dort ein `IngressRoute`-CRD statt `Ingress` + NGINX-Annotations verwendet werden.
+**Offen:** Die IP-Beschränkung aus Compose (`local-only`-Middleware) ist noch nicht nachgebildet. Im Produktiv-Cluster reicht `ingressClassName: internal` allein schon dafür, dass whoami nicht aus dem Internet erreichbar ist (nur aus dem LAN über die interne Traefik-Instanz) – das ist aber gröber als eine IP-Allowlist. Eine echte Allowlist bräuchte auf Traefik eine `Middleware`-CRD (`ipAllowList`, per Annotation am Ingress referenziert) statt der NGINX-Annotation `whitelist-source-range`; kommt als eigener Schritt, sobald das irgendwo im Repo gebraucht wird.

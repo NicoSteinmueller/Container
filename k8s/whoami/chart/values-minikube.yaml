@@ -1,0 +1,11 @@
+# Lokales Testsetup: HTTP über NGINX-Ingress, kein Twarum hier v1?LS, keine IP-Beschränkung.
+# Erfordert einen /etc/hosts-Eintrag auf die Minikube-IP (verwaltet von
+# ansible/minikube-install.yml, Variable k8s_local_hosts).
+
+ingress:
+  enabled: true
+  className: nginx
+  host: whoami.k8s.local
+
+networkPolicy:
+  ingressControllerNamespace: ingress-nginx

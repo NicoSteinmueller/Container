@@ -2,11 +2,11 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: whoami
-  namespace: whoami
+  namespace: {{ .Values.namespace }}
   labels:
     app.kubernetes.io/name: whoami
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicaCount }}
   revisionHistoryLimit: 2
   selector:
     matchLabels:
@@ -26,7 +26,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: whoami
-          image: traefik/whoami:v1.12.0@sha256:c4717a8d1f0134a7444e24f881160e033991f23027c6c5a9a3f8fd22e70d1d44
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}@{{ .Values.image.digest }}"
           ports:
             - name: http
               containerPort: 80
@@ -41,12 +41,7 @@ spec:
               drop:
                 - ALL
           resources:
-            requests:
-              cpu: 10m
-              memory: 8Mi
-            limits:
-              cpu: 100m
-              memory: 24Mi
+            {{ toYaml .Values.resources | nindent 12 }}
           livenessProbe:
             httpGet:
               path: /

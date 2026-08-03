@@ -91,14 +91,19 @@ Talos schreibt den kompletten Boot- und Installationsvorgang dorthin.
 
 ## Migration testen
 
-Der `whoami`-Dienst liegt bereits als Kustomize-Overlay vor:
+Der `whoami`-Dienst liegt bereits als Helm-Chart vor (`k8s/whoami/chart`,
+siehe dortiges README):
 
 ```bash
-kubectl apply -k ../../k8s/whoami/overlays/prod
+helm upgrade --install whoami ../../k8s/whoami/chart \
+  -f ../../k8s/whoami/chart/values.yaml \
+  -f ../../k8s/whoami/chart/values-prod.yaml
 ```
 
-Für das Prod-Overlay wird ein Ingress-Controller benötigt – kommt in Schritt 3
-zusammen mit Cilium, Flux und cert-manager.
+Für den Ingress wird ein Ingress-Controller benötigt – kommt in Schritt 3
+zusammen mit Cilium, Flux und cert-manager. Im echten Cluster übernimmt Flux
+das Ausrollen (`k8s/flux/clusters/talos-cp1/whoami.yaml`), hier manuell nur
+zum Testen der Migration.
 
 ## Updates
 
