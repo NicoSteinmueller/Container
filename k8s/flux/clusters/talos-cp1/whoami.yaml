@@ -1,26 +1,35 @@
 #
 # Erster Workload, den Flux tatsächlich ausrollt (siehe README.md in diesem
-# Verzeichnis und k8s/flux/README.md, Abschnitt "Was hier bewusst fehlt").
+# Verzeichnis und k8s/flux/README.md, Abschnitt "Erster Workload: whoami").
 #
-# Bewusst nur base/, nicht overlays/prod: overlays/prod/ingress.yaml geht von
-# einem NGINX-Ingress-Controller aus (ingressClassName: nginx), dieser Cluster
-# hat aber nur die Traefik-basierten IngressClasses "public"/"internal" aus
-# k8s/platform/charts/homelab-base (siehe dortiges "Offen" in
-# k8s/whoami/README.md). Ohne Anpassung würde der Ingress nie ready werden.
-# Schrittweise: erst Deployment/Service/NetworkPolicy zum Laufen bringen,
-# Ingress kommt als eigener Schritt, sobald die IngressClass-Frage geklärt ist.
+# HelmRelease statt Kustomization: k8s/whoami/chart ist ein lokales Chart im
+# selben Repo (chart.spec.sourceRef zeigt auf dieselbe GitRepository, die auch
+# die kustomize-controller-Kustomizations beobachten würden - kein zweites
+# Source-Objekt nötig). valuesFiles wählt die Umgebung; values-prod.yaml
+# setzt ingressClassName: internal, weil dieser Cluster nur die
+# Traefik-basierten IngressClasses "public"/"internal" aus
+# k8s/platform/charts/homelab-base kennt, kein NGINX (siehe values-prod.yaml
+# im Chart).
 #
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
 metadata:
   name: whoami
   namespace: flux-system
 spec:
   interval: 10m
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  path: ./k8s/whoami/base
-  prune: true
-  wait: true
-  timeout: 2m
+  chart:
+    spec:
+      chart: ./k8s/whoami/chart
+      sourceRef:
+        kind: GitRepository
+        name: flux-system
+      valuesFiles:
+        - values.yaml
+        - values-prod.yaml
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3

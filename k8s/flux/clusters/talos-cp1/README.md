@@ -6,23 +6,25 @@ den Cluster aus.
 
 ## `whoami.yaml`
 
-Flux-`Kustomization`, die `k8s/whoami/base` einbindet (Deployment, Service,
-NetworkPolicy, Namespace) - bewusst ohne `overlays/prod`, weil dessen
-`ingress.yaml` von einem NGINX-Ingress-Controller ausgeht
-(`ingressClassName: nginx`). Dieser Cluster hat nur die Traefik-basierten
-IngressClasses `public`/`internal` aus
-`k8s/platform/charts/homelab-base/templates/ingressclasses.yaml` - ein
-NGINX-Ingress würde nie `Ready` werden. Siehe auch den "Offen"-Abschnitt in
-`k8s/whoami/README.md`.
+Flux-`HelmRelease`, die das lokale Chart `k8s/whoami/chart` installiert
+(Deployment, Service, NetworkPolicy, Namespace, Ingress). `chart.spec.chart`
+zeigt auf den Chart-Pfad im selben Repo, `sourceRef` auf dieselbe
+`GitRepository flux-system`, die auch Kustomizations beobachten würden - kein
+zweites Source-Objekt nötig.
 
-Nächster Schritt, sobald whoami sauber läuft: eine Traefik-taugliche
-Ingress-Variante (`ingressClassName: internal`, analog zu Headlamp in
-`k8s/platform/values/headlamp.yaml.tftpl`), dann per weiterer Flux-Ressource
-hier ergänzen.
+`valuesFiles: [values.yaml, values-prod.yaml]` wählt die Umgebung.
+`values-prod.yaml` setzt aktuell `service.type: NodePort` auf Port `30083` -
+erster Schritt, direkt im LAN erreichbar ohne Ingress-Controller. Eine
+Ingress-Variante liegt dort schon auskommentiert bereit (`ingressClassName:
+internal`, da dieser Cluster nur die Traefik-basierten IngressClasses
+`public`/`internal` aus
+`k8s/platform/charts/homelab-base/templates/ingressclasses.yaml` kennt, kein
+NGINX). Details zu den Werten pro Umgebung stehen in `k8s/whoami/README.md`.
 
 Prüfen nach dem Sync:
 
 ```bash
-kubectl -n flux-system get kustomization whoami
+kubectl -n flux-system get helmrelease whoami
 kubectl -n whoami get pods,svc
+curl http://<node-ip>:30083
 ```

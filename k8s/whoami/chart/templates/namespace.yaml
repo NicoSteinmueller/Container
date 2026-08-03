@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: whoami
+  name: {{ .Values.namespace }}
   labels:
     # Pod Security Admission: verweigert jedes Deployment/Pod-Update, das nicht
     # den "restricted" Anforderungen entspricht (non-root, keine Privilege

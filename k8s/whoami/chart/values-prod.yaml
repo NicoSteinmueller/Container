@@ -1,0 +1,29 @@
+# Produktiv-Cluster (talos-cp1).
+#
+# Erster Schritt: NodePort 30083, direkt im LAN erreichbar, ohne
+# Ingress-Controller/TLS/Hostname. Ingress kommt als eigener Schritt (siehe
+# unten) - Traefik statt NGINX, ingressClassName "internal" statt "public",
+# weil dieser Cluster nur die Traefik-basierten IngressClasses
+# "public"/"internal" aus k8s/platform/charts/homelab-base kennt (siehe
+# k8s/platform/charts/homelab-base/templates/ingressclasses.yaml und die
+# Kyverno-Regel restrict-public-ingress-class).
+
+service:
+  type: NodePort
+  nodePort: 30083
+
+# TODO: auf Ingress umstellen, sobald ein Hostname/TLS gebraucht wird.
+# ingress:
+#   enabled: true
+#   className: internal
+#   host: whoami.nico-steinmueller.de
+#   # TODO: aktivieren, sobald cert-manager im Ziel-Cluster installiert ist
+#   # (siehe k8s/platform, cert-manager-Modul)
+#   # annotations:
+#   #   cert-manager.io/cluster-issuer: letsencrypt-prod
+#   # tls:
+#   #   enabled: true
+#   #   secretName: whoami-tls
+#
+# networkPolicy:
+#   ingressControllerNamespace: traefik-internal

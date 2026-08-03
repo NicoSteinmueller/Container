@@ -127,8 +127,9 @@ Komplexität ohne zusätzlichen Nutzen.
 
 ## Erster Workload: whoami
 
-`k8s/flux/clusters/talos-cp1/whoami.yaml` ist die erste Flux-`Kustomization`
-in diesem Verzeichnis - sie rollt `k8s/whoami/base` aus (Deployment, Service,
-NetworkPolicy, Namespace), bewusst ohne Ingress. Details und offene Punkte
-(NGINX- vs. Traefik-IngressClass) stehen in
-`k8s/flux/clusters/talos-cp1/README.md`.
+`k8s/flux/clusters/talos-cp1/whoami.yaml` ist die erste Flux-Ressource in
+diesem Verzeichnis - eine `HelmRelease`, die das lokale Chart
+`k8s/whoami/chart` installiert (Deployment, Service, NetworkPolicy,
+Namespace, Ingress). Details zu Chart, Umgebungs-Values und der
+NGINX/Traefik-Frage stehen in `k8s/flux/clusters/talos-cp1/README.md` und
+`k8s/whoami/README.md`.

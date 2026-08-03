@@ -1,0 +1,41 @@
+# Sichere Voreinstellung: kein Ingress, kein Netzwerkzugriff von außen.
+# Umgebungen aktivieren das gezielt über values-<env>.yaml (siehe README).
+
+namespace: whoami
+
+image:
+  repository: traefik/whoami
+  tag: v1.12.0
+  digest: sha256:c4717a8d1f0134a7444e24f881160e033991f23027c6c5a9a3f8fd22e70d1d44
+
+replicaCount: 1
+
+service:
+  # NodePort für direkten LAN-Zugriff ohne Ingress-Controller (siehe
+  # values-prod.yaml). ClusterIP + Ingress bleibt der Regelfall für alles,
+  # was einen Hostnamen/TLS braucht.
+  type: ClusterIP
+  nodePort: null
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 8Mi
+  limits:
+    cpu: 100m
+    memory: 24Mi
+
+networkPolicy:
+  # Namespace des zuständigen Ingress-Controllers, von dem eingehender
+  # Traffic erlaubt wird. Leer = niemand darf whoami ansprechen, auch nicht
+  # der Ingress-Controller - der sichere Default ohne ingress.enabled.
+  ingressControllerNamespace: ""
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: ""
