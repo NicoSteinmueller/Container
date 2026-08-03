@@ -70,7 +70,7 @@ laufen.
 ## Warum das Secret leer aus Terraform kommt
 
 Dieselbe Regel wie bei step-ca und den Headlamp-Tokens
-(`k8s/platform/README.md`, `k8s/dashboard/main.tf`): Was ein Geheimnis ist,
+(`k8s/platform/README.md`, `k8s/flux/clusters/talos-cp1/headlamp.yaml`): Was ein Geheimnis ist,
 geht nicht durch Terraform-State. Ein PAT als Terraform-Variable wäre im
 Klartext lesbar für jeden mit Zugriff auf die `.tfstate`-Datei - und die
 liegt lokal, nicht in einem verschlüsselten Backend.
@@ -80,13 +80,13 @@ FluxInstance einen gültigen `pullSecret`-Namen referenzieren kann - nur mit
 leeren Platzhaltern für `username`/`password`. Die echten Werte kommen per
 `kubectl patch secret` hinein (siehe oben, `terraform output fill_secret`)
 und gehen damit direkt an die API, nie durch Terraform-State. Headlamp
-(Admin-Token, siehe `k8s/dashboard`) geht alternativ. `lifecycle.ignore_changes
+(Admin-Token, siehe `k8s/flux/clusters/talos-cp1/headlamp.yaml`) geht alternativ. `lifecycle.ignore_changes
 = [data]` auf der Ressource sorgt dafür, dass der nächste `terraform apply`
 diesen Eintrag nicht wieder auf leer zurücksetzt.
 
 ## Sicherheits-Abwägung: NodePort ohne Login
 
-Anders als Headlamp (`k8s/dashboard`), das immer einen Bearer-Token verlangt,
+Anders als Headlamp (`k8s/flux/clusters/talos-cp1/headlamp.yaml`), das immer einen Bearer-Token verlangt,
 hat die Flux-Status-Seite standardmäßig **kein Login**. Sie zeigt dafür weder
 Secrets noch ConfigMaps - nur den Reconciliation-Zustand von GitRepository,
 Kustomization und Co. `service_type = "NodePort"` (Voreinstellung) bedeutet
@@ -112,7 +112,7 @@ Aufbau nicht.
 
 ## Warum kein PodSecurity "restricted" für den Namespace
 
-Headlamp bekommt in `k8s/dashboard` bewusst `restricted` - hier nicht.
+Headlamp bekommt in `k8s/flux/clusters/talos-cp1/headlamp.yaml` bewusst `restricted` - hier nicht.
 Kustomize-controller und helm-controller müssen im Cluster anwenden dürfen,
 was im beobachteten Pfad steht; das ist der Kern von GitOps, keine
 übersehene Härtung. Die eigentliche Kontrolle liegt darin, wer auf
@@ -136,3 +136,11 @@ diesem Verzeichnis - eine `HelmRelease`, die das lokale Chart
 Namespace, Ingress). Details zu Chart, Umgebungs-Values und der
 NGINX/Traefik-Frage stehen in `k8s/flux/clusters/talos-cp1/README.md` und
 `k8s/whoami/README.md`.
+
+## Cluster-Dashboard: Headlamp
+
+`k8s/flux/clusters/talos-cp1/headlamp.yaml` und `metrics-server.yaml` lösen
+das frühere Terraform-Modul `k8s/dashboard` ab - Headlamp läuft jetzt wie
+whoami als Flux-`HelmRelease`, nur mit einer eigenen `HelmRepository` als
+Quelle, weil der Chart fremd ist statt lokal im Repo. Details stehen in
+`k8s/flux/clusters/talos-cp1/README.md`.

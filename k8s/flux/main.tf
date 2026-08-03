@@ -28,7 +28,7 @@ terraform {
 
 #
 # Beide Provider sprechen über die kubeconfig, die vm/talos-simple schreibt.
-# Ein Pfad, kein Wert aus einer anderen Ressource - siehe k8s/dashboard/main.tf
+# Ein Pfad, kein Wert aus einer anderen Ressource - siehe k8s/platform/main.tf
 # für dieselbe Begründung.
 #
 provider "helm" {
@@ -47,9 +47,10 @@ provider "kubernetes" {
 
 #
 # Bewusst ohne pod-security.kubernetes.io/enforce: restricted, anders als bei
-# Headlamp in k8s/dashboard. Kustomize-controller und helm-controller müssen
-# im Cluster anwenden dürfen, was im beobachteten Repo-Pfad steht - das ist
-# der Kern von GitOps, keine übersehene Härtung. Die eigentliche Kontrolle
+# Headlamp (k8s/flux/clusters/talos-cp1/headlamp.yaml). Kustomize-controller
+# und helm-controller müssen im Cluster anwenden dürfen, was im beobachteten
+# Repo-Pfad steht - das ist der Kern von GitOps, keine übersehene Härtung.
+# Die eigentliche Kontrolle
 # liegt darin, wer auf var.git_branch schreiben darf, nicht in PodSecurity.
 #
 resource "kubernetes_namespace" "flux_system" {
@@ -80,8 +81,9 @@ resource "kubernetes_namespace" "flux_system" {
 # gültigen pullSecret-Namen referenzieren kann, und wird per
 # `kubectl patch secret` nachträglich befüllt (siehe outputs.tf,
 # fill_secret) - der Wert geht direkt an die API, nie durch
-# Terraform-State. Headlamp (Admin-Token, siehe k8s/dashboard) geht
-# alternativ, falls gerade kein kubeconfig zur Hand ist.
+# Terraform-State. Headlamp (Admin-Token, siehe
+# k8s/flux/clusters/talos-cp1/headlamp.yaml) geht alternativ, falls gerade
+# kein kubeconfig zur Hand ist.
 #
 # ignore_changes ist deshalb kein Sicherheitsnetz gegen fremde Änderungen,
 # sondern der Grund, warum das überhaupt funktioniert: Ohne die Zeile würde
