@@ -28,3 +28,38 @@ kubectl -n flux-system get helmrelease whoami
 kubectl -n whoami get pods,svc
 curl http://<node-ip>:30083
 ```
+
+## `headlamp.yaml`, `metrics-server.yaml`
+
+Beide Charts kommen aus einem fremden Helm-Repository, nicht aus diesem
+Repo - anders als whoami braucht `chart.spec.sourceRef` deshalb eine eigene
+`HelmRepository` statt der `GitRepository flux-system`.
+
+`headlamp.yaml` bringt zusätzlich Namespace und RBAC als eigene Manifeste
+mit (Namespace `headlamp` mit PodSecurity "restricted", ServiceAccount
+`headlamp` mit reinen Leserechten, ein zweiter `headlamp-admin` mit
+`cluster-admin` aber ohne Pod und ohne Token) - das Chart selbst würde den
+Namespace unbeschriftet anlegen und seinen ServiceAccount ab Werk an
+`cluster-admin` binden. Details und die Abwägung dahinter stehen als
+Kommentare in der Datei.
+
+`metrics-server.yaml` ist die Datenquelle für die Auslastungsanzeigen in
+Headlamp, läuft in `kube-system` mit `--kubelet-insecure-tls` (siehe
+Kommentare dort - `vm/talos-simple` hat kein `serverTLSBootstrap`).
+
+Zugang zu Headlamp: `service.type: NodePort` auf Port `30080` - HTTP, nicht
+HTTPS, vertretbar im eigenen LAN (dieser Cluster hat weder
+Ingress-Controller noch cert-manager). Anmeldung per Token:
+
+```bash
+kubectl -n headlamp create token headlamp --duration=8h        # Lesen
+kubectl -n headlamp create token headlamp-admin --duration=1h  # Ändern
+```
+
+Prüfen nach dem Sync:
+
+```bash
+kubectl -n flux-system get helmrelease headlamp metrics-server
+kubectl -n headlamp get pods,svc
+curl http://<node-ip>:30080
+```
