@@ -1,0 +1,45 @@
+cluster:
+  #
+  # Ein-Node-Cluster: Ohne das trägt Talos den NoSchedule-Taint auf die Control
+  # Plane, und es gäbe keinen Node, auf dem Workloads laufen könnten. Kommen
+  # später Worker dazu, gehört diese Zeile weg.
+  #
+  allowSchedulingOnControlPlanes: true
+
+  network:
+    podSubnets:
+      - ${pod_subnet}
+    serviceSubnets:
+      - ${service_subnet}
+
+  #
+  # Cluster-Member-Discovery komplett aus. Beide Registries scheiden aus:
+  #
+  #   service    - meldet Cluster-Metadaten (Cluster-ID, Node-IPs, Talos-
+  #                Version) an den öffentlichen Endpoint discovery.talos.dev.
+  #                Clientseitig verschlüsselt, verlässt aber das eigene Netz.
+  #
+  #   kubernetes - laut Talos-Doku deprecated und "not compatible with
+  #                Kubernetes 1.32+" (siderolabs/talos#9980). Der
+  #                KubernetesPullController listet Nodes mit der
+  #                Kubelet-Identität system:node:<name>, was der Node-Authorizer
+  #                per Design verbietet. Mit den Talos-Defaults erzeugt das auf
+  #                Kubernetes 1.36 eine Endlosschleife aus "nodes is
+  #                forbidden"-Warnungen.
+  #
+  # Für den Betrieb ist Discovery nicht nötig - Nodes treten über ihre
+  # Machine-Config bei. Es entfallen nur `talosctl get members` und KubeSpan.
+  #
+  # Zwei Dinge dabei: Das globale enabled:false allein stoppt den
+  # KubernetesPullController nicht, die Registries müssen einzeln abgeschaltet
+  # werden. Und die Änderung greift erst nach einem Reboot - die Config ist
+  # zwar sofort live, der laufende Controller wird aber nicht beendet.
+  #
+  discovery:
+    enabled: false
+
+    registries:
+      kubernetes:
+        disabled: true
+      service:
+        disabled: true

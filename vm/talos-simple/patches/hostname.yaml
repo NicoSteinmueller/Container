@@ -1,0 +1,31 @@
+#
+# Entfernt das automatisch erzeugte HostnameConfig-Dokument.
+#
+# Talos 1.13 legt bei der Config-Erzeugung von sich aus eines an:
+#
+#   apiVersion: v1alpha1
+#   kind: HostnameConfig
+#   auto: stable
+#
+# Der Hostname dieses Nodes steht aber in patches/node.yaml.tftpl unter
+# machine.network.hostname, und beides zusammen lehnt Talos beim Anwenden ab:
+#
+#   rpc error: code = InvalidArgument desc = 1 error occurred:
+#     * static hostname is already set in v1alpha1 config
+#
+# Überschreiben hilft nicht: Patches werden in das vorhandene Dokument
+# hineingemischt, und `auto` und `hostname` schließen sich gegenseitig aus -
+# das Ergebnis wäre bloß der nächste Validierungsfehler:
+#
+#   HostnameConfig: 'auto' and 'hostname' cannot be set at the same time
+#
+# Deshalb das ganze Dokument löschen. Dieser Patch muss NACH node.yaml.tftpl
+# kommen.
+#
+# Warum überhaupt ein fester Name: Er wird zum Kubernetes-Node-Namen und taucht
+# damit in den Kubelet-Zertifikaten und in etcd wieder auf. `auto: stable`
+# leitet ihn aus der Maschine ab - stabil, aber nicht vorhersagbar.
+#
+apiVersion: v1alpha1
+kind: HostnameConfig
+$patch: delete
