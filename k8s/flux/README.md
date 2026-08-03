@@ -1,0 +1,134 @@
+# Flux (GitOps) für talos-simple
+
+Push auf `master` soll ausrollen, ohne dass jemand `kubectl apply` von Hand
+tippt - dasselbe Automatisierungsgefühl, das Portainer bislang für die
+Compose-Stacks liefert. Dieses Modul installiert dafür Flux Operator und
+richtet eine `FluxInstance` ein, die dieses Repo beobachtet.
+
+## Warum Flux Operator und nicht Capacitor/Weave GitOps/`flux bootstrap`
+
+Eine Recherche im August 2026 hat die Ausgangslage verschoben:
+
+- **Capacitor** ist inzwischen ein lokales Binary (liest kubeconfig wie
+  `talosctl`), kein In-Cluster-Deployment mehr - keine NodePort-fähige
+  Oberfläche.
+- **Weave GitOps** ist seit der Weaveworks-Schließung 2024 ohne neue
+  Releases, u.a. mit einem bekannten Bug bei HelmRelease v2.
+- **Flux Operator** (`controlplaneio-fluxcd/flux-operator`, AGPL-3.0, von den
+  Flux-Kernmaintainern bei ControlPlane) bringt seit Flux 2.8 (GA Februar
+  2026) eine offizielle, aktiv gepflegte Web-Oberfläche mit ("Flux Status
+  Page", Port 9080) - read-only, zeigt keine Secrets/ConfigMaps.
+
+Der Operator ersetzt zugleich den klassischen `flux bootstrap`/
+`terraform-provider-flux`-Weg: Eine einzige `FluxInstance`-Ressource
+beschreibt Distribution, Komponenten und Git-Sync; der Operator installiert
+und pflegt die eigentlichen Flux-Controller selbst, statt dass Terraform
+Manifeste ins Repo zurückschreibt.
+
+## Anwenden
+
+```bash
+cd k8s/flux
+cp terraform.tfvars.example terraform.tfvars   # bei Bedarf anpassen
+terraform init
+terraform apply
+```
+
+**Zwei Durchläufe können nötig sein.** `kubernetes_manifest.flux_instance`
+braucht die CRD, die erst `helm_release.flux_operator` mitbringt - Terraform
+validiert das Manifest beim Planen gegen das CRD-Schema im Cluster. Schlägt
+der erste `apply` deshalb an der FluxInstance fehl, ist das kein Fehler im
+Modul: `terraform apply` einfach ein zweites Mal ausführen. Dasselbe Muster
+beschreibt `k8s/platform/README.md` für `data.kubernetes_config_map.step_ca_certs`.
+
+Terraform legt das Secret `flux-git-auth` an, aber **leer** - die Werte
+selbst trägt niemand über Terraform ein (siehe unten, "Warum das Secret
+leer aus Terraform kommt"). Eintragen über Headlamp:
+
+```bash
+terraform output fill_secret
+```
+
+liefert die Schritte. `<PAT>` ist ein GitHub Personal Access Token,
+fein-scoped auf genau dieses Repo (`NicoSteinmueller/Container`), zunächst nur
+mit Lesezugriff (Contents: Read) - Schreibrechte kommen erst dazu, falls
+später der image-automation-controller Tags im Repo aktualisieren soll.
+
+Prüfen:
+
+```bash
+terraform output status_commands
+terraform output access
+```
+
+Ein grüner Zustand heißt: `fluxinstance/flux` zeigt `Ready`, die
+`GitRepository flux-system` ebenso (erst nach dem Secret), alle Flux-Pods
+laufen.
+
+## Warum das Secret leer aus Terraform kommt
+
+Dieselbe Regel wie bei step-ca und den Headlamp-Tokens
+(`k8s/platform/README.md`, `k8s/dashboard/main.tf`): Was ein Geheimnis ist,
+geht nicht durch Terraform-State. Ein PAT als Terraform-Variable wäre im
+Klartext lesbar für jeden mit Zugriff auf die `.tfstate`-Datei - und die
+liegt lokal, nicht in einem verschlüsselten Backend.
+
+Das Objekt `kubernetes_secret.flux_git_auth` existiert trotzdem, damit die
+FluxInstance einen gültigen `pullSecret`-Namen referenzieren kann - nur mit
+leeren Platzhaltern für `username`/`password`. Die echten Werte kommen über
+Headlamp hinein (Admin-Token, siehe `k8s/dashboard`) und gehen damit direkt
+an die API, nie durch Terraform-State. `lifecycle.ignore_changes = [data]`
+auf der Ressource sorgt dafür, dass der nächste `terraform apply` diesen
+Eintrag nicht wieder auf leer zurücksetzt.
+
+## Sicherheits-Abwägung: NodePort ohne Login
+
+Anders als Headlamp (`k8s/dashboard`), das immer einen Bearer-Token verlangt,
+hat die Flux-Status-Seite standardmäßig **kein Login**. Sie zeigt dafür weder
+Secrets noch ConfigMaps - nur den Reconciliation-Zustand von GitRepository,
+Kustomization und Co. `service_type = "NodePort"` (Voreinstellung) bedeutet
+also: jeder im Heimnetz sieht diesen Zustand ohne jede Anmeldung. Kein
+Zugriff auf Zugangsdaten, aber explizit weniger Kontrolle als beim Dashboard.
+
+Auf `service_type = "ClusterIP"` wechseln, wenn das nicht reichen soll - dann
+läuft der Zugang über
+
+```bash
+kubectl -n flux-system port-forward svc/flux-operator 9080:9080
+```
+
+und ist damit TLS-geschützt durch den API-Server, wie bei Headlamp.
+
+**SSO/OIDC für diese UI nicht aktivieren, ohne vorher den Patch-Stand von
+flux-operator zu prüfen** - es gab dazu bereits eine Sicherheitslücke
+(GHSA-4xh5-jcj2-ch8q / CVE-2026-23990): Bei leeren OIDC-Claims lief die
+Impersonation ins Leere, und Aktionen wurden mit den Rechten des
+Flux-Operator-ServiceAccounts statt den eingeschränkten Rechten des
+angemeldeten Nutzers ausgeführt. Ohne SSO-Konfiguration betrifft das diesen
+Aufbau nicht.
+
+## Warum kein PodSecurity "restricted" für den Namespace
+
+Headlamp bekommt in `k8s/dashboard` bewusst `restricted` - hier nicht.
+Kustomize-controller und helm-controller müssen im Cluster anwenden dürfen,
+was im beobachteten Pfad steht; das ist der Kern von GitOps, keine
+übersehene Härtung. Die eigentliche Kontrolle liegt darin, wer auf
+`var.git_branch` (Voreinstellung `master`) schreiben darf - nicht in
+PodSecurity-Labels auf `flux-system`.
+
+## Warum `cluster.multitenant = false`
+
+Ein einzelner Autor schreibt auf `master` - dieselbe Vertrauensbasis, die
+bislang für Portainers Auto-Deploy galt. Mit `multitenant: true` schränkt
+sich `kustomize-controller` von selbst auf definierte Service-Accounts pro
+Namespace ein; sinnvoll, sobald mehr als eine Quelle (mehrere Repos, mehrere
+Autoren) auf diesen Cluster schreibt. Bis dahin wäre es zusätzliche
+Komplexität ohne zusätzlichen Nutzen.
+
+## Was hier bewusst fehlt
+
+`k8s/flux/clusters/talos-cp1/` ist aktuell **absichtlich leer** (nur ein
+README) - `var.sync_path` zeigt zwar dorthin, aber Flux rollt von dort noch
+nichts aus. Erster Schritt war nur Flux selbst und die Status-Seite, im
+"schrittweise"-Stil des restlichen Repos. Nächster Schritt: eine
+`Kustomization` in diesem Verzeichnis, die z.B. `k8s/whoami` einbindet.

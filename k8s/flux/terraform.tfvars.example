@@ -1,0 +1,23 @@
+#
+# Kopieren nach terraform.tfvars und anpassen. Ohne die Datei laufen die
+# Voreinstellungen aus variables.tf - die passen für den Cluster aus
+# vm/talos-simple und dieses Repo.
+#
+
+# Cluster aus vm/talos-simple. Anderer Pfad nur, wenn Flux woandershin soll.
+# kubeconfig_path = "../../vm/talos-simple/kubeconfig"
+
+#
+# Git-Quelle. Voreingestellt ist dieses Repo auf master, Pfad
+# k8s/flux/clusters/talos-cp1 - aktuell absichtlich leer, siehe README.
+#
+# git_url    = "https://github.com/NicoSteinmueller/Container.git"
+# git_branch = "master"
+# sync_path  = "k8s/flux/clusters/talos-cp1"
+
+#
+# Zugang zur Flux-Status-Seite. Voreingestellt ist NodePort 30081 - ohne
+# Login erreichbar, siehe README für die Abwägung gegenüber ClusterIP.
+#
+# service_type = "NodePort"
+# node_port    = 30081
