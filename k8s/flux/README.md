@@ -43,16 +43,18 @@ beschreibt `k8s/platform/README.md` für `data.kubernetes_config_map.step_ca_cer
 
 Terraform legt das Secret `flux-git-auth` an, aber **leer** - die Werte
 selbst trägt niemand über Terraform ein (siehe unten, "Warum das Secret
-leer aus Terraform kommt"). Eintragen über Headlamp:
+leer aus Terraform kommt"). Eintragen per kubectl:
 
 ```bash
 terraform output fill_secret
 ```
 
-liefert die Schritte. `<PAT>` ist ein GitHub Personal Access Token,
-fein-scoped auf genau dieses Repo (`NicoSteinmueller/Container`), zunächst nur
-mit Lesezugriff (Contents: Read) - Schreibrechte kommen erst dazu, falls
-später der image-automation-controller Tags im Repo aktualisieren soll.
+liefert den `kubectl patch secret`-Befehl (Headlamp als Alternative, falls
+gerade kein kubeconfig zur Hand ist). `<PAT>` ist ein GitHub Personal
+Access Token, fein-scoped auf genau dieses Repo
+(`NicoSteinmueller/Container`), zunächst nur mit Lesezugriff (Contents:
+Read) - Schreibrechte kommen erst dazu, falls später der
+image-automation-controller Tags im Repo aktualisieren soll.
 
 Prüfen:
 
@@ -75,11 +77,12 @@ liegt lokal, nicht in einem verschlüsselten Backend.
 
 Das Objekt `kubernetes_secret.flux_git_auth` existiert trotzdem, damit die
 FluxInstance einen gültigen `pullSecret`-Namen referenzieren kann - nur mit
-leeren Platzhaltern für `username`/`password`. Die echten Werte kommen über
-Headlamp hinein (Admin-Token, siehe `k8s/dashboard`) und gehen damit direkt
-an die API, nie durch Terraform-State. `lifecycle.ignore_changes = [data]`
-auf der Ressource sorgt dafür, dass der nächste `terraform apply` diesen
-Eintrag nicht wieder auf leer zurücksetzt.
+leeren Platzhaltern für `username`/`password`. Die echten Werte kommen per
+`kubectl patch secret` hinein (siehe oben, `terraform output fill_secret`)
+und gehen damit direkt an die API, nie durch Terraform-State. Headlamp
+(Admin-Token, siehe `k8s/dashboard`) geht alternativ. `lifecycle.ignore_changes
+= [data]` auf der Ressource sorgt dafür, dass der nächste `terraform apply`
+diesen Eintrag nicht wieder auf leer zurücksetzt.
 
 ## Sicherheits-Abwägung: NodePort ohne Login
 

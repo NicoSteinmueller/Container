@@ -15,22 +15,22 @@ output "access" {
 #
 # Terraform legt kubernetes_secret.flux_git_auth leer an - die Werte trägt
 # niemand hier ein (siehe main.tf). Dieser Output beschreibt nur noch den
-# Weg über Headlamp, nicht mehr den Inhalt.
+# Weg, sie nachträglich einzutragen, nicht mehr den Inhalt.
 #
 output "fill_secret" {
   description = "Ohne echte Werte im Secret bleibt die GitRepository-Quelle \"Unknown\"."
   value       = <<-EOT
-    Eintragen über Headlamp:
+    Eintragen per kubectl (braucht Zugriff auf das kubeconfig aus
+    var.kubeconfig_path):
+
+      kubectl -n ${var.namespace} patch secret ${var.git_secret_name} --type=merge \
+        -p '{"stringData":{"username":"git","password":"<GitHub PAT, fein-scoped auf genau dieses Repo, zunächst nur Contents: Read>"}}'
+
+    Alternativ über Headlamp, wenn gerade kein kubeconfig zur Hand ist:
 
       1. Admin-Token holen: kubectl -n headlamp create token headlamp-admin --duration=1h
       2. In Headlamp: Secrets -> Namespace ${var.namespace} -> ${var.git_secret_name} -> Edit
-      3. username = git, password = <GitHub PAT, fein-scoped auf genau dieses
-         Repo, zunächst nur Contents: Read>
-
-    Alternativ per kubectl, wenn Headlamp gerade nicht zur Hand ist:
-
-      kubectl -n ${var.namespace} patch secret ${var.git_secret_name} --type=merge \
-        -p '{"stringData":{"username":"git","password":"<PAT>"}}'
+      3. username = git, password = <GitHub PAT, siehe oben>
   EOT
 }
 
