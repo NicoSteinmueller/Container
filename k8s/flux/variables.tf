@@ -44,7 +44,8 @@ variable "git_url" {
 variable "git_branch" {
   description = "Branch, den Flux synchronisiert."
   type        = string
-  default     = "master"
+  # TODO auf "main" umstellen, sobald das Repo umgestellt ist.
+  default     = "kubernetes-try"
 }
 
 variable "sync_path" {

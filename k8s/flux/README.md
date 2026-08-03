@@ -125,10 +125,10 @@ Namespace ein; sinnvoll, sobald mehr als eine Quelle (mehrere Repos, mehrere
 Autoren) auf diesen Cluster schreibt. Bis dahin wäre es zusätzliche
 Komplexität ohne zusätzlichen Nutzen.
 
-## Was hier bewusst fehlt
+## Erster Workload: whoami
 
-`k8s/flux/clusters/talos-cp1/` ist aktuell **absichtlich leer** (nur ein
-README) - `var.sync_path` zeigt zwar dorthin, aber Flux rollt von dort noch
-nichts aus. Erster Schritt war nur Flux selbst und die Status-Seite, im
-"schrittweise"-Stil des restlichen Repos. Nächster Schritt: eine
-`Kustomization` in diesem Verzeichnis, die z.B. `k8s/whoami` einbindet.
+`k8s/flux/clusters/talos-cp1/whoami.yaml` ist die erste Flux-`Kustomization`
+in diesem Verzeichnis - sie rollt `k8s/whoami/base` aus (Deployment, Service,
+NetworkPolicy, Namespace), bewusst ohne Ingress. Details und offene Punkte
+(NGINX- vs. Traefik-IngressClass) stehen in
+`k8s/flux/clusters/talos-cp1/README.md`.
