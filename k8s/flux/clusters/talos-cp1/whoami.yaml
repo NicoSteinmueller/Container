@@ -6,10 +6,12 @@
 # selben Repo (chart.spec.sourceRef zeigt auf dieselbe GitRepository, die auch
 # die kustomize-controller-Kustomizations beobachten würden - kein zweites
 # Source-Objekt nötig). valuesFiles wählt die Umgebung; values-prod.yaml
-# setzt ingressClassName: internal, weil dieser Cluster nur die
-# Traefik-basierten IngressClasses "public"/"internal" aus
-# k8s/platform/charts/homelab-base kennt, kein NGINX (siehe values-prod.yaml
-# im Chart).
+# setzt aktuell den NodePort-Zugriff (siehe k8s/whoami/README.md).
+#
+# valuesFiles-Pfade sind relativ zur Wurzel der GitRepository, NICHT relativ
+# zu chart.spec.chart - deshalb der volle Pfad ab k8s/whoami/chart/ statt nur
+# des Dateinamens. Ohne das: "values files merge error: no values file found
+# at path '/values.yaml'" (HelmChart sucht an der Repo-Wurzel).
 #
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -25,8 +27,8 @@ spec:
         kind: GitRepository
         name: flux-system
       valuesFiles:
-        - values.yaml
-        - values-prod.yaml
+        - k8s/whoami/chart/values.yaml
+        - k8s/whoami/chart/values-prod.yaml
   install:
     remediation:
       retries: 3
