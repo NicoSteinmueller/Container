@@ -31,6 +31,28 @@ variable "headlamp_chart_version" {
 }
 
 #
+# Metriken
+#
+variable "metrics_server_enabled" {
+  description = <<-EOT
+    metrics-server installieren. Quelle für `kubectl top` und die
+    Auslastungsanzeigen (CPU, Speicher) im Dashboard.
+
+    Läuft mit --kubelet-insecure-tls, weil vm/talos-simple kein
+    serverTLSBootstrap setzt - siehe values/metrics-server.yaml für die
+    Abwägung dahinter.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "metrics_server_chart_version" {
+  description = "Chart-Version von metrics-server."
+  type        = string
+  default     = "3.13.1"
+}
+
+#
 # Der Weg hinein
 #
 # Dieser Cluster hat weder Ingress-Controller noch cert-manager - es gibt also

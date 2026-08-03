@@ -28,3 +28,10 @@ cluster_name = "talos-cp1"
 # Dashboard ausschließlich gelesen werden soll.
 #
 admin_service_account = true
+
+#
+# metrics-server für die Auslastungsanzeigen. Läuft mit --kubelet-insecure-tls,
+# siehe values/metrics-server.yaml. Auf false, wenn das nicht vertretbar ist -
+# dann bleiben CPU- und Speicheranzeigen im Dashboard leer.
+#
+# metrics_server_enabled = true

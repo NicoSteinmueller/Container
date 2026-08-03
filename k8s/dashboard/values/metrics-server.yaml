@@ -1,0 +1,53 @@
+#
+# metrics-server für talos-simple.
+#
+# Anders als in k8s/platform steht hier --kubelet-insecure-tls.
+#
+# Der sichere Weg dort - ein echtes Kubelet-Serverzertifikat statt eines
+# selbstsignierten, ausgestellt über einen CSR, den kubelet-csr-approver
+# genehmigt - setzt serverTLSBootstrap in der Talos-Machine-Config voraus.
+# Genau das fehlt in vm/talos-simple bewusst; siehe dessen README unter "Was
+# hier bewusst fehlt". Ohne serverTLSBootstrap bleibt das Kubelet-Zertifikat
+# selbstsigniert, und metrics-server kann es nicht gegen eine bekannte CA
+# prüfen - der Abruf schlägt mit "x509: certificate signed by unknown
+# authority" fehl.
+#
+# --kubelet-insecure-tls verzichtet auf genau diese Prüfung. Die Verbindung
+# bleibt verschlüsselt, aber ungeprüft: Ein Angreifer mit Stellung im
+# Node-Netz (10.244.0.0/16 bzw. das Heimnetz selbst) könnte sich als Kubelet
+# ausgeben. Für den Ein-Node-Aufbau im eigenen LAN ist das vertretbar - es
+# ist aber der Punkt, der beim Umstieg auf serverTLSBootstrap (und die
+# CSR-Approver-Kette aus k8s/platform) als Erstes wieder verschwinden sollte.
+#
+
+replicas: 1
+
+podDisruptionBudget:
+  enabled: false
+
+defaultArgs:
+  - --cert-dir=/tmp
+  - --kubelet-preferred-address-types=InternalIP
+  - --kubelet-use-node-status-port
+  - --metric-resolution=15s
+  - --kubelet-insecure-tls
+
+args: []
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  seccompProfile:
+    type: RuntimeDefault
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 40m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
