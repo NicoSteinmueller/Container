@@ -25,7 +25,8 @@ terraform apply
 Voreingestellt: Namespace `headlamp` mit PodSecurity "restricted", ein
 ServiceAccount `headlamp` mit reinen Leserechten (`view` plus ein paar
 clusterweite Ressourcen), ein zweiter `headlamp-admin` mit `cluster-admin`
-aber ohne Pod und ohne Token.
+aber ohne Pod und ohne Token, dazu metrics-server für die
+Auslastungsanzeigen.
 
 ## Zugang
 
@@ -53,15 +54,29 @@ Alternative für den Aufruf aus dem Heimnetz ohne kubectl:
 als unverschlüsseltes HTTP übers LAN - siehe die Abwägung in
 [`variables.tf`](variables.tf).
 
+## Metriken
+
+`kubectl top node` / `kubectl top pods` und die Auslastungsanzeigen im
+Dashboard laufen über metrics-server, standardmäßig installiert
+(`metrics_server_enabled = true`).
+
+Wichtiger Unterschied zu [`k8s/platform`](../platform/): Dort holt sich das
+Kubelet ein echtes, CSR-genehmigtes Serverzertifikat
+(`serverTLSBootstrap` + `kubelet-csr-approver`), hier nicht - das fehlt in
+`vm/talos-simple` bewusst (siehe dessen README). Ohne dieses Zertifikat kann
+metrics-server dem Kubelet nicht vertrauen und läuft deshalb mit
+`--kubelet-insecure-tls`. Die Abwägung dahinter steht in
+[`values/metrics-server.yaml`](values/metrics-server.yaml).
+
 ## Was hier bewusst fehlt
 
 - **Ingress, TLS, ein eigener Name.** Kommt mit dem Plattform-Stack aus
   [`k8s/platform`](../platform/) und ersetzt Port-Forward bzw. NodePort.
 - **OIDC gegen Keycloak.** Die Werte-Datei legt dafür vor
   (`config.oidc.secret.create: false`), aber es fehlt noch die Anbindung.
-- **metrics-server.** Die RBAC-Regel für `metrics.k8s.io` steht schon bereit,
-  wirkt aber erst, wenn ein metrics-server im Cluster läuft - die
-  Auslastungsanzeigen bleiben bis dahin leer.
+- **Geprüftes Kubelet-Zertifikat für metrics-server.** Kommt erst mit
+  `serverTLSBootstrap` in `vm/talos-simple` und einem CSR-Approver - siehe
+  oben.
 
 ## Aufräumen
 

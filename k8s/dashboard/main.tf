@@ -303,6 +303,37 @@ resource "kubernetes_cluster_role_binding" "admin" {
 }
 
 # =====================================================================
+# Metriken
+# =====================================================================
+
+#
+# metrics-server - Quelle für `kubectl top` und für die Auslastungsanzeigen
+# (CPU, Speicher) im Dashboard. Ohne ihn bleiben die entsprechenden Felder in
+# Headlamp leer, obwohl die RBAC-Regel für metrics.k8s.io schon bereitsteht
+# (kubernetes_cluster_role.cluster_read oben).
+#
+# Läuft in kube-system, nicht in einem eigenen Namespace: Er meldet sich als
+# APIService v1beta1.metrics.k8s.io an, der kube-apiserver reicht Anfragen an
+# ihn weiter. Ein eigener Namespace mit Default-Deny-Policies müsste genau
+# diesen Weg wieder öffnen - und hier gibt es ohnehin noch keine
+# NetworkPolicies, die das beträfe.
+#
+resource "helm_release" "metrics_server" {
+  count = var.metrics_server_enabled ? 1 : 0
+
+  name       = "metrics-server"
+  repository = "https://kubernetes-sigs.github.io/metrics-server/"
+  chart      = "metrics-server"
+  version    = var.metrics_server_chart_version
+  namespace  = "kube-system"
+
+  wait    = true
+  timeout = 300
+
+  values = [file("${path.module}/values/metrics-server.yaml")]
+}
+
+# =====================================================================
 # Dashboard
 # =====================================================================
 
