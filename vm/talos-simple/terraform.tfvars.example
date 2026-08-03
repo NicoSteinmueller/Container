@@ -1,0 +1,76 @@
+#
+# Kopieren nach terraform.tfvars und anpassen.
+#
+# Die Werte hier sind die für diesen Unraid-Host gemessenen, nicht geratene
+# Defaults - gegengeprüft mit `ip -br link`, `virsh pool-list --all` und
+# `ls /usr/share/qemu/ovmf-x64/` auf dem Host.
+#
+
+# --- libvirt -----------------------------------------------------------
+#
+# WICHTIG: Ohne diese Zeile läuft alles gegen den libvirt der eigenen
+# Arbeitsstation statt gegen Unraid.
+#
+libvirt_uri = "qemu+ssh://root@192.168.178.3/system"
+
+# Lokaler Testlauf stattdessen:
+# libvirt_uri = "qemu:///system"
+
+#
+# Der Pool existiert auf diesem Host bereits (angelegt von vm/edge), deshalb
+# bleibt manage_pool aus. Läuft dieses Modul allein, stattdessen:
+#   manage_pool = true
+#   pool_path   = "/mnt/cache/domains"
+#
+libvirt_pool = "homelab"
+
+#
+# UEFI-Firmware. Auf Unraid zwingend: Der mitgelieferte libvirt-Deskriptor nennt
+# als NVRAM-Vorlage /usr/share/qemu/edk2-i386-vars.fd, und genau diese Datei
+# fehlt im Paket. Ohne die beiden Zeilen scheitert der Start mit
+#   Failed to open file '/usr/share/qemu/edk2-i386-vars.fd'
+#
+efi_loader        = "/usr/share/qemu/ovmf-x64/OVMF_CODE-pure-efi.fd"
+efi_vars_template = "/usr/share/qemu/ovmf-x64/OVMF_VARS-pure-efi.fd"
+
+# Lokaler Testlauf: beide Zeilen weglassen, dann sucht libvirt die Firmware
+# selbst aus.
+
+# --- Netz --------------------------------------------------------------
+#
+# Auf diesem Host ist Bridging abgeschaltet - `ip -br link` zeigt bond0 und
+# vhost0, aber kein br0. Also macvtap auf dem physischen Interface.
+#
+# Folge: Das LAN erreicht die VM und die VM das LAN, aber der Unraid-Host
+# selbst und die VM sehen einander nicht.
+#
+lan_macvtap_dev = "bond0"
+
+# Unraid mit Bridging stattdessen:
+# lan_bridge = "br0"
+# Lokaler Testlauf ohne beides:
+# lan_libvirt_network = "default"
+
+lan_cidr    = "192.168.178.0/24"
+lan_ip      = "192.168.178.230"
+lan_gateway = "192.168.178.1"
+
+# Fritzbox als Resolver - ein Baustein weniger, der beim ersten Aufbau kaputt
+# sein kann. Auf den AdGuard-Container umstellen, sobald der Cluster steht:
+# dns_servers = ["192.168.178.4"]
+dns_servers = ["192.168.178.1"]
+ntp_servers = ["192.168.178.1"]
+
+# --- Dimensionierung ---------------------------------------------------
+#
+# Der Host hatte bei der Messung rund 7 GB `available`, während Nextcloud,
+# Immich und Paperless noch als Container laufen. 4 GB tragen den leeren
+# Cluster bequem; vor jeder Erhöhung `free -m` auf dem Host gegenprüfen.
+#
+vm_memory_mib = 4096
+vm_vcpu       = 4
+vm_disk_gib   = 100
+
+# --- MAC ---------------------------------------------------------------
+# Nur ändern, wenn sie mit etwas anderem im Netz kollidiert.
+node_mac = "52:54:00:7a:30:01"
