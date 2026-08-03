@@ -1,0 +1,119 @@
+#
+# Headlamp - das Cluster-Dashboard.
+#
+# Warum Headlamp und nicht das Kubernetes-Dashboard oder Rancher:
+#
+#   Rancher ist ein Werkzeug zur Verwaltung vieler Cluster. Der Server allein
+#   möchte 4 GB RAM auf einem eigenen Node, bringt rund sechzig CRDs mit und
+#   setzt einen Agenten mit cluster-admin in den verwalteten Cluster. Auf
+#   einem Node mit 4 GB, der nebenher noch Anwendungen tragen soll, geht das
+#   nicht auf - und er möchte Ingress und cert-manager selbst besitzen.
+#
+#   Das Kubernetes-Dashboard ist seit v7 kein Dienst mehr, sondern fünf:
+#   api, web, auth, metrics-scraper und ein Kong-Gateway davor. Für einen
+#   Ein-Node-Cluster ist das viel Maschinerie für dieselbe Aufgabe.
+#
+#   Headlamp ist ein einzelner Container mit rund 80 MB, läuft ohne
+#   Zugeständnis unter PodSecurity "restricted" und kann später ohne Umbau
+#   auf OIDC gegen Keycloak umgestellt werden.
+#
+
+replicaCount: 1
+
+#
+# Wie sich hier jemand anmeldet - und warum das die eigentliche Entscheidung
+# ist:
+#
+# Headlamp fragt beim Aufruf nach einem Token und spricht anschließend mit
+# genau der Identität mit der API, zu der dieses Token gehört. Nicht mit der
+# des Pods. Was jemand sieht und ändern darf, richtet sich also nach RBAC des
+# angemeldeten ServiceAccounts, nicht danach, wer die Adresse aufrufen kann.
+#
+#   Lesen:    kubectl -n ${namespace} create token headlamp --duration=8h
+#   Ändern:   kubectl -n ${namespace} create token headlamp-admin --duration=1h
+#
+# Die Gegenprobe steht bewusst auf false: unsafeUseServiceAccountToken würde
+# jeden Aufrufer als der ServiceAccount des Pods anmelden - dann wäre die
+# Netzgrenze die einzige Kontrolle, und die ist in diesem Aufbau das
+# Heimnetz.
+#
+config:
+  inCluster: true
+  inClusterContextName: ${cluster_name}
+  unsafeUseServiceAccountToken: false
+  sessionTTL: ${session_ttl}
+
+  oidc:
+    # Das Chart legt sonst ein leeres Secret namens "oidc" an, das kein
+    # Container einbindet. Wenn hier später Keycloak angebunden wird, kommt
+    # es zurück - dann aber mit Inhalt.
+    secret:
+      create: false
+
+#
+# ServiceAccount und Rechte kommen aus main.tf, nicht von diesem Chart.
+#
+# Der Grund steht in dessen Voreinstellung: clusterRoleName ist dort
+# cluster-admin. Ein Dashboard, das ab Werk mit Vollzugriff läuft, ist genau
+# die Voreinstellung, die dieser Cluster nicht übernehmen soll - und sie
+# stünde hier in einer Wertedatei, die man beim Aktualisieren des Charts
+# leicht überschreibt. Als eigene Ressource ist sie eine Entscheidung, die
+# sichtbar bleibt.
+#
+serviceAccount:
+  create: false
+  name: ${service_account}
+
+clusterRoleBinding:
+  create: false
+
+#
+# PodSecurity "restricted" im Namespace ${namespace}. Das Chart setzt von sich
+# aus nur runAsNonRoot und runAsUser; der Rest steht hier, weil "restricted"
+# sonst beim Anlegen ablehnt - und die Meldung dann auf das ReplicaSet zeigt
+# statt auf diese Datei.
+#
+podSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 100
+  runAsGroup: 101
+  privileged: false
+  allowPrivilegeEscalation: false
+  # Das Chart hängt dafür selbst ein leeres Volume auf /tmp ein.
+  readOnlyRootFilesystem: true
+  seccompProfile:
+    type: RuntimeDefault
+  capabilities:
+    drop:
+      - ALL
+
+#
+# Der Weg hinein - siehe service_type in variables.tf. Kein Ingress: In
+# diesem Aufbau gibt es weder Controller noch cert-manager, ein
+# `ingress.enabled: true` erzeugte also nur ein Objekt, das niemand liest.
+#
+service:
+  type: ${service_type}
+  port: 80
+%{ if service_type == "NodePort" ~}
+  nodePort: ${node_port}
+%{ endif ~}
+
+ingress:
+  enabled: false
+
+#
+# Knapp bemessen, weil der RAM auf diesem Node die knappe Größe ist.
+# Headlamp hält im Ruhezustand rund 60 MB; das Limit trägt die Spitzen beim
+# Aufbau der Listenansichten.
+#
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 192Mi
