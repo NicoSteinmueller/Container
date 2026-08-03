@@ -77,14 +77,16 @@ resource "kubernetes_namespace" "flux_system" {
 # Headlamp-Tokens - siehe README).
 #
 # Stattdessen: Objekt existiert, damit die FluxInstance unten einen
-# gültigen pullSecret-Namen referenzieren kann, und wird über Headlamp
-# (Admin-Token, siehe k8s/dashboard) nachträglich befüllt - dort geht der
-# Wert direkt an die API, nie durch Terraform-State.
+# gültigen pullSecret-Namen referenzieren kann, und wird per
+# `kubectl patch secret` nachträglich befüllt (siehe outputs.tf,
+# fill_secret) - der Wert geht direkt an die API, nie durch
+# Terraform-State. Headlamp (Admin-Token, siehe k8s/dashboard) geht
+# alternativ, falls gerade kein kubeconfig zur Hand ist.
 #
 # ignore_changes ist deshalb kein Sicherheitsnetz gegen fremde Änderungen,
 # sondern der Grund, warum das überhaupt funktioniert: Ohne die Zeile würde
 # der nächste `terraform apply` data wieder auf die leeren Platzhalter aus
-# diesem Manifest zurücksetzen und den in Headlamp eingetragenen PAT
+# diesem Manifest zurücksetzen und den per kubectl eingetragenen PAT
 # überschreiben.
 #
 resource "kubernetes_secret" "flux_git_auth" {
@@ -232,7 +234,7 @@ resource "kubernetes_manifest" "flux_instance" {
 
         #
         # Verweist auf kubernetes_secret.flux_git_auth oben - leer angelegt,
-        # bis jemand die Werte über Headlamp einträgt. Siehe outputs.tf
+        # bis jemand die Werte per kubectl einträgt. Siehe outputs.tf
         # (fill_secret) und README.
         #
         pullSecret = var.git_secret_name

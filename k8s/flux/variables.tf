@@ -64,10 +64,10 @@ variable "git_secret_name" {
   description = <<-EOT
     Name des Secrets mit den Git-Zugangsdaten (Keys: username, password).
 
-    Wird von diesem Modul bewusst NICHT angelegt - Geheimnisse kommen nicht
-    aus Terraform-State, dieselbe Regel wie bei step-ca und den
-    Headlamp-Tokens. Der Befehl zum Anlegen steht im Output
-    `bootstrap_secret`.
+    Wird von diesem Modul leer angelegt (kubernetes_secret.flux_git_auth) -
+    die echten Werte trägt niemand über Terraform ein, dieselbe Regel wie
+    bei step-ca und den Headlamp-Tokens. Der Befehl zum nachträglichen
+    Befüllen per kubectl steht im Output `fill_secret`.
   EOT
   type        = string
   default     = "flux-git-auth"
