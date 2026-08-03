@@ -137,6 +137,35 @@ spec:
                   fieldPath: metadata.namespace
             - name: CONFIG_MOUNT_PATH
               value: /etc/config/
+            #
+            # Ohne diese Variable bleibt jedes PVC dauerhaft Pending.
+            #
+            # Der Provisioner legt fuer jedes Volume kurz einen Helper-Pod an,
+            # der das Verzeichnis anlegt bzw. wieder entfernt. Welche
+            # ServiceAccount dieser Pod bekommt, entscheidet nicht die
+            # helperPod.yaml, sondern --service-account-name bzw. diese
+            # Variable. Der eingebaute Standard ist
+            # "local-path-provisioner-service-account" - so heisst die Account
+            # im Upstream-Manifest. Unsere heisst kuerzer, und dann scheitert
+            # die Pod-Erzeugung an:
+            #
+            #   pods "helper-pod-create-pvc-<uid>" is forbidden: error looking
+            #   up service account
+            #   local-path-storage/local-path-provisioner-service-account
+            #
+            # Der Fehler ist unangenehm zu finden, weil alles andere gesund
+            # aussieht: Der Provisioner laeuft 1/1, die StorageClass ist da,
+            # und die Meldung steht nur im PVC-Event, nicht am Pod. Sichtbar
+            # wird sie als "Pending" bei step-ca und CrowdSec - und
+            # `helm install` wartet darauf bis in seinen Timeout.
+            #
+            # Der naheliegende Fix, serviceAccountName in die helperPod.yaml zu
+            # schreiben, funktioniert nicht: v0.0.36 beendet sich dann beim
+            # Start ("must not set spec.serviceAccountName unless
+            # allow-unsafe-helper-pod-template is enabled").
+            #
+            - name: SERVICE_ACCOUNT_NAME
+              value: local-path-provisioner
           resources:
             requests:
               cpu: 10m
@@ -192,6 +221,16 @@ data:
     metadata:
       name: helper-pod
     spec:
+      #
+      # Kein serviceAccountName hier - der gehoert an den Provisioner, nicht in
+      # diese Vorlage. Siehe SERVICE_ACCOUNT_NAME im Deployment oben.
+      #
+      # v0.0.36 lehnt ihn hier sogar ausdruecklich ab und beendet sich beim
+      # Start mit:
+      #
+      #   helper pod template must not set spec.serviceAccountName
+      #     unless allow-unsafe-helper-pod-template is enabled
+      #
       priorityClassName: system-node-critical
       tolerations:
         - key: node.kubernetes.io/disk-pressure

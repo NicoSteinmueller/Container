@@ -52,8 +52,14 @@ build/
 !**/data/**/
 !**/data/**/.gitkeep
 /vm/volume_schema.json
-**/terraform.tfstate
-**/terraform.tfstate.backup
+# Bewusst ein Glob und keine Aufzaehlung: Neben terraform.tfstate und
+# terraform.tfstate.backup legt Terraform bei `state rm` und `state mv`
+# zusaetzlich Sicherungen mit Zeitstempel an - terraform.tfstate.<epoch>.backup.
+# Die wurden von den frueheren, exakten Mustern nicht erfasst und lagen damit
+# ungeschuetzt im Baum. In diesen Dateien stehen die Cluster-PKI und die
+# cloud-init-user_data der Edge-VM; sie gehoeren unter keinen Umstaenden in
+# einen Commit.
+**/terraform.tfstate*
 **/.terraform/
 **/.terraform.tfstate.lock.info
 

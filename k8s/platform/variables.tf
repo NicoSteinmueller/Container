@@ -85,6 +85,21 @@ variable "domain" {
   default     = "domain.de"
 }
 
+variable "node_name" {
+  description = <<-EOT
+    Hostname des Nodes. Muss zu node_name in vm/talos passen (dort leer =
+    <cluster_name>-cp1).
+
+    Wird hier für kubelet-csr-approver gebraucht: Der Name steht im
+    Zertifikatsantrag des Kubelets, und der Genehmiger prüft ihn gegen einen
+    verankerten Ausdruck. Stimmt er nicht überein, bleibt der Antrag auf
+    "Pending" - und damit funktionieren `kubectl logs` und `kubectl exec`
+    nicht mehr.
+  EOT
+  type        = string
+  default     = "homelab-cp1"
+}
+
 variable "ingress_public_server_name" {
   description = <<-EOT
     Name im Serverzertifikat von ingress-public. Muss exakt dem entsprechen,
@@ -157,6 +172,29 @@ variable "kyverno_chart_version" {
   default     = "3.8.2"
 }
 
+variable "headlamp_chart_version" {
+  description = "Chart-Version von Headlamp (Cluster-Dashboard)."
+  type        = string
+  default     = "0.44.0"
+}
+
+variable "metrics_server_chart_version" {
+  description = "Chart-Version von metrics-server. Quelle für `kubectl top` und die Auslastungsanzeigen im Dashboard."
+  type        = string
+  default     = "3.13.1"
+}
+
+variable "csr_approver_chart_version" {
+  description = <<-EOT
+    Chart-Version von kubelet-csr-approver. Genehmigt die
+    Serverzertifikate des Kubelets und gehört untrennbar zu
+    serverTLSBootstrap in vm/talos/patches/hardening.yaml - siehe
+    values/kubelet-csr-approver.yaml.tftpl.
+  EOT
+  type        = string
+  default     = "1.2.14"
+}
+
 variable "step_cli_image" {
   description = <<-EOT
     Image mit step-cli. Stellt im Namespace step-ca das Serverzertifikat von
@@ -180,6 +218,85 @@ variable "kubectl_image" {
   EOT
   type        = string
   default     = "registry.k8s.io/kubectl:v1.36.3"
+}
+
+#
+# Dashboard und Metriken
+#
+variable "dashboard" {
+  description = <<-EOT
+    Das Cluster-Dashboard (Headlamp), erreichbar über ingress-internal.
+
+      enabled  - Namespace, Netzgrenzen, RBAC und die Release. Auf false
+                 bleibt vom Dashboard nichts im Cluster zurück.
+      host     - Name, unter dem es erreichbar ist. Leer bedeutet
+                 dashboard.<domain>. Er muss im Heimnetz auf node_lan_ip
+                 zeigen (AdGuard oder Fritzbox) und ist aus dem Internet
+                 weder auflösbar noch erreichbar.
+      admin_service_account
+               - ein ServiceAccount mit cluster-admin, aber ohne Token. Wer
+                 im Dashboard ändern will, erzeugt sich damit eines für eine
+                 Stunde:
+
+                   kubectl -n headlamp create token headlamp-admin --duration=1h
+
+                 Auf false, wenn im Dashboard ausschließlich gelesen werden
+                 soll - geändert wird dann nur per kubectl.
+
+    Zur Anmeldung, weil das die eigentliche Kontrolle ist: Headlamp fragt
+    beim Aufruf nach einem Token und spricht anschließend mit genau der
+    Identität, zu der dieses Token gehört. "Nur im LAN erreichbar" ist hier
+    also nicht die Absicherung - wer die Seite ohne Token aufruft, sieht
+    nichts.
+  EOT
+  type = object({
+    enabled               = optional(bool, true)
+    host                  = optional(string, "")
+    admin_service_account = optional(bool, true)
+  })
+  default = {}
+}
+
+variable "metrics_server_enabled" {
+  description = <<-EOT
+    metrics-server: Quelle für `kubectl top` und die Auslastungsanzeigen im
+    Dashboard.
+
+    Standardmäßig aus, und das ist eine Reihenfolge, keine Meinung:
+
+    metrics-server setzt echte Kubelet-Serverzertifikate voraus, also
+    kubelet_server_certs = true in vm/talos plus einen Neustart des Nodes.
+    Solange das fehlt, prüft er ein selbstsigniertes Zertifikat, bleibt mit
+    "x509: certificate signed by unknown authority" stehen und wird nie
+    Ready - und weil die Release mit wait = true läuft, scheitert dann der
+    ganze `terraform apply`.
+
+    Der Genehmiger für die Zertifikate (kubelet-csr-approver) kommt dagegen
+    immer aus diesem Modul, unabhängig von diesem Schalter: Er muss vor der
+    Talos-Änderung im Cluster sein, nicht danach.
+
+    Reihenfolge:
+
+      1. vm/talos      terraform apply                    (Genehmiger fehlt noch)
+      2. k8s/platform  terraform apply                    bringt den Genehmiger
+      3. vm/talos      kubelet_server_certs = true, apply
+      4.               talosctl -n <lan_ip> reboot
+      5. k8s/platform  metrics_server_enabled = true, apply   <- diese Zeile
+
+    Der verbreitete Ausweg --kubelet-insecure-tls steht bewusst nicht in den
+    Werten; warum, steht in values/metrics-server.yaml.
+
+    Das Dashboard läuft auch ohne - es fehlen dann nur die
+    Auslastungsanzeigen.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "kubelet_cert_max_expiration_seconds" {
+  description = "Obergrenze für die Laufzeit der Kubelet-Serverzertifikate, die kubelet-csr-approver genehmigt. Sieben Tage; das Kubelet erneuert von sich aus deutlich häufiger."
+  type        = number
+  default     = 604800
 }
 
 #

@@ -50,3 +50,43 @@ app_namespaces = [
 #   email         = "post@domain.de"
 #   acme_dns_host = "https://acme-dns.domain.de"
 # }
+
+# --- Node --------------------------------------------------------------
+# Muss zu node_name in vm/talos passen (dort leer = <cluster_name>-cp1).
+# Wird für kubelet-csr-approver gebraucht: Der Name steht im
+# Zertifikatsantrag des Kubelets und wird gegen einen verankerten Ausdruck
+# geprüft.
+node_name = "homelab-cp1"
+
+# --- Dashboard ---------------------------------------------------------
+# Headlamp, erreichbar nur über ingress-internal. Der Name muss im Heimnetz
+# auf node_lan_ip zeigen (AdGuard oder Fritzbox).
+#
+# Angemeldet wird mit einem Token, nicht durch bloßes Aufrufen der Adresse:
+#
+#   kubectl -n headlamp create token headlamp       --duration=8h   # lesen
+#   kubectl -n headlamp create token headlamp-admin --duration=1h   # ändern
+#
+dashboard = {
+  enabled               = true
+  host                  = "dashboard.nico-steinmueller.de"
+  admin_service_account = true
+}
+
+# metrics-server: Quelle für `kubectl top` und die Auslastungsanzeigen im
+# Dashboard.
+#
+# Beim ersten Aufbau auf false lassen. Er setzt echte Kubelet-Serverzertifikate
+# voraus, und die kommen erst mit kubelet_server_certs = true in vm/talos plus
+# einem Neustart des Nodes. Vorher wird er nie Ready und lässt den ganzen
+# `terraform apply` scheitern.
+#
+# Reihenfolge:
+#   1. vm/talos      terraform apply                    (Genehmiger fehlt noch)
+#   2. k8s/platform  terraform apply                    bringt den Genehmiger
+#   3. vm/talos      kubelet_server_certs = true, apply
+#   4.               talosctl -n 192.168.178.222 reboot
+#   5. k8s/platform  metrics_server_enabled = true, apply
+#
+# Das Dashboard läuft auch ohne - es fehlen dann nur die Auslastungsanzeigen.
+metrics_server_enabled = false

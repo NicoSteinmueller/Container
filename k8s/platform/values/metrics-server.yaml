@@ -1,0 +1,68 @@
+#
+# metrics-server - die Quelle für `kubectl top` und für die Auslastungs-
+# anzeigen im Dashboard.
+#
+# Er steht in kube-system und nicht in einem eigenen Namespace, weil er
+# Teil der Steuerungsebene ist und nicht eine Anwendung daneben: Er meldet
+# sich als APIService v1beta1.metrics.k8s.io an, der kube-apiserver reicht
+# Anfragen an ihn weiter. Ein eigener Namespace mit Default-Deny-Policies
+# müsste genau diesen Weg wieder öffnen - und zwar in beide Richtungen, denn
+# der Abruf beim Kubelet geht an die Node-Adresse.
+#
+# Die Sicherheitseinstellungen unten stehen trotzdem ausdrücklich da: In
+# kube-system ist PodSecurity ausgenommen (Talos trägt den Namespace selbst
+# in die Ausnahmen ein, siehe vm/talos/patches/cluster.yaml.tftpl). Was hier
+# nicht steht, wird also auch nicht geprüft.
+#
+
+# Ein Node, eine Instanz.
+replicas: 1
+
+podDisruptionBudget:
+  enabled: false
+
+#
+# Was hier NICHT steht, ist der eigentliche Punkt: --kubelet-insecure-tls.
+#
+# Fast jede Anleitung setzt das Flag, weil das Kubelet ab Werk ein
+# selbstsigniertes Serverzertifikat verwendet, das metrics-server nicht
+# prüfen kann. Der Preis ist eine ungeprüfte Verbindung zu genau der
+# Komponente, die Auskunft über jeden Pod auf dem Node gibt.
+#
+# Stattdessen holt sich das Kubelet hier ein richtiges Zertifikat:
+# serverTLSBootstrap in vm/talos/patches/hardening.yaml lässt es einen CSR
+# stellen, kubelet-csr-approver genehmigt ihn, und der kube-controller-manager
+# signiert mit der Kubernetes-CA. Dieselbe CA steckt im ServiceAccount-Token
+# dieses Pods - die Prüfung geht damit ohne weitere Angabe auf.
+#
+# Wenn hier "x509: certificate signed by unknown authority" in den Logs
+# steht, fehlt einer der beiden Teile. Die Gegenprobe:
+#
+#   kubectl get csr        # nichts auf "Pending"
+#   kubectl top node
+#
+defaultArgs:
+  - --cert-dir=/tmp
+  - --kubelet-preferred-address-types=InternalIP
+  - --kubelet-use-node-status-port
+  - --metric-resolution=15s
+
+args: []
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  seccompProfile:
+    type: RuntimeDefault
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 40m
+    memory: 64Mi
+  limits:
+    memory: 128Mi

@@ -80,4 +80,46 @@ spec:
             - 169.254.0.0/16
             - 100.64.0.0/10
 {{- end }}
+
+{{- if .Values.headlamp.enabled }}
+---
+{{/*
+  Das Dashboard bekommt eine eigene, engere Regel als die übrigen
+  Infrastruktur-Namespaces: clusterintern ja, Internet nein.
+
+  Der Unterschied zur Liste oben ist Absicht. cert-manager braucht ACME,
+  CrowdSec den Hub, ingress-public die Zertifikatsprüfung - die haben einen
+  Grund, nach draußen zu sprechen. Headlamp hat keinen: Es liest die
+  Kubernetes-API und liefert eine Weboberfläche aus, beides clusterintern.
+
+  Der Unterschied zählt, weil an diesem Pod ein clusterweites Leserecht
+  hängt. Ein Dashboard, das jedes ConfigMap im Cluster lesen und zugleich
+  beliebige Adressen im Internet erreichen kann, ist ein fertiger Abflussweg
+  für Clusterdaten. Ohne Egress ins Internet muss ein Angreifer die Daten
+  über den Weg zurücktragen, über den er hereinkam - und der führt durch
+  ingress-internal und damit durch das LAN.
+
+  `host` steht hier neben `kube-apiserver`, und das ist auf diesem Cluster
+  nicht redundant: Der API-Server läuft auf demselben Node. Cilium ordnet
+  Verkehr dorthin je nach Version und Datapath der Identität `host` statt
+  `kube-apiserver` zu. Fehlt eine der beiden, zeigt Headlamp beim Aufruf nur
+  Zeitüberschreitungen - der Pod selbst läuft und sieht gesund aus.
+
+    kubectl -n kube-system exec ds/cilium -- \
+      hubble observe --namespace {{ .Values.namespaces.headlamp }} --verdict DROPPED
+*/}}
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: egress-cluster-only
+  namespace: {{ .Values.namespaces.headlamp }}
+spec:
+  endpointSelector: {}
+  egress:
+    - toEntities:
+        - cluster
+        - host
+        - remote-node
+        - kube-apiserver
+{{- end }}
 {{- end }}

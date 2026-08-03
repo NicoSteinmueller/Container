@@ -106,6 +106,38 @@ metadata:
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
 
+{{- if .Values.headlamp.enabled }}
+---
+{{/*
+  Das Cluster-Dashboard.
+
+  Es steht hier bei der Infrastruktur und nicht in `apps`, obwohl es aus Sicht
+  von ingress-internal eine gewöhnliche Anwendung ist. Der Grund ist der
+  Unterschied zwischen Struktur und Konfiguration: An diesem Namespace hängt
+  ein ClusterRole-Binding, das clusterweit lesen darf. Stünde er in
+  var.app_namespaces, könnte ihn eine Zeile in terraform.tfvars auf
+  zone = "public" umstellen - und damit ein Dashboard mit Cluster-Lesezugriff
+  hinter den Ingress stellen, der aus dem Internet erreichbar ist.
+
+  Als Infrastruktur-Namespace ist "internal" keine Einstellung mehr, sondern
+  eine Eigenschaft.
+
+  PodSecurity restricted, ohne Ausnahme: Headlamp ist ein einzelner
+  Webserver, der mit der Kubernetes-API spricht. Es gibt keinen Host-Zugriff
+  zu rechtfertigen - anders als bei CrowdSec oder den Ingress-Controllern.
+*/}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.namespaces.headlamp }}
+  labels:
+    homelab.io/zone: internal
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+{{- end }}
+
 {{- if .Values.localPath.enabled }}
 ---
 apiVersion: v1

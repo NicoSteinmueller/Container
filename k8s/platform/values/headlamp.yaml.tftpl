@@ -1,0 +1,139 @@
+#
+# Headlamp - das Cluster-Dashboard, nur aus dem Heimnetz.
+#
+# Warum Headlamp und nicht das Kubernetes-Dashboard oder Rancher:
+#
+#   Rancher ist ein Werkzeug zur Verwaltung vieler Cluster. Der Server allein
+#   möchte 4 GB RAM auf einem eigenen Node, bringt rund sechzig CRDs mit und
+#   setzt einen Agenten mit cluster-admin in den verwalteten Cluster. Auf
+#   einem Node mit 4,8 GB, auf dem noch Nextcloud, Immich und Paperless
+#   landen sollen, geht das nicht auf - und er möchte Ingress und
+#   cert-manager selbst besitzen, was die Trennung der beiden
+#   Ingress-Controller aufhebt.
+#
+#   Das Kubernetes-Dashboard ist seit v7 kein Dienst mehr, sondern fünf:
+#   api, web, auth, metrics-scraper und ein Kong-Gateway davor. Für einen
+#   Ein-Node-Cluster ist das viel Maschinerie für dieselbe Aufgabe.
+#
+#   Headlamp ist ein einzelner Container mit rund 80 MB, läuft ohne
+#   Zugeständnis unter PodSecurity "restricted" und kann später ohne Umbau
+#   auf OIDC gegen Keycloak umgestellt werden.
+#
+
+replicaCount: 1
+
+#
+# Wie sich hier jemand anmeldet - und warum das die eigentliche Entscheidung
+# ist:
+#
+# Headlamp fragt beim Aufruf nach einem Token und spricht anschließend mit
+# genau der Identität mit der API, zu der dieses Token gehört. Nicht mit der
+# des Pods. Die Anzeige richtet sich also nach RBAC des angemeldeten
+# ServiceAccounts, nicht danach, wer die Adresse aufrufen kann.
+#
+# Das ist der Grund, warum "nur im LAN erreichbar" hier - anders als beim
+# Traefik-Dashboard, das deshalb aus bleibt - keine offene Tür ist: Wer die
+# Seite erreicht, sieht ohne Token nichts.
+#
+#   Lesen:    kubectl -n ${namespace} create token headlamp --duration=8h
+#   Ändern:   kubectl -n ${namespace} create token headlamp-admin --duration=1h
+#
+# Die Gegenprobe steht bewusst auf false: unsafeUseServiceAccountToken würde
+# jeden Aufrufer als der ServiceAccount des Pods anmelden - dann wäre die
+# Netzgrenze wieder die einzige Kontrolle.
+#
+config:
+  inCluster: true
+  inClusterContextName: ${cluster_name}
+  unsafeUseServiceAccountToken: false
+  # Sitzungsdauer der Oberfläche. Kürzer als die Voreinstellung von 24 h,
+  # aber lang genug, um nicht bei jedem Blick ins Cluster neu einzufügen.
+  sessionTTL: 28800
+
+  oidc:
+    # Das Chart legt sonst ein leeres Secret namens "oidc" an, das kein
+    # Container einbindet. Wenn hier später Keycloak angebunden wird, kommt
+    # es zurück - dann aber mit Inhalt.
+    secret:
+      create: false
+
+#
+# ServiceAccount und Rechte kommen aus charts/homelab-policies, nicht von
+# diesem Chart.
+#
+# Der Grund steht in dessen Voreinstellung: clusterRoleName ist dort
+# cluster-admin. Ein Dashboard, das ab Werk mit Vollzugriff läuft, ist genau
+# die Voreinstellung, die dieser Cluster nicht übernehmen soll - und sie
+# stünde hier in einer Wertedatei, die man beim Aktualisieren des Charts
+# leicht überschreibt. In einem eigenen Template ist sie eine Entscheidung,
+# die sichtbar bleibt.
+#
+serviceAccount:
+  create: false
+  name: headlamp
+
+clusterRoleBinding:
+  create: false
+
+#
+# PodSecurity "restricted" im Namespace headlamp. Das Chart setzt von sich
+# aus nur runAsNonRoot und runAsUser; der Rest steht hier, weil "restricted"
+# sonst beim Anlegen ablehnt - und die Meldung dann auf das ReplicaSet zeigt
+# statt auf diese Datei.
+#
+podSecurityContext:
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 100
+  runAsGroup: 101
+  privileged: false
+  allowPrivilegeEscalation: false
+  # Das Chart hängt dafür selbst ein leeres Volume auf /tmp ein.
+  readOnlyRootFilesystem: true
+  seccompProfile:
+    type: RuntimeDefault
+  capabilities:
+    drop:
+      - ALL
+
+#
+# Der Weg hinein: ingress-internal, also die LAN-Adresse des Nodes.
+#
+# ingressClassName "internal" ist hier keine Formalität - die Kyverno-Regel
+# restrict-public-ingress-class lehnt "public" in diesem Namespace ohnehin
+# ab, weil er das Label homelab.io/zone=internal trägt. Ein Dashboard mit
+# clusterweitem Lesezugriff aus dem Internet erreichbar zu machen, ist damit
+# kein Tippfehler, der durchgeht.
+#
+# Der Name muss im Heimnetz auf ${node_lan_ip} zeigen (AdGuard oder
+# Fritzbox) - aus dem Internet ist er nicht auflösbar und soll es nicht sein.
+#
+ingress:
+  enabled: true
+  ingressClassName: internal
+  annotations:
+    cert-manager.io/cluster-issuer: ${cluster_issuer}
+  hosts:
+    - host: ${host}
+      paths:
+        - path: /
+          type: Prefix
+  tls:
+    - secretName: headlamp-tls
+      hosts:
+        - ${host}
+
+#
+# Knapp bemessen, weil der RAM auf diesem Node die knappe Größe ist.
+# Headlamp hält im Ruhezustand rund 60 MB; das Limit trägt die Spitzen beim
+# Aufbau der Listenansichten.
+#
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 192Mi

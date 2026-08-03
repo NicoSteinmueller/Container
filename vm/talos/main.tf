@@ -128,6 +128,39 @@ resource "talos_image_factory_schematic" "this" {
       systemExtensions = {
         officialExtensions = var.system_extensions
       }
+
+      #
+      # Statische Adresse schon im Maintenance-Mode.
+      #
+      # Ohne das gibt es ein Henne-Ei-Problem: Der Node bootet von der ISO in
+      # den Maintenance-Mode, holt sich dort per DHCP irgendeine Adresse - und
+      # talos_machine_configuration_apply unten will die Config an var.lan_ip
+      # übertragen, die der Node erst *durch* diese Config bekommt. Der Apply
+      # läuft dann in seinen Timeout, während die VM auf dem Hypervisor
+      # fröhlich als "gestartet" angezeigt wird.
+      #
+      # Format ist die dracut-Schreibweise, die Talos als Kernel-Parameter
+      # unterstützt:
+      #
+      #   ip=<addr>:<server>:<gateway>:<maske>:<hostname>:<device>:<autoconf>
+      #
+      # Nur das LAN-Bein. Das DMZ-Bein bleibt hier bewusst unkonfiguriert -
+      # es bekommt seine Adresse aus der Machine-Config und soll im
+      # Maintenance-Mode gar nicht erst ansprechbar sein.
+      #
+      # Das Hostname-Feld bleibt leer. Steht dort etwas, wertet Talos das als
+      # statisch gesetzten Hostnamen und lehnt jede Config ab, die ihrerseits
+      # einen setzt:
+      #
+      #   rpc error: code = InvalidArgument desc = 1 error occurred:
+      #     * static hostname is already set in v1alpha1 config
+      #
+      # Der Hostname gehört in die Machine-Config, nicht in die Bootzeile -
+      # diese hier gilt nur für das Zeitfenster davor.
+      #
+      extraKernelArgs = [
+        "ip=${var.lan_ip}::${var.lan_gateway}:${cidrnetmask(var.lan_cidr)}::${var.maintenance_link}:off",
+      ]
     }
   })
 }
@@ -212,8 +245,16 @@ resource "libvirt_pool" "domains" {
 # Boot-ISO aus der Image Factory. Talos startet daraus in den Maintenance-Mode
 # und wartet auf eine Machine-Config.
 #
+# Die Schematic-ID gehört in den Dateinamen. Ohne sie hat eine geänderte
+# Schematic - andere Extensions, andere Kernel-Parameter - zwar eine neue
+# Download-URL, aber denselben Volume-Namen: Der Provider tauscht die Datei
+# aus, das Domain-XML bleibt Zeichen für Zeichen gleich, und Terraform sieht
+# keinen Grund, die VM anzufassen. Die läuft dann weiter auf dem alten,
+# bereits gelöschten Inode, und die Änderung wirkt erst beim nächsten
+# Neustart - also scheinbar gar nicht.
+#
 resource "libvirt_volume" "talos_iso" {
-  name = "${var.cluster_name}-${var.talos_version}.iso"
+  name = "${var.cluster_name}-${var.talos_version}-${substr(talos_image_factory_schematic.this.id, 0, 12)}.iso"
   pool = local.pool_name
 
   target = {
@@ -308,8 +349,30 @@ resource "libvirt_domain" "cp1" {
           dev = "vda"
           bus = "virtio"
         }
+        #
+        # cache und io sind hier nicht optional, auch wenn libvirt ohne sie
+        # startet.
+        #
+        # Ohne `cache` nimmt QEMU writeback und legt jeden Block zusätzlich in
+        # den Page-Cache des Hosts. Der Gast cacht denselben Block bereits
+        # selbst - die 3 GB der VM werden also faktisch zweimal gehalten, und
+        # zwar auf einem Host mit 16 GB. Genau dieser doppelte Cache war der
+        # Auslöser dafür, dass kswapd0 dauerhaft lief und Unraid den
+        # Kernel-Modul-Squashfs (/boot/bzmodules) laufend vom USB-Stick
+        # nachladen musste - 70 % iowait bei 6 % User-CPU.
+        #
+        # `none` gibt den Cache dem Gast allein (O_DIRECT). Das ist für etcd
+        # ohnehin richtig: Es will wissen, wann ein fsync wirklich auf dem
+        # Medium ist, und eine Cache-Schicht, die das beschönigt, ist bei
+        # einem Stromausfall genau die, die die Datenbank zerlegt.
+        #
+        # `native` nutzt Linux-AIO statt eines Thread-Pools. Setzt O_DIRECT
+        # voraus, passt also nur zusammen mit cache = "none".
+        #
         driver = {
-          type = "qcow2"
+          type  = "qcow2"
+          cache = "none"
+          io    = "native"
         }
       },
       {
@@ -400,6 +463,23 @@ resource "libvirt_domain" "cp1" {
   }
 
   running = true
+
+  #
+  # Wechselt die Boot-ISO, muss die VM neu entstehen.
+  #
+  # Ohne das ändert sich am Domain-XML nur der Dateiname des CD-Laufwerks -
+  # ein In-Place-Update, das libvirt an einer laufenden Maschine als
+  # Medienwechsel ausführt. Die VM läuft dabei weiter mit dem alten Kernel:
+  # Alles, was im Image steckt (Extensions, Kernel-Parameter), wirkt erst beim
+  # nächsten Neustart und damit scheinbar überhaupt nicht.
+  #
+  # Für Talos-Upgrades ist das der falsche Weg - die laufen über
+  # `talosctl upgrade`, nicht über einen Neubau der VM. Hier geht es um den
+  # Fall davor: eine geänderte Schematic, bevor der Cluster überhaupt steht.
+  #
+  lifecycle {
+    replace_triggered_by = [libvirt_volume.talos_iso]
+  }
 }
 
 # =====================================================================
@@ -426,7 +506,7 @@ data "talos_machine_configuration" "controlplane" {
   talos_version      = var.talos_version
   kubernetes_version = var.kubernetes_version
 
-  config_patches = [
+  config_patches = concat([
     # Installationsziel und Installer-Image mit denselben Extensions wie die ISO.
     yamlencode({
       machine = {
@@ -452,6 +532,11 @@ data "talos_machine_configuration" "controlplane" {
       ntp_servers = var.ntp_servers
     }),
 
+    # Muss nach dem Netzwerk-Patch kommen: Der setzt den Hostnamen, dieser
+    # räumt das von Talos erzeugte HostnameConfig-Dokument weg, das sonst mit
+    # ihm kollidiert.
+    file("${path.module}/patches/hostname.yaml"),
+
     templatefile("${path.module}/patches/cluster.yaml.tftpl", {
       lan_ip         = var.lan_ip
       lan_cidr       = var.lan_cidr
@@ -476,21 +561,40 @@ data "talos_machine_configuration" "controlplane" {
       step_ca_port           = var.step_ca_port
       ingress_internal_ports = var.ingress_internal_ports
     }),
+    ],
 
-    # Cilium. Muss der letzte Patch sein - nicht technisch, sondern damit die
-    # lesbaren Patches oben nicht hinter mehreren hundert Kilobyte gerendertem
-    # YAML verschwinden.
-    yamlencode({
-      cluster = {
-        inlineManifests = [
-          {
-            name     = "cilium"
-            contents = data.helm_template.cilium.manifest
-          }
-        ]
-      }
-    }),
-  ]
+    #
+    # serverTLSBootstrap - der einzige Patch, der eine Gegenstelle im Cluster
+    # braucht und deshalb schaltbar ist.
+    #
+    # Er setzt kubelet-csr-approver aus k8s/platform voraus. Ohne ihn bleibt
+    # der Zertifikatsantrag des Kubelets ungenehmigt, `kubectl logs` und
+    # `kubectl exec` brechen weg, und `data.talos_cluster_health` unten bricht
+    # den Lauf mit "kubelet server certificate rotation is enabled, but CSR is
+    # not approved" ab.
+    #
+    # Beim ersten Aufbau bleibt die Variable deshalb auf false und wird erst
+    # eingeschaltet, wenn k8s/platform einmal gelaufen ist. Die vollständige
+    # Reihenfolge steht in patches/kubelet-server-certs.yaml.
+    #
+    var.kubelet_server_certs ? [file("${path.module}/patches/kubelet-server-certs.yaml")] : [],
+
+    [
+      # Cilium. Muss der letzte Patch sein - nicht technisch, sondern damit die
+      # lesbaren Patches oben nicht hinter mehreren hundert Kilobyte gerendertem
+      # YAML verschwinden.
+      yamlencode({
+        cluster = {
+          inlineManifests = [
+            {
+              name     = "cilium"
+              contents = data.helm_template.cilium.manifest
+            }
+          ]
+        }
+      }),
+    ],
+  )
 }
 
 #
@@ -531,7 +635,23 @@ resource "talos_machine_bootstrap" "this" {
 # `terraform apply` fehl, statt einen halb fertigen Cluster als Erfolg zu
 # melden.
 #
+# Das `count` ist der Notausgang, und er hat einen konkreten Anlass. Eine
+# Data Source wird bei *jedem* Lauf gelesen, auch bei `terraform destroy` und
+# auch dann, wenn die VM längst aus ist. Der Health-Check läuft dann in seinen
+# vollen Timeout, bevor überhaupt ein Plan entsteht - zwanzig Minuten Warten,
+# um eine abgeschaltete VM zu löschen. Schlimmer: Ist der Cluster kaputt,
+# blockiert derselbe Check auch das `apply`, das ihn reparieren würde. Genau
+# in dieser Sackgasse steckte die Inbetriebnahme schon einmal fest.
+#
+#   terraform destroy -var wait_for_health=false
+#   terraform apply   -var wait_for_health=false   # Reparaturlauf
+#
+# Im Normalbetrieb bleibt die Variable auf true - ohne den Check wäre ein
+# grünes `apply` keine Aussage mehr über den Cluster.
+#
 data "talos_cluster_health" "this" {
+  count = var.wait_for_health ? 1 : 0
+
   client_configuration = talos_machine_secrets.this.client_configuration
   control_plane_nodes  = [var.lan_ip]
   endpoints            = [var.lan_ip]

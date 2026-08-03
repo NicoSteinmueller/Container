@@ -202,6 +202,47 @@
       registryUrlTemplate: 'https://kyverno.github.io/kyverno',
     },
     {
+      // Headlamp - das Cluster-Dashboard hinter ingress-internal.
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
+      ],
+      matchStrings: [
+        'variable "headlamp_chart_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
+      ],
+      datasourceTemplate: 'helm',
+      depNameTemplate: 'headlamp',
+      registryUrlTemplate: 'https://kubernetes-sigs.github.io/headlamp/',
+    },
+    {
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
+      ],
+      matchStrings: [
+        'variable "metrics_server_chart_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
+      ],
+      datasourceTemplate: 'helm',
+      depNameTemplate: 'metrics-server',
+      registryUrlTemplate: 'https://kubernetes-sigs.github.io/metrics-server/',
+    },
+    {
+      // kubelet-csr-approver. Gehört zu kubelet_server_certs in vm/talos:
+      // Ohne ihn bleiben die Zertifikatsanträge des Kubelets ungenehmigt und
+      // `kubectl logs`/`exec` brechen weg - ein Update hier ist deshalb kein
+      // beiläufiges.
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
+      ],
+      matchStrings: [
+        'variable "csr_approver_chart_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
+      ],
+      datasourceTemplate: 'helm',
+      depNameTemplate: 'kubelet-csr-approver',
+      registryUrlTemplate: 'https://postfinance.github.io/kubelet-csr-approver',
+    },
+    {
       // step-cli im Init- und Renew-Container von ingress-public. Dasselbe
       // Werkzeug wie auf der Edge-VM - die beiden Versionen sollten nicht
       // auseinanderlaufen.

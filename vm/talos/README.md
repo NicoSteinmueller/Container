@@ -13,7 +13,7 @@ beiden Ingress-Controller, die interne CA, CrowdSec, Kyverno — steht in
 
 | Ressource | Wert |
 |---|---|
-| VM | `homelab-cp1`, 4 vCPU, 4 GB RAM (wächst mit, siehe unten), 100 GB Disk, UEFI/q35 |
+| VM | `homelab-cp1`, 4 vCPU, 3 GB RAM (wächst mit, siehe unten), 100 GB Disk, UEFI/q35 |
 | LAN-Bein | `192.168.178.222` per macvtap auf `bond0` — Talos-API, Kubernetes-API, `ingress-internal` |
 | DMZ-Bein | `10.10.20.3` im Netz `edge-dmz` — `ingress-public`, CrowdSec-LAPI, step-ca |
 | OS | Talos Linux, Version gepinnt in [variables.tf](variables.tf) |
@@ -43,9 +43,46 @@ schlicht nicht frei:
 | Edge-VM | 1,5 GB |
 | bleibt | ~5 GB |
 
-Deshalb startet dieses Modul mit **4 GB** — genug für Talos, Cilium und den
-kompletten Plattform-Stack aus [../../k8s/platform](../../k8s/platform), aber
-noch ohne Nutzlast.
+Diese ~5 GB sind allerdings eine Obergrenze und kein Budget: Der Host braucht
+davon selbst Page-Cache, und **Unraid hat ab Werk keinen Swap**. Ein Versuch
+mit 4 GB endete so:
+
+```
+free -m  →  629 MB frei, kswapd0 dauerhaft aktiv
+%usr 6   %sys 25-32   %iowait 70   Load 15,7
+```
+
+Der Zusammenhang ist nicht offensichtlich, deshalb ausgeschrieben: Ohne Swap
+ist die einzige Antwort des Kernels auf Speicherdruck das Verwerfen von
+Page-Cache. Dazu gehört `loop0` — der Kernel-Modul-Squashfs `/boot/bzmodules`,
+und dessen Backing-Store ist der **USB-Boot-Stick**. Der lief mit 74 %
+Auslastung. Ab da wartet jeder Modul- und Binary-Zugriff im gesamten System
+auf einem USB-Stick, quer über alle Container. Load 15,7 bei 6 % User-CPU ist
+keine Rechenlast, sondern eine D-State-Warteschlange.
+
+Real verfügbar sind eher 2–2,5 GB. Der zweite Anlauf mit **3 GB** scheiterte
+dann aber an der anderen Seite der Rechnung — der Plattform-Stack ist nicht
+"fast nichts". Gemessen im laufenden Cluster, ohne jede Nutzlast:
+
+| | |
+|---|---|
+| Memory-Requests der Pods | 1900 MiB |
+| Node-Gesamt (Talos meldet) | 2880 MiB |
+| dazu Talos, kubelet, containerd | ~600 MiB |
+
+Talos' `runtime.OOMController` hat daraufhin reihenweise Cgroups abgeschossen.
+Sichtbar wurde das als Probe-Timeouts bei Cilium, CoreDNS, cert-manager und
+`kube-controller-manager` — also überall, nur nicht dort, wo die Ursache lag.
+Die größten Posten: kube-apiserver 512 Mi, controller-manager und Cilium je
+256 Mi, Kyverno über vier Controller 320 Mi, CrowdSec 256 Mi.
+
+Deshalb startet dieses Modul mit **5 GB** — der volle Plattform-Stack aus
+[../../k8s/platform](../../k8s/platform) mit Puffer, aber noch ohne Nutzlast.
+
+**Reihenfolge, die dabei zählt:** Der Plattform-Stack muss passen, *bevor* der
+erste Dienst migriert. Auf einem 16-GB-Host heißt das, vorher hostseitig Platz
+zu schaffen — hier durch das Abschalten von Immich (~1,9 GB). Der Fahrplan
+unten gilt erst ab da.
 
 Der Weg nach oben, pro migriertem Dienst:
 
@@ -54,8 +91,11 @@ Der Weg nach oben, pro migriertem Dienst:
 # 2. Container auf dem Host stoppen — erst dann ist der Speicher frei
 ssh root@unraid docker stop nextcloud nextcloud_postgres nextcloud_redis
 
-# 3. RAM nachziehen
-vim terraform.tfvars      # vm_memory_mib = 6144
+# 3. Prüfen, dass der Speicher wirklich frei wurde, dann nachziehen.
+#    Maßgeblich ist "available", nicht "free". Unter ~1,5 GB nicht erhöhen -
+#    Unraid hat keinen Swap, und der Host verliert dann seinen Page-Cache.
+ssh root@unraid free -m
+vim terraform.tfvars      # vm_memory_mib = 4096
 terraform apply           # libvirt_domain.cp1 will be updated in-place
 
 # 4. Wirksam beim nächsten Start
@@ -231,9 +271,31 @@ zieht deshalb die Ingress-Firewall, nicht der Weiterleitungsschalter. Was das
 nicht ist: eine Trennung auf Netzebene. Wer im Cluster Node-Rechte erlangt,
 hat beide Beine — das steht so auch im Konzept unter Restrisiken.
 
-**Kein `serverTLSBootstrap`.** Es klingt richtiger, als es ist: Ohne einen
-Approver für die Kubelet-Serving-CSRs bleibt die Anforderung Pending, und
-damit funktionieren `kubectl logs`, `exec` und jeder Metrics-Abruf nicht mehr.
+**`serverTLSBootstrap` ist schaltbar, nicht gesetzt.** Damit lässt sich das
+Kubelet sein Serverzertifikat über einen CSR ausstellen, statt sich eines
+selbst zu unterschreiben — die Voraussetzung dafür, dass `metrics-server`
+ohne `--kubelet-insecure-tls` auskommt.
+
+Es steht nicht in [patches/hardening.yaml](patches/hardening.yaml), sondern in
+[patches/kubelet-server-certs.yaml](patches/kubelet-server-certs.yaml) hinter
+`kubelet_server_certs`, weil es als einziger Punkt der Härtung eine
+Gegenstelle im Cluster braucht: einen Genehmiger für die Anträge. Fehlt der,
+bleibt der CSR auf `Pending`, `kubectl logs` und `exec` brechen weg, und
+`data.talos_cluster_health` bricht den Lauf ab mit *„kubelet server
+certificate rotation is enabled, but CSR is not approved"*. Beim ersten
+Aufbau kommt dieser Node aber vor dem Cluster — der Genehmiger
+(`kubelet-csr-approver`) kommt erst mit `k8s/platform`.
+
+Reihenfolge:
+
+```bash
+cd vm/talos     && terraform apply                        # noch ohne
+cd k8s/platform && terraform apply                        # bringt den Genehmiger
+cd vm/talos     && terraform apply                        # kubelet_server_certs = true
+talosctl -n 192.168.178.222 reboot
+kubectl get csr                                           # nichts auf "Pending"
+cd k8s/platform && terraform apply                        # metrics_server_enabled = true
+```
 
 ## Betrieb
 

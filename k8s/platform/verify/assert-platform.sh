@@ -291,6 +291,99 @@ for ns in $(kubectl get ns -l homelab.io/zone -o jsonpath='{range .items[*]}{.me
   fi
 done
 
+# ---------------------------------------------------------------------
+info "6. Dashboard und Metriken"
+# ---------------------------------------------------------------------
+
+#
+# Die Kubelet-Zertifikate. Ein CSR auf "Pending" ist der Zustand, vor dem
+# vm/talos/patches/hardening.yaml warnt: serverTLSBootstrap ist an, aber
+# niemand genehmigt - dann brechen `kubectl logs`, `kubectl exec` und jeder
+# Metrikabruf weg, während der Node weiterhin Ready meldet.
+#
+if kubectl get csr -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.conditions[*].type}{"\n"}{end}' 2>/dev/null |
+  grep -qvE 'Approved|^$'; then
+  bad "Es gibt CSRs ohne Genehmigung - kubectl get csr; kubectl -n kube-system logs -l app.kubernetes.io/name=kubelet-csr-approver"
+else
+  pass "Keine offenen Kubelet-CSRs"
+fi
+
+if kubectl -n kube-system get deploy metrics-server >/dev/null 2>&1; then
+  check_ready kube-system app.kubernetes.io/name=metrics-server "metrics-server"
+
+  #
+  # Verhalten statt Konfiguration: Nicht prüfen, ob der Pod läuft, sondern
+  # ob tatsächlich Zahlen herauskommen. Ein metrics-server, der das
+  # Kubelet-Zertifikat nicht prüfen kann, läuft und liefert nichts.
+  #
+  if kubectl top node >/dev/null 2>&1; then
+    pass "kubectl top node liefert Werte"
+  else
+    bad "kubectl top node liefert nichts - kubectl -n kube-system logs deploy/metrics-server"
+  fi
+else
+  warn "metrics-server nicht installiert - keine Auslastungsanzeigen"
+fi
+
+if kubectl get ns headlamp >/dev/null 2>&1; then
+  check_ready headlamp app.kubernetes.io/name=headlamp "Dashboard (Headlamp)"
+
+  if kubectl -n headlamp get cnp egress-cluster-only >/dev/null 2>&1; then
+    pass "headlamp hat egress-cluster-only"
+  else
+    bad "headlamp ohne egress-cluster-only - das Dashboard erreicht das Internet"
+  fi
+
+  #
+  # Die wichtigste Probe dieses Abschnitts, und sie wird ausprobiert statt
+  # gelesen: Der ServiceAccount, unter dem das Dashboard läuft, darf lesen -
+  # aber nicht an Secrets und nicht ändern.
+  #
+  # Das Chart von Headlamp bindet ab Werk an cluster-admin. Wer diese
+  # Voreinstellung versehentlich zurückholt, merkt es sonst nicht: Das
+  # Dashboard sieht in beiden Fällen gleich aus.
+  #
+  sa="system:serviceaccount:headlamp:headlamp"
+
+  if kubectl auth can-i list pods --all-namespaces --as="$sa" >/dev/null 2>&1; then
+    pass "Dashboard-ServiceAccount darf Pods lesen"
+  else
+    bad "Dashboard-ServiceAccount darf keine Pods lesen - das Dashboard bleibt leer"
+  fi
+
+  if kubectl auth can-i get secrets --all-namespaces --as="$sa" >/dev/null 2>&1; then
+    bad "Dashboard-ServiceAccount kommt an Secrets - er soll die Rolle 'view' haben, nicht mehr"
+  else
+    pass "Dashboard-ServiceAccount kommt nicht an Secrets"
+  fi
+
+  for verb_res in "delete:deployments" "create:pods" "patch:networkpolicies"; do
+    verb="${verb_res%%:*}"
+    res="${verb_res##*:}"
+    if kubectl auth can-i "$verb" "$res" --all-namespaces --as="$sa" >/dev/null 2>&1; then
+      bad "Dashboard-ServiceAccount darf $verb $res - er soll nur lesen"
+    else
+      pass "Dashboard-ServiceAccount darf kein $verb $res"
+    fi
+  done
+
+  #
+  # Der Weg hinein muss über ingress-internal führen. Steht das Dashboard
+  # nicht in der Beobachtungsliste des Controllers, existiert der Ingress
+  # zwar, wird aber von niemandem bedient - der Aufruf läuft dann in eine
+  # Zeitüberschreitung, die nach einem Netzproblem aussieht.
+  #
+  class="$(kubectl -n headlamp get ingress headlamp \
+    -o jsonpath='{.spec.ingressClassName}' 2>/dev/null || true)"
+  if [ "$class" = "internal" ]; then
+    pass "Dashboard hängt an ingressClassName: internal"
+  else
+    bad "Dashboard-Ingress hat ingressClassName '$class' statt 'internal'"
+  fi
+else
+  warn "Dashboard nicht installiert (var.dashboard.enabled)"
+fi
+
 echo
 if [ "$fail" -eq 0 ]; then
   printf '\033[32mAlle harten Prüfungen bestanden.\033[0m\n'

@@ -76,8 +76,25 @@ cluster:
           exemptions:
             usernames: []
             runtimeClasses: []
-            namespaces:
-              # Talos' eigene Control-Plane-Komponenten und Cilium laufen mit
-              # hostNetwork und Host-Mounts - sie können die Regel nicht
-              # erfüllen.
-              - kube-system
+            #
+            # `namespaces` steht hier bewusst nicht.
+            #
+            # kube-system muss ausgenommen sein - Talos' Control-Plane-
+            # Komponenten und Cilium laufen mit hostNetwork und Host-Mounts und
+            # können "restricted" nicht erfüllen. Talos trägt den Namespace
+            # aber schon von sich aus ein, und Config-Patches *ergänzen*
+            # Listen, statt sie zu ersetzen. Steht er hier noch einmal, kommt
+            # er doppelt in der fertigen Config an - und der kube-apiserver
+            # beendet sich beim Start:
+            #
+            #   failed to initialize admission plugin "PodSecurity":
+            #     exemptions.namespaces[1]: Duplicate value: "kube-system"
+            #
+            # Das ist ein besonders unangenehmer Fehler, weil der Node dabei
+            # gesund aussieht: etcd und kubelet laufen, talosctl antwortet,
+            # nur Port 6443 bleibt zu und der Cluster-Health-Check läuft in
+            # seinen Timeout.
+            #
+            # Ein weiterer Namespace gehört also angehängt, nicht die ganze
+            # Liste neu geschrieben - kube-system nie mit aufzählen.
+            #

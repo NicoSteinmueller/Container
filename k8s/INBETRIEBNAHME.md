@@ -13,7 +13,7 @@ Ausführlich steht alles in [../vm/edge/README.md](../vm/edge/README.md),
 |---|---|
 | VM-Manager aktiv (Settings → VM Manager → Enable VMs: Yes) | `ssh root@unraid virsh list --all` |
 | Anbindung ans LAN: Bridge `br0` **oder** macvtap auf `bond0`/`ethX` | `ssh root@unraid ip -br link` |
-| Share `domains` vorhanden, ~120 GB frei | `ssh root@unraid df -h /mnt/user/domains` |
+| Share `domains` vorhanden, ~120 GB frei | `ssh root@unraid df -h /mnt/cache/domains` |
 | RAM-Budget, siehe unten — Container zählen mit | `ssh root@unraid free -m` |
 
 **Zum RAM-Budget.** Die Zahl im Konzept — 1,5 GB Edge, 10 GB Talos — beschreibt
@@ -24,17 +24,41 @@ und Paperless noch als Container auf dem Host und belegen ihren Speicher weiter:
 16 GB gesamt  −  ~7,5 GB Docker  −  1,5 GB Edge  =  ~5 GB frei
 ```
 
-Die Talos-VM startet deshalb mit **4 GB** und wächst erst mit den migrierten
-Diensten. Der Ablauf pro Dienst — Container stoppen, *dann* `vm_memory_mib`
-erhöhen, VM neu starten — steht in [../vm/talos/README.md](../vm/talos/README.md).
-`memory` ist kein ForceNew-Feld; die VM wird dabei nicht neu gebaut.
+**Diese Rechnung ist eine Obergrenze, kein Budget.** Sie unterstellt, dass der
+gesamte Rest der VM zusteht — der Host braucht davon aber selbst Page-Cache,
+und Unraid hat ab Werk **keinen Swap**. Gemessen mit einer 4-GB-VM: 629 MB
+frei, `kswapd0` dauerhaft aktiv, Page-Cache wird laufend verworfen. Darunter
+der Kernel-Modul-Squashfs `/boot/bzmodules`, dessen Backing-Store der
+USB-Boot-Stick ist. Der stand bei 74 % Auslastung, der ganze Host bei 70 %
+iowait und 6 % User-CPU — Load 15,7, ohne dass irgendetwas gerechnet hätte.
 
-Vor dem Start einmal gegenprüfen, was der Host wirklich frei hat:
+Real verfügbar sind eher 2–2,5 GB. Ein Versuch mit 3 GB scheiterte dann aber an
+der anderen Seite der Rechnung: Der Plattform-Stack ist nicht „fast nichts".
+Gemessen im laufenden Cluster, ohne jede Nutzlast, sind es **1900 MiB
+Memory-Requests** — auf einem Node, dem Talos von 3072 MiB VM nur 2880 MiB
+meldet, und der davon selbst rund 600 MiB für kubelet und containerd braucht.
+Talos' `runtime.OOMController` schoss daraufhin reihenweise Cgroups ab.
+
+**Reihenfolge, die dabei zählt:** Der Plattform-Stack muss passen, *bevor* der
+erste Dienst migriert. Auf einem 16-GB-Host heißt das, vorher hostseitig Platz
+zu schaffen — bei dieser Inbetriebnahme durch das Abschalten von Immich
+(~1,9 GB). Die VM startet dann mit **5 GB**.
+
+Erst ab da gilt „pro migriertem Dienst wachsen": Container stoppen, *dann*
+`vm_memory_mib` erhöhen, VM neu starten — der Ablauf steht in
+[../vm/talos/README.md](../vm/talos/README.md). `memory` ist kein
+ForceNew-Feld; die VM wird dabei nicht neu gebaut.
+
+Vor dem Start und vor **jeder** Erhöhung gegenprüfen, was der Host wirklich
+frei hat. Maßgeblich ist die Spalte `available`, nicht `free`:
 
 ```bash
 ssh root@unraid free -m
 ssh root@unraid 'docker stats --no-stream --format "{{.Name}}\t{{.MemUsage}}"' | sort -k2 -h
 ```
+
+Bleibt `available` unter etwa 1,5 GB, ist der nächste Schritt keine Erhöhung,
+sondern das Abschalten eines Containers.
 
 **Zum Ablageort der VM-Disks.** Unraid definiert keine libvirt-Storage-Pools —
 es schreibt VM-Disks über absolute Pfade ins Domain-XML, `virsh pool-list --all`
@@ -46,15 +70,26 @@ Was dort liegt, sind gewöhnliche qcow2-Dateien — sichtbar in der
 Unraid-Oberfläche und für die Backup-Plugins:
 
 ```
-/mnt/user/domains/edge1.qcow2
-/mnt/user/domains/homelab-cp1.qcow2
-/mnt/user/domains/debian-13-genericcloud-amd64-<snapshot>.qcow2
+/mnt/cache/domains/edge1.qcow2
+/mnt/cache/domains/homelab-cp1.qcow2
+/mnt/cache/domains/debian-13-genericcloud-amd64-<snapshot>.qcow2
 ```
 
-Liegt der Share wie üblich auf einem Cache-Pool (`shareUseCache="only"` in
-`/boot/config/shares/domains.cfg`), lohnt `pool_path = "/mnt/cache/domains"`:
-derselbe Ort, aber ohne die shfs-FUSE-Schicht dazwischen — bei VM-Disks ist
-das spürbar.
+Der Pfad geht bewusst über `/mnt/cache` und nicht über `/mnt/user`: derselbe
+Ort, aber ohne die shfs-FUSE-Schicht dazwischen. Das ist kein Feinschliff. Über
+`/mnt/user` läuft jeder Blockzugriff der VM durch einen Userspace-Daemon, und
+etcd im Talos-Node ruft mehrmals pro Sekunde `fsync` — gemessen rund 40.000
+Kontextwechsel/s und 25–32 % Systemzeit auf dem Host, im Leerlauf, ohne eine
+einzige Anwendung im Cluster.
+
+Voraussetzung ist, dass der Share cache-only ist — sonst kann der Mover die
+Disk aufs Array schieben und `/mnt/cache/domains` zeigt danach ins Leere:
+
+```bash
+ssh root@unraid grep shareUseCache /boot/config/shares/domains.cfg   # -> "only"
+```
+
+Steht dort etwas anderes, gehört `pool_path` auf `/mnt/user/domains` zurück.
 
 `terraform destroy` meldet den Pool nur ab (`destroy.delete = false`); das
 Verzeichnis und alles darin bleiben unangetastet.
@@ -123,6 +158,14 @@ ssh root@192.168.178.3 'mkdir -p /boot/config/ssh && \
 ```
 
 **Auf der Arbeitsstation:** `terraform`, `talosctl`, `kubectl`, `helm`.
+
+`talosctl` muss zur gepinnten `talos_version` passen:
+
+```bash
+curl -sSL -o /usr/local/bin/talosctl \
+  https://github.com/siderolabs/talos/releases/download/v1.13.7/talosctl-linux-amd64
+chmod +x /usr/local/bin/talosctl
+```
 
 **Adressen festlegen** (Beispiel, muss zum eigenen Netz passen):
 
@@ -198,7 +241,7 @@ admin_sources   = ["192.168.178.50/32"]   # die eigene Arbeitsstation
 efi_loader        = "/usr/share/qemu/ovmf-x64/OVMF_CODE-pure-efi.fd"
 efi_vars_template = "/usr/share/qemu/ovmf-x64/OVMF_VARS-pure-efi.fd"
 
-vm_memory_mib = 4096               # Startwert, siehe RAM-Budget oben
+vm_memory_mib = 5120               # Startwert, siehe RAM-Budget oben
 ```
 
 ```bash
@@ -208,7 +251,27 @@ kubectl get nodes -o wide               # Ready, INTERNAL-IP 192.168.178.222
 verify/assert-cluster.sh
 ```
 
-Wenn der Apply hängt: `virsh -c qemu+ssh://root@192.168.178.3/system console homelab-cp1`.
+**Wenn `talos_machine_configuration_apply` minutenlang „Still creating…" meldet**
+und die VM auf Unraid trotzdem als gestartet erscheint, ist der Node im
+Maintenance-Mode nicht unter `lan_ip` erreichbar. Nachsehen:
+
+```bash
+ping -c2 192.168.178.222                    # keine Antwort?
+ip -4 neigh show | grep 52:54:00:7a:20:01   # welche Adresse hat er wirklich?
+```
+
+Das Modul gibt dem Image dafür einen `ip=`-Kernel-Parameter mit, damit die
+feste Adresse schon vor dem ersten Apply steht (`maintenance_link` in
+[../vm/talos/variables.tf](../vm/talos/variables.tf)). Steht dort trotzdem eine
+DHCP-Adresse, passt der Interface-Name nicht — am laufenden Node prüfen und
+`maintenance_link` korrigieren:
+
+```bash
+talosctl get links --insecure -n <gefundene-adresse> -e <gefundene-adresse>
+```
+
+Sonst hilft die serielle Konsole:
+`virsh -c qemu+ssh://root@192.168.178.3/system console homelab-cp1`.
 
 ## 3. Cluster ausstatten
 
@@ -273,6 +336,9 @@ und `terraform apply`. Der **Firewall**-Bouncer bleibt noch aus.
 3. Fritzbox: **nur 443/TCP** auf `192.168.178.221`. Port 80 bleibt zu.
 4. **IPv6 getrennt prüfen** — „Host komplett freigeben" öffnet mehr als
    gedacht. UPnP aus, MyFRITZ!-Fernzugriff aus.
+5. Interne Namen **nur im Heimnetz** auflösen (AdGuard oder Fritzbox), nicht
+   per DynDNS: `dashboard.domain.de` → `192.168.178.222`. Sie zeigen auf die
+   LAN-Adresse des Nodes und haben im öffentlichen DNS nichts verloren.
 
 ```bash
 vm/edge/verify/proxy-test.sh cloud.domain.de
@@ -281,7 +347,58 @@ vm/edge/verify/proxy-test.sh cloud.domain.de
 Die beiden wichtigsten Proben darin: Ein gefälschter `X-Forwarded-For` darf im
 Log **nicht** auftauchen, und ein fremder Hostname muss im TLS-Handshake enden.
 
-## 6. Anwendungen
+## 6. Dashboard und Metriken
+
+Das Dashboard steht mit Schritt 3 schon. Aufrufen unter
+`https://dashboard.domain.de` — und dort nach einem Token gefragt werden:
+
+```bash
+# Der Alltagsfall: lesen. Kommt an keine Secrets.
+kubectl -n headlamp create token headlamp --duration=8h
+
+# Nur wenn im Dashboard geändert werden soll. Läuft nach einer Stunde ab.
+kubectl -n headlamp create token headlamp-admin --duration=1h
+```
+
+Die Anmeldung ist hier die Kontrolle, nicht die Netzgrenze: Headlamp spricht
+mit genau der Identität mit der API, zu der das eingefügte Token gehört. Wer
+die Adresse ohne Token aufruft, sieht nichts.
+
+**Die Auslastungsanzeigen kommen erst jetzt**, und dafür muss der Node einmal
+neu starten. Der Grund ist eine Abhängigkeit über beide Module hinweg:
+`metrics-server` braucht ein prüfbares Serverzertifikat vom Kubelet, das gibt
+es erst mit `kubelet_server_certs` in `vm/talos` — und das wiederum braucht
+den Genehmiger für die Zertifikatsanträge, der aus `k8s/platform` kommt.
+
+Deshalb in dieser Reihenfolge, und nicht anders herum: Wird die Talos-Zeile
+gesetzt, bevor der Genehmiger läuft, bricht `terraform apply` dort ab mit
+*„kubelet server certificate rotation is enabled, but CSR is not approved"* —
+und `kubectl logs` und `kubectl exec` funktionieren bis dahin nicht mehr.
+
+```bash
+# Der Genehmiger ist mit Schritt 3 schon da:
+kubectl -n kube-system get deploy kubelet-csr-approver
+
+cd vm/talos
+vim terraform.tfvars                    # kubelet_server_certs = true
+terraform apply
+talosctl -n 192.168.178.222 reboot
+
+kubectl get csr                         # nichts auf "Pending"
+
+cd ../../k8s/platform
+vim terraform.tfvars                    # metrics_server_enabled = true
+terraform apply
+
+kubectl top node
+verify/assert-platform.sh
+```
+
+Der verbreitete Ausweg `--kubelet-insecure-tls` steht bewusst nicht in den
+Werten: Er wäre eine ungeprüfte Verbindung zu genau der Komponente, die
+Auskunft über jeden Pod auf dem Node gibt.
+
+## 7. Anwendungen
 
 Namespaces, NetworkPolicies und IngressClasses stehen schon. Ein Ingress
 braucht nur noch die richtige Klasse:
@@ -318,7 +435,7 @@ den größten Prozess — das ist qemu, also der ganze Cluster.
 Den Container erst löschen, wenn der Dienst im Cluster ein paar Tage steht.
 Bis dahin ist er der Rückweg.
 
-## 7. Scharfschalten (nach 1-2 Wochen)
+## 8. Scharfschalten (nach 1-2 Wochen)
 
 ```bash
 kubectl -n crowdsec exec deploy/crowdsec-lapi -- cscli alerts list
@@ -338,12 +455,20 @@ Danach in `vm/edge/terraform.tfvars` den Egress zumachen: Counter lesen
 | `AppArmor-Profil … kann nicht geladen werden` | Der Apply läuft gegen den **lokalen** libvirt — `libvirt_uri` in der tfvars fehlt. `terraform destroy`, URI setzen, erneut anwenden |
 | `Cannot get interface MTU on 'br0'` | Kein Bridging auf dem Host — `lan_macvtap_dev = "bond0"` statt `lan_bridge` |
 | Edge-VM ohne Netz | `virsh console edge1`, MACs und `lan_bridge`/`lan_macvtap_dev` prüfen |
+| `talos_machine_configuration_apply` hängt, VM läuft aber | Node hat im Maintenance-Mode eine DHCP-Adresse statt `lan_ip` — siehe Schritt 2 |
+| `data.talos_cluster_health` läuft in den Timeout, `talosctl` antwortet aber | Control Plane startet nicht. `talosctl -n … containers -k` zeigt `CONTAINER_EXITED`, die Begründung steht in `talosctl -n … logs -k kube-system/kube-apiserver-<node>:kube-apiserver` |
+| Static Pod neu gerendert, aber kein neuer Startversuch | Kubelet hängt: `talosctl -n … service kubelet restart` |
 | Talos bleibt NotReady | `kubectl -n kube-system get pods -l k8s-app=cilium`, `talosctl -n … dmesg` |
 | Node nicht mehr erreichbar | `admin_sources` falsch → serielle Konsole, siehe vm/talos/README.md |
 | Edge erreicht den Cluster nicht | `vm/edge/verify/egress-test.sh`, dann `talosctl -n … get nftableschains` |
 | ACME schlägt fehl | Zeit (NTP), CNAME-Delegation, Staging-Verzeichnis verwenden |
 | Ingress antwortet nicht | `kubectl -n traefik-public logs deploy/traefik-public`; fehlt das Secret `ingress-public-tls`, dann `kubectl -n step-ca logs job/ingress-cert-bootstrap` |
 | Alles tot nach Policy-Änderung | `kubectl -n traefik-public delete networkpolicy allow-from-edge` |
+| `kubectl logs`/`exec` brechen weg, Node ist aber Ready | Kubelet-CSR ungenehmigt. `kubectl get csr`, dann `kubectl -n kube-system logs -l app.kubernetes.io/name=kubelet-csr-approver`. Notbremse: `kubelet_server_certs = false` in `vm/talos`, apply, reboot |
+| `terraform apply` in `vm/talos` bricht ab mit „kubelet server certificate rotation is enabled, but CSR is not approved" | `kubelet_server_certs` wurde vor `k8s/platform` gesetzt — siehe Schritt 6, Reihenfolge |
+| `kubectl top node` sagt „Metrics API not available" | `kubectl -n kube-system logs deploy/metrics-server`; bei `x509: certificate signed by unknown authority` fehlt Schritt 6 (Reboot nach `kubelet_server_certs`) |
+| Dashboard lädt nicht, Pod läuft | Namespace fehlt in der Beobachtungsliste von `ingress-internal`. `kubectl -n traefik-internal logs deploy/traefik-internal`, dann `local.internal_namespaces` in `k8s/platform/main.tf` |
+| Dashboard zeigt überall „Forbidden" | Token abgelaufen oder von der falschen Identität. Neu: `kubectl -n headlamp create token headlamp --duration=8h` |
 
 ## Was danach noch fehlt
 

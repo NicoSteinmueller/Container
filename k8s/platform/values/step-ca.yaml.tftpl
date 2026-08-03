@@ -72,6 +72,32 @@ service:
   port: 9000
   targetPort: 9000
 
+#
+# Ohne diese Requests läuft step-ca als BestEffort - die QoS-Klasse, die der
+# Kubelet bei Speicherdruck zuerst opfert und die bei CPU-Konkurrenz als letzte
+# bedient wird. Für die interne CA ist das die falsche Einstufung: Hängt sie,
+# bekommt die Edge-VM kein Client-Zertifikat mehr, und nach spätestens 24 h
+# steht die gesamte öffentliche Strecke.
+#
+# Der Anlass war konkret. Das Chart verdrahtet seine Probes fest, ohne
+# Stellschraube, und übernimmt damit die Kubernetes-Voreinstellung
+# timeoutSeconds: 1 - eine Sekunde für einen kompletten TLS-Handshake. Im
+# Normalbetrieb antwortet /health in Mikrosekunden; unter Last reichte die
+# Sekunde nicht, die Liveness-Probe schlug fehl und step-ca ging in
+# CrashLoopBackOff:
+#
+#   Liveness probe failed: Get "https://10.244.0.211:9000/health":
+#     context deadline exceeded
+#
+# Da die Probe selbst nicht einstellbar ist, wird stattdessen der Grund für die
+# Verzögerung beseitigt: Mit Requests ist der Pod Burstable statt BestEffort
+# und bekommt seinen Anteil garantiert.
+#
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+
 # Der Chart-Job legt Wurzel, Intermediate und den Provisioner beim ersten
 # Release an und schreibt sie in ConfigMaps und Secrets dieses Namespaces.
 bootstrap:
