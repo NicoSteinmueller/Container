@@ -421,9 +421,9 @@ resource "libvirt_network" "dmz" {
 # "Pool" klingt nach mehr, als es ist - bei type = "dir" ist es nur libvirts
 # Index über ein Verzeichnis. Was dort liegt, sind gewöhnliche qcow2-Dateien:
 #
-#   /mnt/user/domains/edge1.qcow2
-#   /mnt/user/domains/debian-13-genericcloud-amd64-<snapshot>.qcow2
-#   /mnt/user/domains/edge1-seed-<hash>.iso
+#   /mnt/cache/domains/edge1.qcow2
+#   /mnt/cache/domains/debian-13-genericcloud-amd64-<snapshot>.qcow2
+#   /mnt/cache/domains/edge1-seed-<hash>.iso
 #
 # Damit liegen die Disks dort, wo Unraid seine VMs erwartet (Share `domains`,
 # und damit im Blick der VM-Oberfläche und der Backup-Plugins) - und der

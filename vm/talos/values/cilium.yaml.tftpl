@@ -84,6 +84,32 @@ hubble:
   ui:
     enabled: ${hubble_ui_enabled}
 
+  #
+  # Zertifikate für Hubble dürfen nicht beim Rendern entstehen.
+  #
+  # Ab Werk erzeugt das Chart eine eigene CA samt Server-Zertifikaten - und
+  # zwar bei *jedem* `helm template`. Weil dieses Chart hier als Inline-
+  # Manifest in die Machine-Config gerendert wird, ändert sich damit die
+  # Machine-Config bei jedem Lauf: `terraform plan` meldet ewig eine Änderung,
+  # und jedes `terraform apply` schiebt dem Cluster eine neue CA unter und
+  # startet Cilium neu. Ein Plan, der nie leer wird, ist außerdem kein
+  # brauchbarer Drift-Nachweis mehr - man sieht echte Abweichungen nicht.
+  #
+  # Solange Relay und UI aus sind, spricht niemand über das Netz mit der
+  # Hubble-API; sie ist nur im Agent-Pod erreichbar:
+  #   kubectl -n kube-system exec ds/cilium -- hubble observe --follow
+  # Dann braucht es dort auch kein TLS.
+  #
+  # Wird Relay eingeschaltet, geht TLS mit an - dann aber über `cronJob`:
+  # Die Zertifikate entstehen im Cluster zur Laufzeit statt hier beim Rendern,
+  # die Machine-Config bleibt stabil.
+  #
+  tls:
+    enabled: ${hubble_relay_enabled}
+    auto:
+      enabled: ${hubble_relay_enabled}
+      method: cronJob
+
 # Kein LoadBalancer-IPAM und keine L2-Announcements: Die beiden Ingress-
 # Controller hängen über hostPort/hostIP an festen Adressen. Ein Service-Typ
 # LoadBalancer wäre eine zweite Zuordnungsebene, die im Fehlerfall erklärt

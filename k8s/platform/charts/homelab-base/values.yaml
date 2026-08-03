@@ -14,6 +14,7 @@ namespaces:
   crowdsec: crowdsec
   kyverno: kyverno
   storage: local-path-storage
+  headlamp: headlamp
 
 # Anwendungs-Namespaces mit ihrer Zone. "public" heißt: aus dem Internet
 # erreichbar, und nur dort ist ingressClassName: public zulässig.
@@ -41,6 +42,11 @@ network:
   dmzCidr: 10.10.20.2/32
   nodeLanIp: 192.168.178.222
   nodeDmzIp: 10.10.20.3
+
+# Cluster-Dashboard (Headlamp). Steuert nur Namespace und Netzgrenzen - die
+# Release selbst steht in main.tf, die Rechte in charts/homelab-policies.
+headlamp:
+  enabled: true
 
 localPath:
   enabled: true

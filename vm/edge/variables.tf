@@ -60,11 +60,23 @@ variable "pool_path" {
     Liegt der Share wie üblich auf einem Cache-Pool
     (shareUseCache="only" in /boot/config/shares/domains.cfg), ist
     /mnt/cache/domains der schnellere Weg zum selben Ort: Er umgeht die
-    shfs-FUSE-Schicht. /mnt/user/domains funktioniert ebenso und bleibt
-    richtig, falls der Share später auf das Array wandert.
+    shfs-FUSE-Schicht.
+
+    Das ist kein Feinschliff, sondern messbar. Über /mnt/user läuft jeder
+    Blockzugriff der VM durch einen Userspace-Daemon. Bei etcd im Talos-Node,
+    das mehrmals pro Sekunde fsync ruft, waren das rund 40.000
+    Kontextwechsel/s und 25-32 % Systemzeit auf dem Host - im Leerlauf, ohne
+    eine einzige Anwendung im Cluster.
+
+    /mnt/user/domains bleibt trotzdem der richtige Wert, falls der Share
+    NICHT cache-only ist: Dann kann der Mover die Disk aufs Array schieben,
+    und /mnt/cache/domains zeigte anschließend ins Leere. Vor dem Umstellen
+    also prüfen:
+
+      grep shareUseCache /boot/config/shares/domains.cfg   # -> "only"
   EOT
   type        = string
-  default     = "/mnt/user/domains"
+  default     = "/mnt/cache/domains"
 
   #
   # Kreuzprobe gegen den häufigsten Fehlgriff: Unraid-Pfad, aber der lokale

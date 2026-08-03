@@ -98,7 +98,7 @@ ingress_firewall_enforced = true
 # ForceNew, ein Apply schreibt nur die Domain-Definition, wirksam beim
 # nächsten Start der VM.
 #
-vm_memory_mib = 4096
+vm_memory_mib = 5120
 vm_vcpu       = 4
 vm_disk_gib   = 100
 

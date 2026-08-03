@@ -61,3 +61,34 @@ output "bootstrap_schritte" {
     5. Erst danach in der Fritzbox 443/TCP auf die Edge-VM freigeben.
   EOT
 }
+
+output "dashboard" {
+  description = <<-EOT
+    Das Cluster-Dashboard: Adresse, der nötige DNS-Eintrag und die beiden
+    Befehle für ein Token.
+
+    Zur Anmeldung, weil das hier die eigentliche Kontrolle ist: Headlamp
+    fragt beim Aufruf nach einem Token und spricht anschließend mit genau
+    der Identität, zu der es gehört. Wer die Seite ohne Token aufruft, sieht
+    nichts - "nur im LAN erreichbar" ist nicht die Absicherung, sondern nur
+    die äußere Schranke.
+  EOT
+  value = var.dashboard.enabled ? {
+    url = "https://${local.dashboard_host}"
+
+    # Muss im Heimnetz aufgelöst werden (AdGuard oder Fritzbox). Aus dem
+    # Internet ist der Name weder auflösbar noch erreichbar.
+    dns_eintrag = "${local.dashboard_host} -> ${var.node_lan_ip}"
+
+    # Der Alltagsfall: lesen. Kommt an keine Secrets.
+    token_lesen = "kubectl -n ${local.ns_headlamp} create token headlamp --duration=8h"
+
+    # Nur wenn im Dashboard geändert werden soll. Läuft nach einer Stunde ab.
+    token_admin = var.dashboard.admin_service_account ? (
+      "kubectl -n ${local.ns_headlamp} create token headlamp-admin --duration=1h"
+    ) : "deaktiviert (var.dashboard.admin_service_account = false)"
+
+    # Ohne DNS-Eintrag zum Ausprobieren.
+    ohne_dns = "kubectl -n ${local.ns_headlamp} port-forward svc/headlamp 8080:80"
+  } : null
+}

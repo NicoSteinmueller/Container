@@ -15,6 +15,9 @@
 deployment:
   kind: Deployment
   replicas: 1
+  # Sonst erbt der Pod bei hostNetwork /etc/resolv.conf des Nodes und kennt
+  # kein .svc.cluster.local mehr.
+  dnsPolicy: ClusterFirstWithHostNet
 
 podSecurityContext:
   runAsUser: 65532
@@ -29,16 +32,63 @@ securityContext:
   capabilities:
     drop:
       - ALL
+    # Kein NET_BIND_SERVICE: Es hilft einem Nicht-Root-Prozess ohne
+    # File-Capability nicht über den execve hinweg. Dass dieser Controller 80
+    # und 443 als UID 65532 binden darf, kommt vom Sysctl
+    # net.ipv4.ip_unprivileged_port_start=0 auf dem Node - ausführlich in
+    # traefik-public.yaml.tftpl und vm/talos/patches/hardening.yaml.
+    add: []
 
+#
+# Netz-Namespace des Nodes statt Pod-Netz. Ausführlich begründet in
+# traefik-public.yaml.tftpl; kurz: Das Chart schreibt `hostIP` auch in die
+# Entrypoint-Adresse, und im Pod-Netz gibt es ${node_lan_ip} nicht. Ohne
+# hostIP wiederum kollidieren die beiden Ingress-Controller auf Port 443.
+#
+hostNetwork: true
+
+#
+# Recreate statt RollingUpdate - sonst blockiert sich jedes Upgrade selbst.
+#
+# Mit hostNetwork behandelt der Scheduler die containerPorts wie Node-Ports.
+# Der Node hat aber nur einen Satz davon, und die Chart-Voreinstellung ist
+# maxUnavailable: 0 / maxSurge: 1: Der neue Pod soll starten, BEVOR der alte
+# geht - und bleibt dann Pending mit
+#
+#   0/1 nodes are available: 1 node(s) didn't have free ports for the
+#   requested pod ports
+#
+# waehrend der alte auf den neuen wartet. Ein Deadlock, der erst beim naechsten
+# Upgrade auffaellt und wie ein Scheduling-Problem aussieht.
+#
+# Der Preis ist eine kurze Luecke beim Rollout. Bei einem Ingress auf einem
+# Ein-Node-Cluster ist die ohnehin unvermeidbar.
+#
+updateStrategy:
+  type: Recreate
+  rollingUpdate: null
+
+#
+# Mit hostNetwork ist `port` zugleich der Port auf dem Node - hostPort
+# entfällt. Jeder Port braucht ein hostIP, auch die internen: Beide
+# Controller teilen sich den Netz-Namespace, und zwei Prozesse auf
+# 0.0.0.0:8080 schließen einander aus.
+#
 ports:
   traefik:
     port: 8080
+    hostIP: ${node_lan_ip}
+    expose:
+      default: false
+
+  metrics:
+    port: 9100
+    hostIP: ${node_lan_ip}
     expose:
       default: false
 
   web:
-    port: 8000
-    hostPort: 80
+    port: 80
     hostIP: ${node_lan_ip}
     expose:
       default: false
@@ -53,8 +103,7 @@ ports:
           permanent: true
 
   websecure:
-    port: 8443
-    hostPort: 443
+    port: 443
     hostIP: ${node_lan_ip}
     expose:
       default: false

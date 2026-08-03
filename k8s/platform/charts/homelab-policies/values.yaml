@@ -8,6 +8,14 @@ namespaces:
   stepCa: step-ca
   crowdsec: crowdsec
   certManager: cert-manager
+  headlamp: headlamp
+
+# Rechte des Cluster-Dashboards. Siehe templates/dashboard-rbac.yaml.
+headlamp:
+  enabled: true
+  # Ein ServiceAccount mit cluster-admin, aber ohne Token - für kurzlebige
+  # Admin-Sitzungen im Dashboard. Auf false, wenn dort nur gelesen wird.
+  adminServiceAccount: true
 
 # Namespaces, in denen ingressClassName: public zulässig ist. Nur zur
 # Anzeige in der Fehlermeldung - erzwungen wird über das Namespace-Label

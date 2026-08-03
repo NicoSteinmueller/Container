@@ -65,13 +65,25 @@ for addr in "$NODE_IP" "$DMZ_IP"; do
   fi
 done
 
+#
 # Genau eine Default-Route, und die zeigt ins LAN. Eine zweite über das
 # DMZ-Bein wäre ein Weg nach außen an der Edge-VM vorbei.
-default_routes="$(talosctl -n "$NODE_IP" get routes -o yaml 2>/dev/null | grep -c 'gateway: ' || true)"
+#
+# Gezählt werden nur Zeilen mit leerem Ziel (= Default-Route) und gesetztem
+# Gateway. Ein bloßes `grep -c 'gateway: '` zählt zu viel: Cilium legt für das
+# Pod-Netz eine Route über cilium_host an, die ebenfalls ein Gateway trägt -
+# das meldete sich als Fund, obwohl der Node nur ein Default-Gateway hat.
+#
+default_routes="$(
+  talosctl -n "$NODE_IP" get routes -o yaml 2>/dev/null |
+    awk '/^ *dst: ""/ { dst = 1; next }
+         /^ *gateway: / { if (dst && $2 != "\"\"") n++; dst = 0 }
+         END { print n + 0 }'
+)"
 if [ "${default_routes:-0}" -le 1 ]; then
-  pass "Höchstens ein Gateway konfiguriert (DMZ-Bein ohne Route)"
+  pass "Genau ein Default-Gateway (DMZ-Bein ohne Route)"
 else
-  warn "Mehr als ein Gateway sichtbar - talosctl get routes von Hand ansehen"
+  bad "$default_routes Default-Gateways - das DMZ-Bein darf keins haben: talosctl -n $NODE_IP get routes"
 fi
 
 node_ready="$(kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
@@ -114,26 +126,36 @@ info "3. Bindung der exponierten Ports"
 # ---------------------------------------------------------------------
 
 #
-# Die Bindung liegt bei Cilium im eBPF-Datapath, nicht in einem lauschenden
-# Socket - `ss -lntp` zeigt sie deshalb nicht. Maßgeblich ist die
-# Service-Liste des Agents: dort steht die Frontend-Adresse.
+# Beide Ingress-Controller laufen im Netz-Namespace des Nodes (hostNetwork,
+# begründet in k8s/platform/values/traefik-*.yaml.tftpl). Ihre Bindung ist
+# damit ein echter lauschender Socket und direkt nachweisbar - anders als
+# früher mit hostPort, wo sie nur im eBPF-Datapath von Cilium stand und man
+# der Service-Liste des Agents glauben musste.
 #
-services="$(kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
-  cilium-dbg service list 2>/dev/null || true)"
+# Das ist die Abnahme aus dem Konzept in ihrer strengsten Form: nicht "ist so
+# konfiguriert", sondern "der Kernel hat genau diese Adresse gebunden".
+#
+sockets="$(talosctl -n "$NODE_IP" netstat -l -t -p 2>/dev/null || true)"
 
-if [ -z "$services" ]; then
-  warn "cilium-dbg nicht abrufbar - Schritt übersprungen"
+if [ -z "$sockets" ]; then
+  warn "netstat über talosctl nicht abrufbar - Schritt übersprungen"
 else
-  for entry in "$DMZ_IP:443" "$DMZ_IP:8443" "$DMZ_IP:9000"; do
-    if grep -q "$entry" <<<"$services"; then
-      pass "HostPort $entry gebunden"
+  for entry in "$DMZ_IP:443" "$DMZ_IP:8443" "$DMZ_IP:9000" "$NODE_IP:443"; do
+    if grep -qE "[[:space:]]${entry//./\\.}[[:space:]]" <<<"$sockets"; then
+      pass "$entry gebunden"
     else
-      warn "HostPort $entry nicht in der Service-Liste - k8s/platform schon angewendet?"
+      warn "$entry lauscht nicht - k8s/platform schon angewendet?"
     fi
   done
 
-  if grep -qE '^\s*[0-9]+\s+0\.0\.0\.0:(443|8443|9000)' <<<"$services"; then
-    bad "Ein exponierter Port hängt an 0.0.0.0 - hostIP fehlt, damit ist ingress-public aus dem LAN erreichbar"
+  #
+  # Der eigentliche Fund, auf den es hier ankommt: Läge einer der drei
+  # DMZ-Ports auf 0.0.0.0, wäre ingress-public aus dem Heimnetz erreichbar -
+  # und die Trennung zwischen öffentlichem und internem Ingress aufgehoben,
+  # ohne dass irgendetwas kaputt aussähe.
+  #
+  if grep -qE '[[:space:]]0\.0\.0\.0:(443|8443|9000)[[:space:]]' <<<"$sockets"; then
+    bad "Ein exponierter Port hängt an 0.0.0.0 statt an einer festen Node-Adresse - ingress-public wäre aus dem LAN erreichbar"
   else
     pass "Kein exponierter Port an 0.0.0.0"
   fi

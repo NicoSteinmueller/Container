@@ -49,14 +49,14 @@ libvirt_uri = "qemu+ssh://root@192.168.178.3/system"
 # legt ihn deshalb selbst an (manage_pool) und zeigt ihn auf den Share
 # `domains`. Was dort landet, sind gewöhnliche qcow2-Dateien:
 #
-#   /mnt/user/domains/edge1.qcow2
+#   /mnt/cache/domains/edge1.qcow2
 #
 # Liegt der Share auf einem Cache-Pool (shareUseCache="only"), ist
 # /mnt/cache/domains der direktere Weg zum selben Ort - er umgeht shfs.
 #
 manage_pool  = true
 libvirt_pool = "homelab"
-pool_path    = "/mnt/user/domains"
+pool_path    = "/mnt/cache/domains"
 
 # Lokaler Testlauf mit vorhandenem Pool:
 # manage_pool  = false

@@ -95,9 +95,18 @@ variable "manage_pool" {
 }
 
 variable "pool_path" {
-  description = "Verzeichnis des Pools, nur relevant bei manage_pool = true. Auf Unraid der Share `domains`."
+  description = <<-EOT
+    Verzeichnis des Pools, nur relevant bei manage_pool = true. Auf Unraid der
+    Share `domains`, und zwar über /mnt/cache statt /mnt/user - siehe die
+    ausführliche Begründung bei derselben Variable in vm/edge, wo der Pool
+    tatsächlich angelegt wird. Kurz: /mnt/user ist eine FUSE-Schicht, und
+    etcd fsyncnt zu oft, als dass die kostenlos wäre.
+
+    Wird der Pool wie üblich von vm/edge verwaltet (manage_pool = false), hat
+    dieser Wert hier keine Wirkung - dann zählt vm/edge/terraform.tfvars.
+  EOT
   type        = string
-  default     = "/mnt/user/domains"
+  default     = "/mnt/cache/domains"
 
   #
   # Kreuzprobe gegen den häufigsten Fehlgriff: Unraid-Pfad, aber der lokale
@@ -185,6 +194,29 @@ variable "lan_gateway" {
   description = "Default-Gateway, in der Regel die Fritzbox. Einziges Gateway des Nodes - das DMZ-Bein bekommt bewusst keine Route."
   type        = string
   default     = "192.168.178.1"
+}
+
+variable "maintenance_link" {
+  description = <<-EOT
+    Interface-Name des LAN-Beins, wie der Kernel es beim Booten von der ISO
+    benennt. Geht als `ip=`-Kernel-Parameter ins Image (siehe
+    talos_image_factory_schematic in main.tf) und sorgt dafür, dass der Node
+    schon im Maintenance-Mode unter lan_ip erreichbar ist - vorher gibt es dort
+    nur DHCP, und der Config-Apply liefe ins Leere.
+
+    Die Machine-Config selbst wählt das Interface über die MAC-Adresse, nicht
+    über den Namen. Diese Variable ist nur für das Zeitfenster vor dem ersten
+    Apply nötig, in dem es noch keine Config gibt, die eine MAC auswerten
+    könnte.
+
+    "enp1s0" ist der erste virtio-Adapter im q35-Layout dieses Moduls - für
+    eine unveränderte Konfiguration also richtig. Gegenprüfen am laufenden
+    Node im Maintenance-Mode:
+
+      talosctl get links --insecure -n <dhcp-adresse> -e <dhcp-adresse>
+  EOT
+  type        = string
+  default     = "enp1s0"
 }
 
 variable "dns_servers" {
@@ -289,6 +321,37 @@ variable "admin_sources" {
   }
 }
 
+variable "kubelet_server_certs" {
+  description = <<-EOT
+    Das Kubelet lässt sich sein Serverzertifikat über einen CSR ausstellen
+    (serverTLSBootstrap), statt sich eines selbst zu unterschreiben.
+
+    Braucht einen Genehmiger im Cluster - kubelet-csr-approver, den
+    k8s/platform mitbringt. Ohne ihn bleibt der Antrag auf "Pending",
+    `kubectl logs` und `kubectl exec` funktionieren nicht mehr, und
+    `data.talos_cluster_health` bricht den Lauf ab mit:
+
+      kubelet server certificate rotation is enabled, but CSR is not approved
+
+    Deshalb ein Schalter und keine feste Zeile in patches/hardening.yaml:
+    Beim ersten Aufbau kommt der Node vor dem Cluster, der Genehmiger aber
+    erst mit k8s/platform. Reihenfolge:
+
+      1. vm/talos      terraform apply                    (false)
+      2. k8s/platform  terraform apply                    bringt den Genehmiger
+      3. vm/talos      kubelet_server_certs = true, apply
+      4.               talosctl -n <lan_ip> reboot
+      5. k8s/platform  metrics_server_enabled = true, apply
+
+    Wofür man es will: Ohne echte Kubelet-Zertifikate braucht metrics-server
+    --kubelet-insecure-tls - eine ungeprüfte Verbindung zu der Komponente,
+    die Auskunft über jeden Pod auf dem Node gibt. Ausführlich in
+    patches/kubelet-server-certs.yaml.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "ingress_firewall_enforced" {
   description = <<-EOT
     Talos-Ingress-Firewall auf "block" stellen (Zielzustand).
@@ -316,13 +379,41 @@ variable "ingress_firewall_enforced" {
 # frei: 16 GB Host, davon rund 7,5 GB Container und 1,5 GB Edge-VM. Eine
 # 10-GB-VM startet dort nicht.
 #
-# 4 GB tragen den leeren Cluster mit dem vollen Plattform-Stack (Talos und
-# Cilium rund 1,5 GB, dazu Kyverno, cert-manager, step-ca, beide Traefiks und
-# die CrowdSec-LAPI). Wächst mit jedem migrierten Dienst mit - der Wert ist
-# nicht ForceNew, ein `terraform apply` schreibt nur die Domain-Definition neu:
+# Der Startwert war zunächst 4096, hergeleitet aus "16 - 7,5 - 1,5 = rund 5 GB
+# übrig". Diese Rechnung ist falsch aufgestellt, und der Fehler ist lehrreich:
+# Sie unterstellt, dass freier Speicher der VM zusteht. Der Host braucht davon
+# aber selbst Page-Cache, und Unraid hat ab Werk keinen Swap. Gemessen blieben
+# bei 4 GB noch 629 MB frei; ab da lief kswapd0 dauerhaft und warf Page-Cache
+# weg - darunter den Kernel-Modul-Squashfs /boot/bzmodules, dessen
+# Backing-Store der USB-Boot-Stick ist. Der stand bei 74 % Auslastung, und der
+# ganze Host lief in 70 % iowait bei 6 % User-CPU. Load 15,7, ohne dass
+# irgendetwas gerechnet hätte.
+#
+# Der zweite Anlauf mit 3072 war ebenfalls zu klein, und diesmal lag der Fehler
+# nicht am Host, sondern an der Annahme, der Plattform-Stack sei "fast nichts".
+# Gemessen im laufenden Cluster, noch ohne jede Nutzlast:
+#
+#   Memory-Requests der Pods   1900 MiB
+#   Node-Gesamt (Talos)        2880 MiB   (von 3072 MiB VM)
+#   dazu Talos, kubelet, CRI   ~600 MiB
+#
+# Talos' runtime.OOMController hat daraufhin reihenweise Cgroups abgeschossen;
+# sichtbar wurde das als Probe-Timeouts bei Cilium, CoreDNS, cert-manager und
+# kube-controller-manager - also überall, nur nicht dort, wo die Ursache lag.
+# Die größten Posten sind kube-apiserver (512 Mi), controller-manager und
+# Cilium (je 256 Mi), Kyverno über vier Controller (320 Mi) und CrowdSec
+# (256 Mi).
+#
+# 5 GB tragen den leeren Cluster mit dem vollen Plattform-Stack und lassen
+# echten Puffer. Wichtig für den Fahrplan unten: Der Stack muss passen, BEVOR
+# der erste Dienst migriert - "klein anfangen und pro Dienst wachsen" gilt erst
+# ab hier, nicht schon für die Grundausstattung.
+#
+# Der Wert ist nicht ForceNew, ein `terraform apply` schreibt nur die
+# Domain-Definition neu:
 #
 #   # libvirt_domain.talos will be updated in-place
-#     ~ memory = 4096 -> 6144
+#     ~ memory = 5120 -> 6144
 #
 # libvirt übernimmt das in die persistente Konfiguration; wirksam wird es beim
 # nächsten Start der VM (Talos: `talosctl -n <lan_ip> shutdown`, dann
@@ -330,10 +421,37 @@ variable "ingress_firewall_enforced" {
 # Dienst erst den Container auf dem Host stoppen, dann den RAM nachziehen -
 # nicht umgekehrt, sonst konkurrieren beide um dieselben Seiten.
 #
+# Kontrolle vor jeder Erhöhung, auf dem Host: `free -m`. Bleibt "available"
+# unter etwa 1,5 GB, ist der nächste Schritt keine Erhöhung, sondern das
+# Abschalten eines Containers.
+#
 variable "vm_memory_mib" {
   description = "RAM der VM in MiB. Startwert für den leeren Cluster; mit jedem migrierten Dienst erhöhen (In-Place-Update, VM-Neustart nötig)."
   type        = number
-  default     = 4096
+  default     = 5120
+}
+
+variable "wait_for_health" {
+  description = <<-EOT
+    Nach dem Bootstrap warten, bis Control Plane und Node gesund sind.
+
+    Im Normalbetrieb an lassen: Ohne diesen Check meldet `terraform apply`
+    auch dann Erfolg, wenn der Node NotReady bleibt.
+
+    Auf false setzen für zwei Fälle, beide unangenehm:
+
+      - `terraform destroy`, wenn die VM schon aus ist. Data Sources werden
+        vor jedem Plan gelesen, auch beim Zerstören - der Check läuft sonst
+        erst in seinen 20-Minuten-Timeout.
+      - Reparaturläufe. Ist der Cluster kaputt, blockiert der Check genau das
+        `apply`, das den Fehler beheben würde.
+
+    In beiden Fällen als Flag mitgeben statt in die tfvars zu schreiben:
+
+      terraform destroy -var wait_for_health=false
+  EOT
+  type        = bool
+  default     = true
 }
 
 variable "vm_vcpu" {

@@ -20,7 +20,8 @@ einmal als Regel.
 | 3 | Kyverno | erzwingt `ingressClassName: public` nur in gekennzeichneten Namespaces |
 | 4 | `ingress-public`, `ingress-internal` | zwei Traefik-Instanzen, an je eine Adresse gebunden |
 | 5 | CrowdSec | LAPI und Agent für die Anwendungslogs |
-| 6 | `homelab-policies` (lokales Chart) | Policies, die Router zu LAPI und step-ca, ClusterIssuer |
+| 6 | `homelab-policies` (lokales Chart) | Policies, die Router zu LAPI und step-ca, ClusterIssuer, RBAC des Dashboards |
+| 7 | `kubelet-csr-approver`, metrics-server, Headlamp | Einblick: echte Kubelet-Zertifikate, Auslastung, Dashboard im LAN |
 
 ## Voraussetzungen
 
@@ -269,6 +270,87 @@ der Edge bleibt aus, bis er ausdrücklich scharfgeschaltet wird. Ein bis zwei
 Wochen `cscli alerts list` lesen, die Fehlalarme der Immich-Mobile-Clients
 kennenlernen, dann erst sperren.
 
+## Das Dashboard
+
+[Headlamp](values/headlamp.yaml.tftpl), erreichbar unter
+`https://dashboard.<domain>` — nur über `ingress-internal`, also nur aus dem
+Heimnetz.
+
+**Die Anmeldung ist die eigentliche Kontrolle, nicht die Netzgrenze.**
+Headlamp fragt beim Aufruf nach einem Token und spricht anschließend mit
+genau der Identität, zu der dieses Token gehört. Wer die Adresse ohne Token
+aufruft, sieht nichts. Das ist der Unterschied zum Traefik-Dashboard, das in
+beiden Controllern aus bleibt: Dort *wäre* „nur im LAN erreichbar" die
+einzige Kontrolle.
+
+```bash
+# Der Alltagsfall: lesen. Kommt an keine Secrets.
+kubectl -n headlamp create token headlamp --duration=8h
+
+# Nur wenn geändert werden soll. Läuft nach einer Stunde ab.
+kubectl -n headlamp create token headlamp-admin --duration=1h
+
+# Ohne DNS-Eintrag zum Ausprobieren
+kubectl -n headlamp port-forward svc/headlamp 8080:80
+```
+
+Der Name muss im Heimnetz auf `192.168.178.222` zeigen (AdGuard oder
+Fritzbox). Aus dem Internet ist er weder auflösbar noch erreichbar.
+
+**Warum Headlamp und nicht das Kubernetes-Dashboard oder Rancher.** Rancher
+ist ein Werkzeug zur Verwaltung vieler Cluster: Der Server allein möchte 4 GB
+RAM auf einem eigenen Node, bringt rund sechzig CRDs mit und setzt einen
+Agenten mit `cluster-admin` in den Cluster — auf einem Node mit 4,8 GB, auf
+dem noch Nextcloud, Immich und Paperless landen sollen, geht das nicht auf.
+Das Kubernetes-Dashboard ist seit v7 fünf Dienste statt einem. Headlamp ist
+ein Container mit rund 80 MB und läuft ohne Zugeständnis unter PodSecurity
+`restricted`.
+
+**Die Rechte kommen nicht aus dem Chart.** Es bindet seinen ServiceAccount ab
+Werk an `cluster-admin`. Stattdessen legt
+[charts/homelab-policies](charts/homelab-policies/templates/dashboard-rbac.yaml)
+zwei ServiceAccounts an: `headlamp` mit der eingebauten Rolle `view` plus
+Leserecht auf das Clusterweite (Nodes, PVs, CRDs) — unter dem läuft der Pod —
+und `headlamp-admin` mit `cluster-admin`, aber ohne Token. Ein übernommener
+Dashboard-Pod ist damit ein Leseleck, kein Cluster-Admin. Die Gegenprobe wird
+in `verify/assert-platform.sh` tatsächlich ausprobiert:
+
+```bash
+kubectl auth can-i get secrets -A --as=system:serviceaccount:headlamp:headlamp   # no
+kubectl auth can-i delete deployments -A --as=system:serviceaccount:headlamp:headlamp   # no
+```
+
+Das Dashboard hat außerdem als einziger Infrastruktur-Namespace **keinen**
+Egress ins Internet (`egress-cluster-only` statt `egress-no-lan`): Ein Pod mit
+clusterweitem Lesezugriff und freiem Ausgang wäre ein fertiger Abflussweg für
+Clusterdaten.
+
+### Auslastungsanzeigen: eine Reihenfolge über Modulgrenzen
+
+`metrics_server_enabled` steht standardmäßig auf `false`, und das ist keine
+Meinung, sondern eine Abhängigkeit. metrics-server braucht ein prüfbares
+Serverzertifikat vom Kubelet. Das gibt es erst mit `serverTLSBootstrap` in
+`vm/talos` — und das wiederum braucht einen Genehmiger für die
+Zertifikatsanträge, der aus *diesem* Modul kommt. Der übliche Ausweg
+`--kubelet-insecure-tls` steht bewusst nicht in
+[values/metrics-server.yaml](values/metrics-server.yaml): Er wäre eine
+ungeprüfte Verbindung zu der Komponente, die Auskunft über jeden Pod auf dem
+Node gibt.
+
+```bash
+cd vm/talos     && terraform apply                     # noch ohne
+cd k8s/platform && terraform apply                     # bringt kubelet-csr-approver
+cd vm/talos     && terraform apply                     # kubelet_server_certs = true
+talosctl -n 192.168.178.222 reboot
+kubectl get csr                                        # nichts auf "Pending"
+cd k8s/platform && terraform apply                     # metrics_server_enabled = true
+kubectl top node
+```
+
+Der Genehmiger selbst hat keinen Schalter — er hängt an der Talos-Config, nicht
+am Dashboard. Wer ihn abschaltet, während `kubelet_server_certs` an ist, legt
+beim nächsten Zertifikatswechsel den Node lahm.
+
 ## Was noch offen ist
 
 Ehrlicher Stand — das hier deckt nicht alles ab, was im Konzept steht:
@@ -313,6 +395,13 @@ kubectl -n crowdsec exec deploy/crowdsec-lapi -- cscli alerts list
 kubectl -n crowdsec exec deploy/crowdsec-lapi -- cscli decisions list
 kubectl -n kyverno get clusterpolicy
 kubectl get policyreport -A                     # was Kyverno gesehen hat
+
+# Dashboard und Metriken
+kubectl -n headlamp create token headlamp --duration=8h   # Token zum Lesen
+kubectl -n headlamp logs deploy/headlamp
+kubectl get csr                                 # nichts auf "Pending"
+kubectl -n kube-system logs -l app.kubernetes.io/name=kubelet-csr-approver
+kubectl top node && kubectl top pod -A
 
 # Zertifikat von ingress-public ansehen
 kubectl -n traefik-public get secret ingress-public-tls \

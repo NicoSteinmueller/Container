@@ -111,24 +111,21 @@ ingress:
   - subnet: ${pod_subnet}
 ---
 #
-# Die DMZ-Seite: drei Ports, eine Quelle.
+# Die DMZ-Seite: die beiden Ports, die es nur dort gibt.
 #
-# Das ist die gesamte Angriffsfläche, die die Edge-VM sieht. Jeder dieser
-# Ports hängt an ${node_dmz_ip} (hostPort mit hostIP, siehe k8s/platform) und
-# ist zusätzlich hier auf die Adresse der Edge-VM eingeschränkt - die
-# Bindung allein würde jeden im DMZ-Segment durchlassen, und das Segment ist
-# genau die Zone, in der die exponierte Maschine steht.
+# ${crowdsec_lapi_port} (CrowdSec-LAPI) und ${step_ca_port} (step-ca, TLS-Passthrough) hängen
+# ausschließlich an ${node_dmz_ip} und kommen im LAN nicht vor. Für sie lässt
+# sich die Quelle deshalb hart auf die Edge-VM begrenzen - die Bindung allein
+# würde jeden im DMZ-Segment durchlassen, und genau dort steht die exponierte
+# Maschine.
 #
-#   ${ingress_public_port} - ingress-public, mTLS mit Client-Zertifikat
-#   ${crowdsec_lapi_port} - CrowdSec-LAPI, ebenfalls über die mTLS-Strecke
-#   ${step_ca_port} - interne CA (step-ca), TLS-Passthrough
+# Port ${ingress_public_port} steht bewusst NICHT hier, sondern in der Regel darunter.
 #
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: dmz-from-edge
 portSelector:
   ports:
-    - ${ingress_public_port}
     - ${crowdsec_lapi_port}
     - ${step_ca_port}
   protocol: tcp
@@ -136,12 +133,48 @@ ingress:
   - subnet: ${edge_dmz_ip}/32
 ---
 #
-# Die LAN-Seite: ingress-internal.
+# Port ${ingress_public_port} - und die Einschränkung, die man kennen muss.
 #
-# Paperless und die Admin-Oberflächen. Erreichbar aus dem gesamten Heimnetz -
-# das ist die Zone, die das Konzept als "vertraut" führt. Aus dem Internet
-# führt hierher kein Weg: Die Fritzbox reicht ausschließlich 443 an die
-# Edge-VM weiter, und die kennt nur ${node_dmz_ip}.
+# Auf diesem Node lauschen ZWEI Dienste auf ${ingress_public_port}, an verschiedenen Adressen:
+# ingress-public auf ${node_dmz_ip}, ingress-internal auf ${lan_ip}. Talos'
+# NetworkRuleConfig kann aber nur nach Quell-Subnetz und Port filtern, nicht
+# nach ZIELadresse. Eine Regel für ${ingress_public_port} trifft daher immer beide.
+#
+# Der frühere Versuch, ${ingress_public_port} zusammen mit den DMZ-Ports auf die Edge-VM zu
+# begrenzen, hat deshalb ingress-internal aus dem Heimnetz unerreichbar
+# gemacht: Die Drop-Regel griff auch für ${lan_ip}:${ingress_public_port}, und die nachfolgende
+# LAN-Regel kam nicht mehr zum Zug - in nftables gewinnt der erste Treffer.
+# Besonders unangenehm daran: Das galt auch bei ingress = accept, denn es sind
+# ausdrückliche Drop-Regeln und nicht die Default-Aktion. Der Node sah dabei
+# völlig gesund aus, der Socket war gebunden, nur kam nichts durch.
+#
+# Beide Quellen sind hier also erlaubt. Was ingress-public vom Heimnetz
+# trennt, sind zwei andere Dinge:
+#
+#   1. Die Bindung. ingress-public lauscht ausschließlich auf ${node_dmz_ip} -
+#      ein echter Socket, kein eBPF-Konstrukt. verify/assert-cluster.sh prüft
+#      das hart und schlägt fehl, sobald etwas auf 0.0.0.0 landet.
+#   2. Das Routing. ${node_dmz_ip} liegt in einem libvirt-internen Segment ohne
+#      Weg aus dem LAN dorthin.
+#
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: ingress-https
+portSelector:
+  ports:
+    - ${ingress_public_port}
+  protocol: tcp
+ingress:
+  - subnet: ${edge_dmz_ip}/32
+  - subnet: ${lan_cidr}
+---
+#
+# Die übrigen LAN-Ports von ingress-internal (HTTP-Weiterleitung auf HTTPS).
+#
+# Erreichbar aus dem gesamten Heimnetz - das ist die Zone, die das Konzept als
+# "vertraut" führt. Aus dem Internet führt hierher kein Weg: Die Fritzbox
+# reicht ausschließlich 443 an die Edge-VM weiter, und die kennt nur
+# ${node_dmz_ip}.
 #
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
@@ -149,7 +182,9 @@ name: ingress-internal
 portSelector:
   ports:
 %{ for p in ingress_internal_ports ~}
+%{ if p != ingress_public_port ~}
     - ${p}
+%{ endif ~}
 %{ endfor ~}
   protocol: tcp
 ingress:

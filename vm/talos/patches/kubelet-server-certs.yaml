@@ -1,0 +1,64 @@
+#
+# Das Kubelet lässt sich sein Serverzertifikat ausstellen, statt sich eines
+# selbst zu unterschreiben.
+#
+# Angewendet nur, wenn var.kubelet_server_certs auf true steht - der Grund
+# dafür steht weiter unten unter "Reihenfolge".
+#
+# Warum überhaupt:
+#
+#   Ohne das verwendet das Kubelet ein selbstsigniertes Zertifikat, das
+#   niemand prüfen kann. Praktisch merkt man das am metrics-server: Er kommt
+#   mit "x509: certificate signed by unknown authority" nicht durch, und der
+#   übliche Ausweg ist --kubelet-insecure-tls. Der Preis dafür wäre eine
+#   ungeprüfte Verbindung zu genau der Komponente, die Auskunft über jeden
+#   Pod auf dem Node gibt - und damit die Möglichkeit, sich zwischen
+#   metrics-server und Kubelet zu setzen, ohne dass es auffällt.
+#
+#   Mit serverTLSBootstrap stellt das Kubelet stattdessen einen CSR, den der
+#   kube-controller-manager mit der Kubernetes-CA signiert. Dieselbe CA
+#   steckt in jedem ServiceAccount-Token im Cluster; die Prüfung geht damit
+#   ohne weitere Angabe auf.
+#
+# Die Bedingung, ohne die diese Datei schadet statt nützt:
+#
+#   Einen CSR muss jemand genehmigen. Tut das niemand, bleibt er auf
+#   "Pending", das Kubelet bekommt kein Serverzertifikat, und dann
+#   funktionieren `kubectl logs`, `kubectl exec` und jeder Metrikabruf nicht
+#   mehr. Der Node sieht dabei gesund aus - er ist Ready, Pods laufen, nur
+#   der Zugriff auf sie bricht weg.
+#
+#   Schlimmer beim Anwenden: `data.talos_cluster_health` prüft genau das und
+#   bricht mit
+#
+#     kubelet server certificate rotation is enabled, but CSR is not approved
+#
+#   ab. Ein `terraform apply`, das diese Datei zum ersten Mal mitbringt,
+#   ohne dass der Genehmiger im Cluster läuft, läuft also in einen Fehler -
+#   und zwar in einen, der sich nicht durch Wiederholen löst.
+#
+#   Den Genehmiger stellt k8s/platform: kubelet-csr-approver, zugeschnitten
+#   auf Node-Namen und LAN-Adresse (values/kubelet-csr-approver.yaml.tftpl).
+#
+# Reihenfolge - deshalb ist das hier ein Schalter und keine feste Zeile:
+#
+#   1. vm/talos      terraform apply     # noch ohne diese Datei
+#   2. k8s/platform  terraform apply     # bringt kubelet-csr-approver
+#   3. vm/talos      kubelet_server_certs = true, terraform apply
+#   4.               talosctl -n <node> reboot
+#   5. k8s/platform  metrics_server_enabled = true, terraform apply
+#
+#   Gegenprobe nach Schritt 4:
+#
+#     kubectl get csr                    # nichts auf "Pending"
+#     kubectl top node
+#
+# Zur Schreibweise: extraConfig statt extraArgs. Beides funktioniert - die
+# Talos-Doku zeigt --rotate-server-certificates als Flag -, aber extraConfig
+# schreibt in die KubeletConfiguration und ist damit der Weg, der die
+# Abkündigung der Kubelet-Flags überlebt.
+#
+machine:
+  kubelet:
+    extraConfig:
+      serverTLSBootstrap: true

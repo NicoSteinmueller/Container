@@ -14,7 +14,7 @@ Läuft wahlweise lokal auf `qemu:///system` oder auf Unraid. Umgestellt wird üb
 |---|---|
 | libvirt-Netz | `edge-dmz`, isoliert, ohne Adresse auf dem Host, ohne DHCP |
 | VM | `edge1`, 2 vCPU, 1,5 GB RAM, 10 GB Disk, UEFI/q35 |
-| Disks | qcow2-Dateien in `pool_path` (Unraid: `/mnt/user/domains`) |
+| Disks | qcow2-Dateien in `pool_path` (Unraid: `/mnt/cache/domains`) |
 | LAN-Bein | `192.168.178.20` an Bridge `br0` — Ziel der Fritzbox-Freigabe |
 | DMZ-Bein | `10.10.20.2` an Bridge `virbr-edgedmz` — Gegenstelle: `ingress-public` |
 | OS | Debian 13 genericcloud, Snapshot gepinnt in [variables.tf](variables.tf) |
