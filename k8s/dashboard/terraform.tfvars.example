@@ -1,0 +1,30 @@
+#
+# Kopieren nach terraform.tfvars und anpassen. Ohne die Datei laufen die
+# Voreinstellungen aus variables.tf - die passen für den Cluster aus
+# vm/talos-simple.
+#
+
+# Cluster aus vm/talos-simple. Anderer Pfad nur, wenn das Dashboard woandershin
+# soll.
+# kubeconfig_path = "../../vm/talos-simple/kubeconfig"
+
+# Name in der Oberfläche - der Node-Name des Clusters.
+cluster_name = "talos-cp1"
+
+#
+# Zugang. Voreingestellt ist ClusterIP, erreichbar über
+#
+#   kubectl -n headlamp port-forward svc/headlamp 8080:80
+#
+# Für den Aufruf aus dem Heimnetz ohne kubectl stattdessen die beiden Zeilen
+# einkommentieren. Dann läuft die Anmeldung samt Token über unverschlüsseltes
+# HTTP - vertretbar im eigenen LAN, aber eine bewusste Entscheidung:
+#
+# service_type = "NodePort"
+# node_port    = 30080
+
+#
+# ServiceAccount headlamp-admin mit cluster-admin. Auf false, wenn im
+# Dashboard ausschließlich gelesen werden soll.
+#
+admin_service_account = true
