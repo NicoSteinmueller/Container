@@ -38,7 +38,7 @@ services:
       resources:
         limits:
           cpus: 4
-          memory: 6G
+          memory: 4G
           pids: 512
         reservations:
           cpus: 0.5
