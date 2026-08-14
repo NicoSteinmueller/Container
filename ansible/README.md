@@ -14,6 +14,17 @@ Einmalig auf einem frischen Host, bevor die Playbooks laufen koennen:
 ./install-ansible.sh
 ```
 
+## Tools (empfohlen fuer neue Software)
+
+[tools/](tools/) enthaelt ein allgemeines Playbook, das den Soll-Zustand
+mehrerer Tools aus einer einzigen Liste herstellt und fuer jedes installierte
+Tool automatische Updates einrichtet. Neue Software gehoert dorthin - die
+Einzel-Playbooks unten bleiben nur wegen ihrer bestehenden Nutzung.
+
+```bash
+cd tools && ansible-playbook -i inventory.ini tools.yml
+```
+
 ## Terraform
 
 Das Playbook richtet das HashiCorp-apt-Repository ein und installiert das Paket
@@ -72,6 +83,7 @@ ansible-playbook minikube-uninstall.yml
 
 | Datei                     | Zweck                                              |
 | ------------------------- | -------------------------------------------------- |
+| `tools/`                  | Allgemeines Playbook inkl. automatischer Updates    |
 | `install-ansible.sh`      | Ansible selbst auf einem frischen Host installieren |
 | `inventory.ini`           | Inventar (aktuell nur `localhost`)                  |
 | `terraform-install.yml`   | Terraform installieren                              |

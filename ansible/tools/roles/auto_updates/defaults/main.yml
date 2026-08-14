@@ -1,0 +1,22 @@
+---
+# Von den Tool-Rollen befuellt (siehe tools.yml). Leer bedeutet: es sind keine
+# zusaetzlichen Repos zu betreuen, die Distributions-Security-Updates aus
+# 50unattended-upgrades laufen aber trotzdem.
+tool_update_coverage: {}
+
+# Zusaetzliche Origins, die unabhaengig von den Tool-Rollen aktualisiert werden
+# sollen. Format wie in unattended-upgrades, z. B. "origin=Docker,label=Docker".
+auto_updates_extra_origins: []
+
+# Pakete, die nie automatisch aktualisiert werden sollen (regulaere Ausdruecke).
+auto_updates_package_blacklist: []
+
+# Neustart nach Updates, die einen Reboot erfordern. Standardmaessig aus, damit
+# ein Host nicht mitten in der Arbeit neu startet.
+auto_updates_automatic_reboot: false
+auto_updates_automatic_reboot_time: "03:00"
+
+# Nicht mehr benoetigte Abhaengigkeiten mit entfernen (apt autoremove).
+auto_updates_remove_unused_dependencies: true
+
+auto_updates_config_file: /etc/apt/apt.conf.d/52-ansible-managed-tools

@@ -1,0 +1,53 @@
+---
+- name: Remove OpenTofu package
+  ansible.builtin.apt:
+    name: "{{ opentofu_package }}"
+    state: absent
+    purge: true
+    autoremove: true
+
+- name: Remove OpenTofu apt repository
+  ansible.builtin.deb822_repository:
+    name: opentofu
+    state: absent
+
+# Die offizielle Anleitung legt das Repo im klassischen Ein-Zeilen-Format an.
+# Bleibt die Datei liegen, schlaegt jedes apt update fehl, sobald die
+# referenzierten Keyrings geloescht sind.
+- name: Remove legacy OpenTofu apt repository file
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/opentofu.list
+    state: absent
+
+- name: Remove OpenTofu signing keys
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ opentofu_package_keyring }}"
+    - "{{ opentofu_repo_keyring }}"
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+
+# Unter --check wurde nichts entfernt, die Restpruefung waere dort irrefuehrend.
+- name: Check for remaining OpenTofu binary
+  ansible.builtin.command:
+    cmd: which tofu
+  register: opentofu_binary_check
+  failed_when: false
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Print uninstall result
+  ansible.builtin.debug:
+    msg: >-
+      {{
+        'OpenTofu entfernt.'
+        if opentofu_binary_check.rc != 0
+        else 'Achtung: OpenTofu ist weiterhin unter '
+             ~ opentofu_binary_check.stdout | trim
+             ~ ' vorhanden (manuelle Installation?).'
+      }}
+  when: not ansible_check_mode

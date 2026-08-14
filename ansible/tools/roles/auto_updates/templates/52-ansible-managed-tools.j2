@@ -1,0 +1,40 @@
+// Von Ansible verwaltet - Aenderungen werden beim naechsten Lauf ueberschrieben.
+// Quelle: ansible/tools/roles/auto_updates/templates/52-ansible-managed-tools.j2
+//
+// apt haengt Listenwerte ueber mehrere Konfigurationsdateien hinweg aneinander,
+// statt sie zu ersetzen. Diese Datei ergaenzt daher nur die Repos der
+// verwalteten Tools - die Security-Origins der Distribution aus
+// 50unattended-upgrades bleiben unangetastet. unattended-upgrades wertet
+// Allowed-Origins und Origins-Pattern gemeinsam aus.
+{% if tool_update_coverage or auto_updates_extra_origins %}
+Unattended-Upgrade::Origins-Pattern {
+{% for tool, origins in tool_update_coverage | dictsort %}
+    // {{ tool }}
+{% for origin in origins %}
+    "{{ origin }}";
+{% endfor %}
+{% endfor %}
+{% if auto_updates_extra_origins %}
+    // auto_updates_extra_origins
+{% for origin in auto_updates_extra_origins %}
+    "{{ origin }}";
+{% endfor %}
+{% endif %}
+};
+{% else %}
+// Aktuell sind keine Tools ueber managed_tools installiert.
+{% endif %}
+{% if auto_updates_package_blacklist %}
+
+Unattended-Upgrade::Package-Blacklist {
+{% for package in auto_updates_package_blacklist %}
+    "{{ package }}";
+{% endfor %}
+};
+{% endif %}
+
+Unattended-Upgrade::Remove-Unused-Dependencies "{{ auto_updates_remove_unused_dependencies | ternary('true', 'false') }}";
+Unattended-Upgrade::Automatic-Reboot "{{ auto_updates_automatic_reboot | ternary('true', 'false') }}";
+{% if auto_updates_automatic_reboot %}
+Unattended-Upgrade::Automatic-Reboot-Time "{{ auto_updates_automatic_reboot_time }}";
+{% endif %}
