@@ -1,0 +1,54 @@
+---
+- name: Manage tools and their automatic updates
+  hosts: all
+  become: true
+
+  vars:
+    # Wird bei jedem Lauf von Grund auf neu aufgebaut: jede Rolle traegt beim
+    # Installieren ihre apt-Origins ein. Dadurch fallen Tools, die auf 'absent'
+    # gesetzt wurden, von selbst wieder aus der unattended-upgrades-Konfiguration
+    # heraus - ohne dass die Uninstall-Tasks daran denken muessen.
+    tool_update_coverage: {}
+
+  pre_tasks:
+    - name: Validate requested tool states
+      ansible.builtin.assert:
+        that:
+          - item.value in ['present', 'absent']
+        fail_msg: >-
+          Ungueltiger Zustand '{{ item.value }}' fuer '{{ item.key }}'.
+          Erlaubt sind nur 'present' und 'absent'.
+        quiet: true
+      loop: "{{ managed_tools | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+  tasks:
+    - name: Apply tool roles
+      ansible.builtin.include_role:
+        name: "{{ item.key }}"
+      vars:
+        tool_state: "{{ item.value }}"
+      loop: "{{ managed_tools | dict2items }}"
+      loop_control:
+        label: "{{ item.key }} -> {{ item.value }}"
+
+    # Schutzgeruest gegen halb fertige Rollen: ohne registrierte Origins wuerde
+    # ein Tool zwar installiert, aber nie automatisch aktualisiert. Das faellt
+    # sonst erst Monate spaeter auf - deshalb bricht der Lauf hier hart ab.
+    - name: Ensure every installed tool registered an update source
+      ansible.builtin.assert:
+        that:
+          - item.key in tool_update_coverage
+        fail_msg: >-
+          Die Rolle '{{ item.key }}' hat keine apt-Origins registriert. Jede
+          Rolle muss beim Installieren tool_update_coverage um ihre Origins
+          ergaenzen, sonst gibt es fuer das Tool keine automatischen Updates.
+        quiet: true
+      loop: "{{ managed_tools | dict2items | selectattr('value', 'equalto', 'present') | list }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Configure unattended-upgrades for all managed tools
+      ansible.builtin.include_role:
+        name: auto_updates

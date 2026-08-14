@@ -1,0 +1,27 @@
+---
+# Wird von tools.yml pro Tool gesetzt; der Default macht die Rolle auch einzeln
+# aufrufbar.
+tool_state: present
+
+opentofu_package: tofu
+
+# OpenTofu verwendet zwei Schluessel: der erste signiert die Pakete, der zweite
+# die Repository-Metadaten bei packagecloud. Quelle:
+# https://opentofu.org/docs/intro/install/deb/
+opentofu_package_key_url: https://get.opentofu.org/opentofu.gpg
+opentofu_package_keyring: /etc/apt/keyrings/opentofu.gpg
+opentofu_repo_key_url: https://packages.opentofu.org/opentofu/tofu/gpgkey
+opentofu_repo_keyring: /etc/apt/keyrings/opentofu-repo.gpg
+
+opentofu_repo_uri: https://packages.opentofu.org/opentofu/tofu/any/
+opentofu_repo_suite: any
+opentofu_repo_component: main
+
+# Muessen exakt den Feldern Origin und Label aus der Release-Datei des Repos
+# entsprechen, sonst ignoriert unattended-upgrades das Repo. Aktuelle Werte
+# pruefen mit:  apt-cache policy | grep -A1 packages.opentofu.org
+opentofu_repo_origin: packagecloud.io/opentofu/tofu
+opentofu_repo_label: tofu
+
+opentofu_unattended_origins:
+  - "origin={{ opentofu_repo_origin }},label={{ opentofu_repo_label }}"

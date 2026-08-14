@@ -1,0 +1,11 @@
+---
+# Soll-Zustand der verwalteten Tools - die einzige Stelle, an der du etwas
+# aendern musst, um ein Tool auf allen Hosts zu installieren oder zu entfernen.
+#
+#   present -> installieren und ueber unattended-upgrades aktuell halten
+#   absent  -> Paket, Repository und Signing-Keys entfernen
+#
+# Der Schluessel muss dem Namen einer Rolle unter roles/ entsprechen.
+# Host-spezifische Abweichungen gehoeren nach host_vars/<host>.yml.
+managed_tools:
+  opentofu: present

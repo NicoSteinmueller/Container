@@ -1,0 +1,160 @@
+---
+- name: Install apt prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create keyring directory
+  ansible.builtin.file:
+    path: "{{ opentofu_package_keyring | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Dieser Schluessel liegt bereits im Binaerformat vor und wandert direkt an
+# seinen Zielort.
+- name: Install OpenTofu package signing key
+  ansible.builtin.get_url:
+    url: "{{ opentofu_package_key_url }}"
+    dest: "{{ opentofu_package_keyring }}"
+    owner: root
+    group: root
+    mode: "0644"
+    force: true
+
+# Die drei folgenden Tasks arbeiten ausschliesslich in einem temporaeren
+# Verzeichnis und aendern nichts am System. Sie laufen deshalb auch unter
+# --check (check_mode: false) - sonst haette der naechste Task keinen Pfad und
+# der Probelauf wuerde abbrechen, statt die geplanten Aenderungen zu zeigen.
+- name: Create temporary directory for key conversion
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: opentofu-keys
+  register: opentofu_keytmp
+  changed_when: false
+  check_mode: false
+
+# Der Repository-Schluessel wird ASCII-armored ausgeliefert und muss erst
+# konvertiert werden. Der Umweg ueber copy statt 'creates' sorgt dafuer, dass
+# ein rotierter Schluessel tatsaechlich uebernommen wird, ohne dass jeder Lauf
+# als 'changed' gemeldet wird.
+- name: Download OpenTofu repository signing key
+  ansible.builtin.get_url:
+    url: "{{ opentofu_repo_key_url }}"
+    dest: "{{ opentofu_keytmp.path }}/repo.asc"
+    mode: "0600"
+    force: true
+  changed_when: false
+  check_mode: false
+
+- name: Convert repository signing key to binary format
+  ansible.builtin.command:
+    cmd: >-
+      gpg --no-tty --batch --yes --dearmor
+      --output {{ opentofu_keytmp.path }}/repo.gpg
+      {{ opentofu_keytmp.path }}/repo.asc
+  changed_when: false
+  check_mode: false
+
+- name: Install OpenTofu repository signing key
+  ansible.builtin.copy:
+    src: "{{ opentofu_keytmp.path }}/repo.gpg"
+    remote_src: true
+    dest: "{{ opentofu_repo_keyring }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Remove temporary key directory
+  ansible.builtin.file:
+    path: "{{ opentofu_keytmp.path }}"
+    state: absent
+  changed_when: false
+  check_mode: false
+
+- name: Add OpenTofu apt repository
+  ansible.builtin.deb822_repository:
+    name: opentofu
+    types:
+      - deb
+    uris:
+      - "{{ opentofu_repo_uri }}"
+    suites:
+      - "{{ opentofu_repo_suite }}"
+    components:
+      - "{{ opentofu_repo_component }}"
+    # Deb822 trennt mehrere Keyring-Pfade per Leerzeichen.
+    signed_by: "{{ opentofu_package_keyring }} {{ opentofu_repo_keyring }}"
+    state: present
+  register: opentofu_repository
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+  when: opentofu_repository is changed
+
+# Unter --check wurde ein neu hinzugekommenes Repository nur simuliert, apt
+# kann das Paket dort also noch nicht finden. Auf Hosts, die das Repository
+# bereits haben, laeuft die Pruefung normal durch und meldet ein anstehendes
+# Update - genau dafuer ist der Probelauf ja da.
+- name: Install OpenTofu
+  ansible.builtin.apt:
+    name: "{{ opentofu_package }}"
+    state: present
+  when: not (ansible_check_mode and opentofu_repository is changed)
+
+- name: Explain skipped package check during dry run
+  ansible.builtin.debug:
+    msg: >-
+      Probelauf: Das OpenTofu-Repository ist auf diesem Host noch nicht
+      eingetragen, deshalb kennt apt das Paket '{{ opentofu_package }}' hier
+      noch nicht. Ein echter Lauf traegt zuerst das Repository ein und
+      installiert danach.
+  when: ansible_check_mode and opentofu_repository is changed
+
+# Unter --check wurde das Repository nicht wirklich eingetragen, deshalb kann
+# apt seine Metadaten hier noch nicht kennen. Die Pruefung wird dann
+# uebersprungen, statt mit einem irrefuehrenden Fehler abzubrechen.
+- name: Read apt policy for the OpenTofu repository
+  ansible.builtin.command:
+    cmd: apt-cache policy
+  register: opentofu_apt_policy
+  changed_when: false
+  when: not ansible_check_mode
+
+# Faengt ab, dass das Repo andere Origin-/Label-Werte meldet als hinterlegt -
+# unattended-upgrades wuerde es dann stillschweigend uebergehen.
+- name: Verify the repository reports the expected origin and label
+  ansible.builtin.assert:
+    that:
+      - ('o=' ~ opentofu_repo_origin) in opentofu_apt_policy.stdout
+      - ('l=' ~ opentofu_repo_label) in opentofu_apt_policy.stdout
+    fail_msg: >-
+      Das OpenTofu-Repository meldet andere Origin-/Label-Werte als in
+      opentofu_repo_origin / opentofu_repo_label hinterlegt. Werte mit
+      'apt-cache policy' pruefen und roles/opentofu/defaults/main.yml anpassen.
+    quiet: true
+  when: not ansible_check_mode
+
+- name: Register OpenTofu for automatic updates
+  ansible.builtin.set_fact:
+    tool_update_coverage: >-
+      {{ tool_update_coverage | combine({'opentofu': opentofu_unattended_origins}) }}
+
+- name: Show installed OpenTofu version
+  ansible.builtin.command:
+    cmd: tofu version
+  register: opentofu_version
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Print OpenTofu version
+  ansible.builtin.debug:
+    msg: "OpenTofu installiert: {{ opentofu_version.stdout_lines | first }}"
+  when: not ansible_check_mode

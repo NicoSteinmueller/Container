@@ -1,0 +1,76 @@
+---
+- name: Install unattended-upgrades
+  ansible.builtin.apt:
+    name: unattended-upgrades
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# Ohne diese beiden Schalter ist unattended-upgrades zwar installiert und
+# konfiguriert, wird aber nie ausgefuehrt.
+- name: Enable periodic apt updates and unattended upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      // Von Ansible verwaltet (ansible/tools/roles/auto_updates).
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Download-Upgradeable-Packages "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+    owner: root
+    group: root
+    mode: "0644"
+    validate: apt-config -c %s dump
+
+- name: Configure unattended-upgrades for the managed tools
+  ansible.builtin.template:
+    src: 52-ansible-managed-tools.j2
+    dest: "{{ auto_updates_config_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: apt-config -c %s dump
+
+# apt-daily.timer aktualisiert die Paketlisten, apt-daily-upgrade.timer stoesst
+# unattended-upgrade an. Beide gehoeren zum Paket apt und sind auf Ubuntu
+# normalerweise aktiv - hier wird das nur festgeschrieben.
+- name: Ensure the apt timers are enabled
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+
+# Unter --check wurde die Konfigurationsdatei nicht geschrieben, apt kann die
+# neuen Muster also noch nicht kennen - Lesen und Pruefen entfallen dann.
+- name: Read the origin patterns apt actually parsed
+  ansible.builtin.command:
+    cmd: apt-config dump Unattended-Upgrade::Origins-Pattern
+  register: auto_updates_active_patterns
+  changed_when: false
+  when: not ansible_check_mode
+
+# Beweist, dass die erzeugte Datei nicht nur existiert, sondern von apt auch
+# gelesen wird - ein Tippfehler im Muster wuerde sonst unbemerkt dazu fuehren,
+# dass das Tool nie automatische Updates bekommt.
+- name: Verify every managed origin pattern is active
+  ansible.builtin.assert:
+    that:
+      - item.1 in auto_updates_active_patterns.stdout
+    fail_msg: >-
+      apt kennt das Origin-Muster '{{ item.1 }}' fuer '{{ item.0.key }}' nicht.
+      Automatische Updates fuer dieses Tool waeren wirkungslos.
+    quiet: true
+  loop: "{{ tool_update_coverage | dict2items | subelements('value') }}"
+  loop_control:
+    label: "{{ item.0.key }}: {{ item.1 }}"
+  when: not ansible_check_mode
+
+- name: Summarise automatic update coverage
+  ansible.builtin.debug:
+    msg: >-
+      Automatische Updates aktiv fuer:
+      {{ tool_update_coverage.keys() | list | join(', ') | default('nur Distributions-Security-Updates', true) }}
+      (Security-Updates der Distribution laufen unabhaengig davon weiter).

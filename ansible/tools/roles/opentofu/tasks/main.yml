@@ -1,0 +1,8 @@
+---
+- name: Install OpenTofu
+  ansible.builtin.include_tasks: install.yml
+  when: tool_state == 'present'
+
+- name: Uninstall OpenTofu
+  ansible.builtin.include_tasks: uninstall.yml
+  when: tool_state == 'absent'
