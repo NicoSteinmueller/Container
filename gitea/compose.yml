@@ -70,8 +70,16 @@ services:
     # app.ini.
     environment:
       TZ: Europe/Berlin
-      USER_UID: 1000
-      USER_GID: 1000
+
+      # Pflicht, sobald INSTALL_LOCK an ist. docker-setup.sh schreibt beim
+      # ersten Start RUN_USER=${USER:-"git"} in die app.ini, und Gitea
+      # vergleicht das später gegen $USER - das Image selbst setzt die
+      # Variable aber nicht. Ohne diese Zeile stirbt der Start mit
+      #   [F] Expect user 'git' (RUN_USER in app.ini) but current user is:
+      # Ein reiner String-Vergleich zweier Umgebungsvariablen: Mit welcher
+      # UID der Container tatsächlich läuft (1000 in dev, 99 in prod), spielt
+      # dafür keine Rolle.
+      USER: git
 
       # --- Datenbank ---
       # SQLite und nicht Postgres: ein Container weniger, ~100 MB weniger RAM,
