@@ -22,7 +22,17 @@ Unattended-Upgrade::Origins-Pattern {
 {% endif %}
 };
 {% else %}
-// Aktuell sind keine Tools ueber managed_tools installiert.
+// Aktuell ist kein Tool mit eigenem Repository ueber managed_tools installiert.
+{% endif %}
+{% if tool_update_sources %}
+
+// Diese Tools kommen aus den Distributionsquellen. Ihr Update-Kanal steht
+// bereits in 50unattended-upgrades; hier folgt deshalb bewusst keine Regel,
+// sondern nur die Buchfuehrung darueber, worauf sie sich verlassen. Die Rolle
+// auto_updates prueft bei jedem Lauf nach, dass diese Kanaele erlaubt sind.
+{% for tool, origins in tool_update_sources | dictsort %}
+//   {{ tool }}: {{ origins | join(', ') }}
+{% endfor %}
 {% endif %}
 {% if auto_updates_package_blacklist %}
 

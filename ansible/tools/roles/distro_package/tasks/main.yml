@@ -1,0 +1,21 @@
+---
+# Faengt den Fall ab, dass ein Wrapper den Zustand nicht durchreicht. Ohne die
+# Pruefung liefe die Rolle mit dem Default 'present' weiter und wuerde ein
+# angefordertes 'absent' stillschweigend verschlucken.
+- name: Validate the requested state was passed through
+  ansible.builtin.assert:
+    that:
+      - distro_package_state in ['present', 'absent']
+    fail_msg: >-
+      distro_package_state ist '{{ distro_package_state }}'. Die Wrapper-Rolle
+      muss den Zustand ausdruecklich weiterreichen:
+      distro_package_state: "{{ '{{ tool_state }}' }}".
+    quiet: true
+
+- name: Install distribution package
+  ansible.builtin.include_tasks: install.yml
+  when: distro_package_state == 'present'
+
+- name: Uninstall distribution package
+  ansible.builtin.include_tasks: uninstall.yml
+  when: distro_package_state == 'absent'

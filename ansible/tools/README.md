@@ -7,8 +7,32 @@ Lauf - was passiert, steht ausschliesslich in
 
 Fuer jedes installierte Tool werden automatische Updates ueber
 `unattended-upgrades` eingerichtet. Das ist keine Option, sondern erzwungen:
-registriert eine Rolle keine apt-Origins, bricht das Playbook mit einem Fehler
+registriert eine Rolle keinen Update-Kanal, bricht das Playbook mit einem Fehler
 ab, statt ein Tool ohne Update-Pfad zurueckzulassen.
+
+## Zwei Sorten Tool
+
+Der Unterschied liegt nicht in der Bedienung - beide stehen gleichberechtigt in
+`managed_tools` - sondern darin, woher die Updates kommen:
+
+| | **Eigenes Repository** | **Distributionspaket** |
+|---|---|---|
+| Verwaltet | `opentofu` | derzeit keins - `distro_package` steht bereit |
+| Rolle | eine je Tool, richtet Keyrings und apt-Repo ein | duenner Wrapper auf die gemeinsame Rolle `distro_package` |
+| Update-Kanal | wird von der Rolle nach `52-ansible-managed-tools` geschrieben | steht schon in `50unattended-upgrades` |
+| Buchfuehrung | `tool_update_coverage` | `tool_update_sources` |
+| Rolle des Playbooks | **setzen** und danach pruefen, dass apt das Muster kennt | nur **pruefen**, dass der Kanal erlaubt ist |
+
+Die Trennung ist Absicht. Ein Distributionspaket wird bereits ueber
+`${distro_id}:${distro_codename}` und `-security` aktualisiert; diese Origins
+ein zweites Mal zu deklarieren waere doppelte Wahrheit - und ein Tippfehler
+dabei, etwa ein zusaetzliches `-updates`, schaltete unbemerkt automatische
+Nicht-Security-Updates fuer das ganze System ein. Stattdessen prueft
+`auto_updates` bei jedem Lauf nach, dass die Kanaele wirklich erlaubt sind, und
+bricht ab, wenn jemand sie aus `50unattended-upgrades` entfernt hat.
+
+Reine Binary-Downloads bleiben aussen vor - fuer sie gibt es ueberhaupt keinen
+Kanal, den `unattended-upgrades` bedienen koennte.
 
 ## Soll-Zustand definieren
 
@@ -102,6 +126,32 @@ unattended-upgrade --dry-run --debug   # zeigt, welche Origins beruecksichtigt w
 
 ## Ein weiteres Tool ergaenzen
 
+**Aus den Distributionsquellen** (`apt-cache policy <paket>` zeigt das Archiv
+der Distribution) — zwei Schritte:
+
+1. `roles/<tool>/tasks/main.yml` anlegen, das `distro_package` einbindet:
+
+   ```yaml
+   - name: Manage <tool> as a distribution package
+     ansible.builtin.include_role:
+       name: distro_package
+     vars:
+       distro_package_state: "{{ tool_state }}"
+       distro_package_name: <paket>
+       distro_package_tool: <tool>
+   ```
+
+   `distro_package_state` muss ausdruecklich weitergereicht werden. Sich darauf
+   zu verlassen, dass `tool_state` durch zwei verschachtelte `include_role`
+   hindurch sichtbar bleibt, waere die eine Nachlaessigkeit, die nicht auffiele:
+   Die Rolle fiele still auf `present` zurueck und ignorierte jedes `absent`.
+   Ein Assert in `distro_package` faengt das ab.
+
+2. Das Tool in `group_vars/all.yml` unter `managed_tools` eintragen.
+
+**Mit eigenem apt-Repository** — drei Schritte, `roles/opentofu` ist die
+Vorlage:
+
 1. `roles/<tool>/` anlegen mit `tasks/main.yml` (Weiche auf `tool_state`),
    `tasks/install.yml`, `tasks/uninstall.yml` und `defaults/main.yml`.
 2. In `install.yml` das apt-Repository einrichten und am Ende
@@ -109,8 +159,9 @@ unattended-upgrade --dry-run --debug   # zeigt, welche Origins beruecksichtigt w
    Werte liefert `apt-cache policy` in der Zeile `release o=...,l=...`.
 3. Das Tool in `group_vars/all.yml` unter `managed_tools` eintragen.
 
-Tools ohne apt-Repository (reine Binary-Downloads) passen nicht in dieses
-Schema, weil es fuer sie keinen Update-Kanal gibt, den `unattended-upgrades`
-bedienen koennte. Solche Tools brauchen einen eigenen Mechanismus - der
+Reine Binary-Downloads passen weiterhin in kein Schema, weil es fuer sie keinen
+Update-Kanal gibt, den `unattended-upgrades` bedienen koennte. Der Assert in
+`tools.yml` macht darauf aufmerksam, statt sie stillschweigend ungepatcht zu
+lassen. Solche Tools brauchen einen eigenen Mechanismus - der
 Assert in `tools.yml` macht darauf aufmerksam, statt sie stillschweigend
 ungepatcht zu lassen.

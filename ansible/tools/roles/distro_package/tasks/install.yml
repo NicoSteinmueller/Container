@@ -1,0 +1,43 @@
+---
+- name: Ensure a package name was provided
+  ansible.builtin.assert:
+    that:
+      - distro_package_name | length > 0
+    fail_msg: >-
+      distro_package_name ist leer. Die Rolle distro_package gehoert nicht
+      direkt in managed_tools, sondern wird von einer Wrapper-Rolle aufgerufen,
+      die den Paketnamen setzt - Vorlage in ansible/tools/README.md.
+    quiet: true
+
+- name: "Install {{ distro_package_name }}"
+  ansible.builtin.apt:
+    name: "{{ distro_package_name }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# Unter --check wurde nichts installiert, dpkg-query faende das Paket also
+# nicht und der Lauf braeche ab, statt die geplanten Aenderungen zu zeigen.
+- name: "Read installed version of {{ distro_package_name }}"
+  ansible.builtin.command:
+    cmd: dpkg-query --showformat=${Version} --show {{ distro_package_name }}
+  register: distro_package_version
+  changed_when: false
+  when: not ansible_check_mode
+
+# Getrennt von tool_update_coverage gefuehrt, weil beides Verschiedenes
+# bedeutet: coverage sind Muster, die diese Rolle nach
+# /etc/apt/apt.conf.d/52-ansible-managed-tools schreibt; sources sind Kanaele,
+# die anderswo bereits konfiguriert sind und von auto_updates nur nachgeprueft
+# werden. Die Zusicherung "kein Tool ohne Update-Kanal" gilt fuer beide.
+- name: "Register {{ distro_package_tool }} for automatic updates"
+  ansible.builtin.set_fact:
+    tool_update_sources: >-
+      {{ tool_update_sources | combine({distro_package_tool: distro_package_allowed_origins}) }}
+
+- name: "Print {{ distro_package_name }} version"
+  ansible.builtin.debug:
+    msg: >-
+      {{ distro_package_name }} installiert: {{ distro_package_version.stdout }}
+      (Updates ueber die Distributionsquellen)
+  when: not ansible_check_mode

@@ -1,0 +1,31 @@
+---
+- name: "Remove {{ distro_package_name }}"
+  ansible.builtin.apt:
+    name: "{{ distro_package_name }}"
+    state: absent
+    purge: "{{ distro_package_purge }}"
+    autoremove: "{{ distro_package_autoremove }}"
+
+# Anders als bei opentofu gibt es hier kein Repository und keine Keyrings
+# aufzuraeumen - das Paket kam aus den Distributionsquellen, die bleiben.
+
+# Unter --check wurde nichts entfernt, die Restpruefung waere dort irrefuehrend.
+- name: "Check for remaining {{ distro_package_binary }} binary"
+  ansible.builtin.command:
+    cmd: which {{ distro_package_binary }}
+  register: distro_package_binary_check
+  failed_when: false
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Print uninstall result
+  ansible.builtin.debug:
+    msg: >-
+      {{
+        distro_package_name ~ ' entfernt.'
+        if distro_package_binary_check.rc != 0
+        else 'Achtung: ' ~ distro_package_binary ~ ' ist weiterhin unter '
+             ~ distro_package_binary_check.stdout | trim
+             ~ ' vorhanden (manuelle Installation?).'
+      }}
+  when: not ansible_check_mode

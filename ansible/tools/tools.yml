@@ -10,6 +10,13 @@
     # heraus - ohne dass die Uninstall-Tasks daran denken muessen.
     tool_update_coverage: {}
 
+    # Das Gegenstueck fuer Tools aus den Distributionsquellen: Deren
+    # Update-Kanal ist bereits in 50unattended-upgrades konfiguriert. Hier wird
+    # deshalb nur festgehalten, worauf sie sich verlassen - auto_updates prueft
+    # anschliessend nach, dass der Kanal wirklich erlaubt ist. Eine zweite
+    # Deklaration waere doppelte Wahrheit.
+    tool_update_sources: {}
+
   pre_tasks:
     - name: Validate requested tool states
       ansible.builtin.assert:
@@ -39,11 +46,14 @@
     - name: Ensure every installed tool registered an update source
       ansible.builtin.assert:
         that:
-          - item.key in tool_update_coverage
+          - item.key in tool_update_coverage or item.key in tool_update_sources
         fail_msg: >-
-          Die Rolle '{{ item.key }}' hat keine apt-Origins registriert. Jede
-          Rolle muss beim Installieren tool_update_coverage um ihre Origins
-          ergaenzen, sonst gibt es fuer das Tool keine automatischen Updates.
+          Die Rolle '{{ item.key }}' hat keinen Update-Kanal registriert. Jede
+          Rolle muss beim Installieren entweder tool_update_coverage um ihre
+          eigenen apt-Origins ergaenzen (eigenes Repository) oder
+          tool_update_sources um den Kanal, auf den sie sich verlaesst
+          (Distributionspaket). Sonst gibt es fuer das Tool keine automatischen
+          Updates.
         quiet: true
       loop: "{{ managed_tools | dict2items | selectattr('value', 'equalto', 'present') | list }}"
       loop_control:
