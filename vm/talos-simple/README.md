@@ -15,7 +15,7 @@ Arbeitsstation. Mehr nicht — und das ist der Punkt.
 
 ## Voraussetzungen
 
-- `terraform` und `talosctl` lokal, SSH als `root` auf den Unraid-Host
+- `tofu` und `talosctl` lokal, SSH als `root` auf den Unraid-Host
 - VM-Manager auf Unraid aktiv, Pool `homelab` vorhanden (legt `vm/edge` an)
 - Genug freier Speicher auf dem Host. Maßgeblich ist `available`, nicht `free`:
 
@@ -28,12 +28,31 @@ Arbeitsstation. Mehr nicht — und das ist der Punkt.
 
 ## Cluster erstellen
 
+Der State dieses Moduls liegt in Gitea, nicht im Verzeichnis — als einziges
+Modul bisher. Die Zugangsdaten kommen aus der Umgebung, nicht aus dem
+`backend`-Block; Token anlegen und Details in [../../gitea/README.md](../../gitea/README.md).
+
+Der State ist zusätzlich verschlüsselt — Gitea legt ihn sonst im Klartext ab,
+und darin stehen die `talos_machine_secrets`. Die Passphrase kommt ebenfalls aus
+der Umgebung und **liegt sonst nirgends**: ohne sie ist der State unlesbar und
+der Cluster nicht mehr verwaltbar. Vor dem ersten `apply` in den
+Passwortmanager, nicht danach.
+
 ```bash
+export TF_HTTP_USERNAME=nico
+export TF_HTTP_PASSWORD=<Gitea-Token mit write:package>
+export TF_VAR_state_passphrase=<mindestens 16 Zeichen>
+
 cd vm/talos-simple
 cp terraform.tfvars.example terraform.tfvars   # Werte prüfen
-terraform init
-terraform apply
+tofu init
+tofu apply
 ```
+
+Ein `apply` sperrt den State für seine Laufzeit; ein zweiter Aufruf von einem
+anderen Gerät bricht mit einer Lock-Meldung ab, statt danebenzuschreiben. Bleibt
+nach einem Abbruch eine Sperre stehen, hebt `tofu force-unlock <ID>` sie auf —
+die ID steht in der Fehlermeldung.
 
 `apply` kehrt erst zurück, wenn der Cluster wirklich gesund ist — die Data
 Source `talos_cluster_health` blockiert so lange. Ein grünes `apply` heißt also:
@@ -88,7 +107,7 @@ virsh -c qemu+ssh://root@192.168.178.3/system console talos-cp1
 ## Aufräumen
 
 ```bash
-terraform destroy -var wait_for_health=false
+tofu destroy -var wait_for_health=false
 ```
 
 Das `-var` ist kein Beiwerk: Data Sources werden vor jedem Plan gelesen, auch
@@ -101,7 +120,7 @@ Fehler beheben würde.
 
 ```bash
 talosctl etcd snapshot db.snapshot                                    # vorher
-talosctl upgrade --preserve --image "$(terraform output -raw installer_image)"
+talosctl upgrade --preserve --image "$(tofu output -raw installer_image)"
 talosctl upgrade-k8s --to 1.36.3
 ```
 

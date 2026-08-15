@@ -12,8 +12,7 @@ Zeitfenster, in dem `/install` offen steht. Das erste Konto entsteht deshalb
 auf der Kommandozeile:
 
 ```bash
-docker exec -u 99:100 gitea gitea admin user create \
-  --username nico --email nico.steinmueller@gmx.net --admin --random-password
+docker exec -u 99:100 gitea gitea admin user create --username nico --email nico.steinmueller@gmx.net --admin --random-password
 ```
 
 Danach anmelden, unter *Einstellungen → Anwendungen* einen Token anlegen und
