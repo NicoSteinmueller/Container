@@ -1,0 +1,42 @@
+# Einstellungen für Development- und Testumgebungen
+#
+# Erreichbar unter http://127.0.0.1:3000 - kein Traefik, kein TLS. Die
+# Geheimnisse sind hier absichtlich fest verdrahtet und wertlos: Ein
+# Test-Gitea soll ohne example.env starten.
+
+services:
+  gitea:
+    user: 1000:1000
+
+    environment:
+      GITEA__server__ROOT_URL: http://127.0.0.1:3000/
+      GITEA__server__DOMAIN: 127.0.0.1
+      # Nicht aus example.env: Was hier steht, darf jeder wissen.
+      GITEA__security__SECRET_KEY: dev-only-secret-key-nicht-verwenden
+      GITEA__security__INTERNAL_TOKEN: dev-only-internal-token-nicht-verwenden
+
+    ports:
+      - name: web
+        target: 3000
+        host_ip: 127.0.0.1
+        published: 3000
+        protocol: tcp
+        app_protocol: http
+        mode: host
+
+    volumes:
+      - type: bind
+        source: ./data/gitea
+        target: /var/lib/gitea
+        read_only: false
+        bind:
+          create_host_path: false
+      # Getrennt vom Datenverzeichnis, weil Gitea hier die app.ini erzeugt -
+      # beim Debuggen will man da hineinsehen können, ohne die Repos zu
+      # durchsuchen.
+      - type: bind
+        source: ./data/config
+        target: /etc/gitea
+        read_only: false
+        bind:
+          create_host_path: false

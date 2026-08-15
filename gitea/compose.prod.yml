@@ -1,0 +1,58 @@
+# Einstellungen für die Produktion
+
+services:
+  gitea:
+    # Unraid-Standard. Beide Bind-Ziele müssen vorher diesem Benutzer
+    # gehören, sonst bleibt Gitea beim ersten Start am Anlegen der app.ini
+    # hängen:
+    #   mkdir -p /mnt/user/appdata/gitea/{data,config}
+    #   chown -R 99:100 /mnt/user/appdata/gitea
+    user: 99:100
+
+    environment:
+      USER_UID: 99
+      USER_GID: 100
+
+      GITEA__server__ROOT_URL: https://git.local.nico-steinmueller.de/
+      GITEA__server__DOMAIN: git.local.nico-steinmueller.de
+
+      # Aus example.env. Beide erzeugt Gitea sonst beim ersten Start selbst
+      # und schreibt sie in die app.ini - dann hängt die Wiederherstellung
+      # daran, dass genau diese Datei mitgesichert wurde. Fest vorgegeben
+      # ist der Stack stattdessen aus dem Backup der Daten allein
+      # reproduzierbar.
+      GITEA__security__SECRET_KEY: ${GITEA_SECRET_KEY}
+      GITEA__security__INTERNAL_TOKEN: ${GITEA_INTERNAL_TOKEN}
+
+    networks:
+      default:
+      proxy:
+
+    volumes:
+      # Repos, SQLite-Datenbank und die Package-Registry mit dem State liegen
+      # alle unter /var/lib/gitea. Ein Verzeichnis sichern genügt - siehe
+      # README.md, Abschnitt "Sicherung".
+      - type: bind
+        source: /mnt/user/appdata/gitea/data
+        target: /var/lib/gitea
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /mnt/user/appdata/gitea/config
+        target: /etc/gitea
+        read_only: false
+        bind:
+          create_host_path: false
+
+    labels:
+      traefik.enable: true
+      traefik.http.routers.gitea.rule: Host(`git.local.nico-steinmueller.de`)
+      traefik.http.routers.gitea.entrypoints: websecure
+      traefik.http.routers.gitea.middlewares: local-only, compress
+      traefik.http.routers.gitea.service: gitea
+      traefik.http.services.gitea.loadbalancer.server.port: 3000
+
+networks:
+  proxy:
+    external: true
