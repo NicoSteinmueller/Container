@@ -1,0 +1,51 @@
+---
+# Gemeinsame Rolle fuer Tools, die es fertig in den Distributionsquellen gibt.
+#
+# Sie wird nicht direkt in managed_tools eingetragen - dort steht der Name einer
+# duennen Wrapper-Rolle, die nur Paketnamen und Zustand setzt und die Arbeit
+# hierher weiterreicht. So bleibt die Regel "Schluessel in managed_tools =
+# Rollenname" erhalten, ohne die eigentliche Arbeit je Tool zu kopieren. Die
+# Vorlage fuer einen solchen Wrapper steht in ../../README.md.
+#
+# Derzeit gibt es keinen Wrapper - die Rolle ist Grundaufbau fuer das naechste
+# Tool, das es fertig in den Distributionsquellen gibt.
+
+# Bewusst ein eigener Name statt tool_state: Der Wrapper reicht den Zustand
+# ausdruecklich als distro_package_state weiter. Verliesse man sich darauf, dass
+# tool_state durch zwei verschachtelte include_role hindurch sichtbar bleibt,
+# fiele ein Fehler dabei nicht auf - die Rolle wuerde still auf den Default
+# 'present' zurueckfallen und ein 'absent' schlicht ignorieren.
+distro_package_state: present
+
+# Ohne Paketnamen bricht install.yml mit einer Erklaerung ab.
+distro_package_name: ""
+
+# Schluessel in managed_tools und in der Update-Buchfuehrung, also der Name der
+# Wrapper-Rolle. Faellt in der Regel mit dem Paketnamen zusammen.
+distro_package_tool: "{{ distro_package_name }}"
+
+# Zum Gegenpruefen nach dem Entfernen.
+distro_package_binary: "{{ distro_package_name }}"
+
+# Die Kanaele, aus denen die Distribution ihre eigenen Pakete nachliefert.
+#
+# Exakt die beiden Eintraege, die 50unattended-upgrades ab Werk mitbringt. Sie
+# werden hier NICHT gesetzt, sondern nur geprueft - eine zweite Deklaration
+# waere doppelte Wahrheit, und schlimmer: Wer hier versehentlich
+# '${distro_codename}-updates' ergaenzt, schaltet unbemerkt automatische
+# Nicht-Security-Updates fuer das ganze System ein.
+distro_package_allowed_origins:
+  - "${distro_id}:${distro_codename}"
+  - "${distro_id}:${distro_codename}-security"
+
+# Beim Entfernen bewusst ohne autoremove - anders als bei opentofu.
+#
+# Ein Distributionspaket teilt sich seine Abhaengigkeiten mit dem uebrigen
+# System - ein Paket, das gnupg oder curl mitzieht, riss beim Entfernen andere
+# Dienste mit. Bei opentofu ist die Lage umgekehrt, dessen Abhaengigkeiten kamen
+# mit ihm.
+distro_package_autoremove: false
+
+# Konfigurationsdateien des Pakets mit entfernen. Betrifft nur /etc, nicht die
+# Daten im Home-Verzeichnis - ~/.password-store bleibt also liegen.
+distro_package_purge: true

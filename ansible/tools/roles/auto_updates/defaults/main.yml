@@ -4,6 +4,12 @@
 # 50unattended-upgrades laufen aber trotzdem.
 tool_update_coverage: {}
 
+# Ebenfalls von den Tool-Rollen befuellt, aber mit anderer Bedeutung: Kanaele,
+# die diese Rolle NICHT konfiguriert, sondern nur nachprueft - die Origins der
+# Distribution aus 50unattended-upgrades, aus denen Tools ohne eigenes
+# Repository ihre Updates bekommen (siehe roles/distro_package).
+tool_update_sources: {}
+
 # Zusaetzliche Origins, die unabhaengig von den Tool-Rollen aktualisiert werden
 # sollen. Format wie in unattended-upgrades, z. B. "origin=Docker,label=Docker".
 auto_updates_extra_origins: []

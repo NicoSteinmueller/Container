@@ -68,9 +68,38 @@
     label: "{{ item.0.key }}: {{ item.1 }}"
   when: not ansible_check_mode
 
+# Dasselbe Beweisziel wie oben, nur fuer die andere Sorte Tool: Distributions-
+# pakete verlassen sich auf die Allowed-Origins aus 50unattended-upgrades.
+# Streicht dort jemand einen Eintrag, bekaemen sie stillschweigend keine Updates
+# mehr - dieser Assert macht daraus einen Abbruch. Ohne solche Tools ist die
+# Schleife leer und der Task ein No-op.
+- name: Read the allowed origins apt actually parsed
+  ansible.builtin.command:
+    cmd: apt-config dump Unattended-Upgrade::Allowed-Origins
+  register: auto_updates_active_allowed
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Verify every relied-upon distribution channel is allowed
+  ansible.builtin.assert:
+    that:
+      - item.1 in auto_updates_active_allowed.stdout
+    fail_msg: >-
+      unattended-upgrades erlaubt den Kanal '{{ item.1 }}' nicht, auf den sich
+      '{{ item.0.key }}' verlaesst. Der Eintrag kommt ab Werk aus
+      /etc/apt/apt.conf.d/50unattended-upgrades - dort pruefen, ob er
+      auskommentiert oder entfernt wurde.
+    quiet: true
+  loop: "{{ tool_update_sources | dict2items | subelements('value') }}"
+  loop_control:
+    label: "{{ item.0.key }}: {{ item.1 }}"
+  when: not ansible_check_mode
+
 - name: Summarise automatic update coverage
   ansible.builtin.debug:
     msg: >-
-      Automatische Updates aktiv fuer:
-      {{ tool_update_coverage.keys() | list | join(', ') | default('nur Distributions-Security-Updates', true) }}
-      (Security-Updates der Distribution laufen unabhaengig davon weiter).
+      Automatische Updates ueber eigene Repositories:
+      {{ tool_update_coverage.keys() | list | join(', ') | default('keine', true) }}.
+      Ueber die Distributionsquellen:
+      {{ tool_update_sources.keys() | list | join(', ') | default('keine', true) }}.
+      (Security-Updates der Distribution laufen unabhaengig davon weiter.)
