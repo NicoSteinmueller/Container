@@ -31,45 +31,6 @@ terraform {
     unlock_method  = "DELETE"
   }
 
-  #
-  # Der State enthält talos_machine_secrets - die CA, mit der sich beliebige
-  # Admin-Zertifikate für Talos und Kubernetes ausstellen lassen. Gitea legt
-  # ihn unverschlüsselt ab, also verschlüsselt ihn OpenTofu selbst: Was auf
-  # dem Unraid-Host und in dessen Backup landet, ist damit Chiffrat.
-  #
-  # Die Passphrase steht bewusst nicht hier, sondern kommt über
-  # TF_VAR_state_passphrase aus der Umgebung. Die Struktur bleibt trotzdem in
-  # dieser Datei, und das ist der Punkt: Läge auch `enforced` nur in der
-  # Umgebung, wäre eine vergessene Variable kein Fehler, sondern ein
-  # klaglos unverschlüsselt geschriebener State. So bricht jeder Lauf ohne
-  # Passphrase stattdessen ab.
-  #
-  # ACHTUNG: Ohne die Passphrase ist der State unlesbar und der Cluster damit
-  # nicht mehr verwaltbar. Sie gehört in den Passwortmanager, bevor der erste
-  # Apply läuft - sie liegt sonst nirgends.
-  #
-  encryption {
-    key_provider "pbkdf2" "state" {
-      passphrase = var.state_passphrase
-    }
-
-    method "aes_gcm" "state" {
-      keys = key_provider.pbkdf2.state
-    }
-
-    state {
-      method   = method.aes_gcm.state
-      enforced = true
-    }
-
-    # Auch der Plan: `tofu plan -out` schreibt denselben Inhalt in eine Datei,
-    # die sonst unverschlüsselt neben dem Modul läge.
-    plan {
-      method   = method.aes_gcm.state
-      enforced = true
-    }
-  }
-
   required_providers {
     libvirt = {
       source  = "dmacvicar/libvirt"

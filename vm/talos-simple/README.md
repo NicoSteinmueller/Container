@@ -32,22 +32,25 @@ Der State dieses Moduls liegt in Gitea, nicht im Verzeichnis — als einziges
 Modul bisher. Die Zugangsdaten kommen aus der Umgebung, nicht aus dem
 `backend`-Block; Token anlegen und Details in [../../gitea/README.md](../../gitea/README.md).
 
-Der State ist zusätzlich verschlüsselt — Gitea legt ihn sonst im Klartext ab,
-und darin stehen die `talos_machine_secrets`. Die Passphrase kommt ebenfalls aus
-der Umgebung und **liegt sonst nirgends**: ohne sie ist der State unlesbar und
-der Cluster nicht mehr verwaltbar. Vor dem ersten `apply` in den
-Passwortmanager, nicht danach.
-
 ```bash
 export TF_HTTP_USERNAME=nico
 export TF_HTTP_PASSWORD=<Gitea-Token mit write:package>
-export TF_VAR_state_passphrase=<mindestens 16 Zeichen>
 
 cd vm/talos-simple
 cp terraform.tfvars.example terraform.tfvars   # Werte prüfen
 tofu init
 tofu apply
 ```
+
+Das `export` mit einem führenden Leerzeichen tippen, dann hält `HISTCONTROL`
+den Token aus `~/.bash_history` heraus — sonst steht er dort im Klartext, bis
+jemand aufräumt.
+
+Der State liegt in Gitea unverschlüsselt, und darin stehen die
+`talos_machine_secrets` — die CA, mit der sich beliebige Admin-Zertifikate für
+Talos und Kubernetes ausstellen lassen. Wer Zugriff auf das appdata-Verzeichnis
+oder ein Backup des Unraid-Hosts hat, hat damit den Cluster. Für den Zielzustand
+gehört hier `terraform { encryption { … } }` dazu.
 
 Ein `apply` sperrt den State für seine Laufzeit; ein zweiter Aufruf von einem
 anderen Gerät bricht mit einer Lock-Meldung ab, statt danebenzuschreiben. Bleibt

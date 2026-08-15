@@ -1,18 +1,4 @@
 #
-# State-Verschlüsselung
-#
-# Kein Infrastruktur-Eingang, sondern Teil des encryption-Blocks in main.tf.
-# Bewusst ohne default: Ein fehlender Wert soll den Lauf abbrechen, nicht
-# stillschweigend zu einem schwächeren Schlüssel führen.
-#
-# pbkdf2 lehnt zu kurze Werte selbst ab ("passphrase is too short")
-variable "state_passphrase" {
-  description = "Passphrase für die State-Verschlüsselung, mindestens 16 Zeichen. Kommt aus TF_VAR_state_passphrase, niemals aus terraform.tfvars - die läge sonst neben dem Chiffrat, das sie aufschließt."
-  type        = string
-  sensitive   = true
-}
-
-#
 # Cluster-Identität
 #
 variable "cluster_name" {
