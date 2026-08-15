@@ -10,9 +10,6 @@ services:
     user: 99:100
 
     environment:
-      USER_UID: 99
-      USER_GID: 100
-
       GITEA__server__ROOT_URL: https://git.local.nico-steinmueller.de/
       GITEA__server__DOMAIN: git.local.nico-steinmueller.de
 
