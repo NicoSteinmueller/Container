@@ -16,7 +16,15 @@ Arbeitsstation. Mehr nicht — und das ist der Punkt.
 ## Voraussetzungen
 
 - `tofu` und `talosctl` lokal, SSH als `root` auf den Unraid-Host
-- VM-Manager auf Unraid aktiv, Pool `homelab` vorhanden (legt `vm/edge` an)
+- VM-Manager auf Unraid aktiv. Den Storage-Pool bringt entweder `vm/edge` mit
+  oder dieses Modul legt ihn selbst an — vorher gegenprüfen:
+
+  ```bash
+  virsh --connect qemu+ssh://root@192.168.178.3/system pool-list --all
+  ```
+
+  Leere Liste → `manage_pool = true` und `pool_path` in `terraform.tfvars`.
+  Pool schon da → `manage_pool` auf `false` lassen.
 - Genug freier Speicher auf dem Host. Maßgeblich ist `available`, nicht `free`:
 
   ```bash
@@ -32,19 +40,48 @@ Der State dieses Moduls liegt in Gitea, nicht im Verzeichnis — als einziges
 Modul bisher. Die Zugangsdaten kommen aus der Umgebung, nicht aus dem
 `backend`-Block; Token anlegen und Details in [../../gitea/README.md](../../gitea/README.md).
 
-```bash
-export TF_HTTP_USERNAME=nico
-export TF_HTTP_PASSWORD=<Gitea-Token mit write:package>
+Einmalig einrichten, damit sie jede Shell hat statt nur die eine:
 
+```bash
+mkdir -p ~/.config/tofu && chmod 700 ~/.config/tofu
+umask 077 && cat > ~/.config/tofu/gitea.env <<'EOF'
+export TF_HTTP_USERNAME="nico"
+export TF_HTTP_PASSWORD="<Gitea-Token mit write:package>"
+EOF
+chmod 600 ~/.config/tofu/gitea.env
+
+echo '[ -f ~/.config/tofu/gitea.env ] && . ~/.config/tofu/gitea.env' >> ~/.bashrc
+```
+
+Danach in einer neuen Shell:
+
+```bash
 cd vm/talos-simple
 cp terraform.tfvars.example terraform.tfvars   # Werte prüfen
 tofu init
 tofu apply
 ```
 
-Das `export` mit einem führenden Leerzeichen tippen, dann hält `HISTCONTROL`
-den Token aus `~/.bash_history` heraus — sonst steht er dort im Klartext, bis
-jemand aufräumt.
+Warum eine eigene Datei und nicht direkt `~/.bashrc`: die ist `644`, also für
+jedes Konto auf dem Rechner lesbar. Die `600` hier schützt den Token allein
+über die Dateirechte — verschlüsselt ist er nicht.
+
+Zwei Fallen:
+
+- `~/.bashrc` gilt nur für interaktive Shells. Cron, systemd-Units und
+  `ssh host 'tofu ...'` sehen die Variablen nicht und brauchen die Datei
+  explizit gesourct.
+- Wer den Token stattdessen von Hand exportiert, tippt das `export` mit
+  führendem Leerzeichen — dann hält `HISTCONTROL` ihn aus `~/.bash_history`
+  heraus, sonst steht er dort im Klartext.
+
+Meldet `tofu` trotz gesetzter Variablen `requires auth`, liegt es am
+Token-Scope, nicht an der Umgebung:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -u "$TF_HTTP_USERNAME:$TF_HTTP_PASSWORD" \
+  https://git.local.nico-steinmueller.de/api/packages/nico/terraform/state/vm-talos-simple
+```
 
 Der State liegt in Gitea unverschlüsselt, und darin stehen die
 `talos_machine_secrets` — die CA, mit der sich beliebige Admin-Zertifikate für

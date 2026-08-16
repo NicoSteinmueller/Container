@@ -51,7 +51,7 @@ variable "libvirt_uri" {
 }
 
 variable "libvirt_pool" {
-  description = "Storage-Pool für ISO und System-Disk. Auf Unraid existiert `homelab` bereits (angelegt von vm/edge)."
+  description = "Storage-Pool für ISO und System-Disk. Ob er schon existiert, hängt am Host - vm/edge bringt ihn mit, ein frisches Unraid nicht. Siehe manage_pool."
   type        = string
   default     = "homelab"
 }
@@ -60,9 +60,17 @@ variable "manage_pool" {
   description = <<-EOT
     Den Pool hier anlegen statt einen vorhandenen zu benutzen.
 
-    Standardmäßig aus: Auf Unraid gehört der Pool `homelab` zu vm/edge, und ein
-    libvirt-Objekt in zwei Terraform-States ist eine Fehlerquelle beim
-    Zerstören. Nur einschalten, wenn dieses Modul allein läuft.
+    Standardmäßig aus, weil der Pool zu vm/edge gehört, sobald das Modul auf dem
+    Host läuft, und ein libvirt-Objekt in zwei Terraform-States eine Fehlerquelle
+    beim Zerstören ist. Einschalten, wenn dieses Modul allein läuft - dann ist
+    auch pool_path zu setzen.
+
+    Vor dem ersten Apply gegenprüfen, statt es anzunehmen:
+
+      virsh --connect "$libvirt_uri" pool-list --all
+
+    Fehlt der Pool und bleibt manage_pool aus, scheitert erst das Anlegen der
+    Volumes mit "Storage pool not found".
   EOT
   type        = bool
   default     = false

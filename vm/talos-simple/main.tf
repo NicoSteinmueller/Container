@@ -167,8 +167,8 @@ data "talos_image_factory_urls" "this" {
 # =====================================================================
 
 #
-# Normalerweise nicht aktiv: Auf Unraid existiert der Pool `homelab` bereits,
-# angelegt von vm/edge. Siehe manage_pool.
+# Nur aktiv, wenn kein anderes Modul den Pool schon mitbringt - vm/edge legt
+# denselben `homelab` an. Siehe manage_pool.
 #
 resource "libvirt_pool" "domains" {
   count = var.manage_pool ? 1 : 0

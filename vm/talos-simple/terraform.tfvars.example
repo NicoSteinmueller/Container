@@ -17,12 +17,17 @@ libvirt_uri = "qemu+ssh://root@192.168.178.3/system"
 # libvirt_uri = "qemu:///system"
 
 #
-# Der Pool existiert auf diesem Host bereits (angelegt von vm/edge), deshalb
-# bleibt manage_pool aus. Läuft dieses Modul allein, stattdessen:
-#   manage_pool = true
-#   pool_path   = "/mnt/cache/domains"
+# Erst prüfen, wem der Pool gehört:
+#
+#   virsh --connect "$libvirt_uri" pool-list --all
+#
+# Kommt die Liste leer zurück, legt dieses Modul den Pool selbst an. Bringt ihn
+# dagegen schon vm/edge mit, bleibt manage_pool aus - ein libvirt-Objekt in zwei
+# Terraform-States ist eine Fehlerquelle beim Zerstören.
 #
 libvirt_pool = "homelab"
+manage_pool  = true
+pool_path    = "/mnt/cache/domains"
 
 #
 # UEFI-Firmware. Auf Unraid zwingend: Der mitgelieferte libvirt-Deskriptor nennt
