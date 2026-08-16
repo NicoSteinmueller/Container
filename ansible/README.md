@@ -25,35 +25,6 @@ Einzel-Playbooks unten bleiben nur wegen ihrer bestehenden Nutzung.
 cd tools && ansible-playbook -i inventory.ini tools.yml
 ```
 
-## Terraform
-
-Das Playbook richtet das HashiCorp-apt-Repository ein und installiert das Paket
-`terraform`.
-
-```bash
-ansible-playbook -i inventory.ini terraform-install.yml
-```
-
-Fuer einen Ad-hoc-Lauf gegen den lokalen Host ohne Inventar:
-
-```bash
-ansible-playbook -i 'localhost,' -c local terraform-install.yml
-```
-
-Deinstallation entfernt Paket, Repository und Signing-Key:
-
-```bash
-ansible-playbook -i inventory.ini terraform-uninstall.yml
-```
-
-Soll das Repository erhalten bleiben (z. B. wegen anderer HashiCorp-Pakete wie
-Vault oder Packer):
-
-```bash
-ansible-playbook -i inventory.ini terraform-uninstall.yml \
-  -e terraform_remove_repository=false
-```
-
 ## Minikube
 
 Installiert Docker, Minikube, kubectl und Helm, startet den Cluster mit Calico
@@ -78,16 +49,3 @@ Deinstallation loescht Cluster, Binaries, Konfigurationsordner im Home und den
 ```bash
 ansible-playbook minikube-uninstall.yml
 ```
-
-## Dateien
-
-| Datei                     | Zweck                                              |
-| ------------------------- | -------------------------------------------------- |
-| `tools/`                  | Allgemeines Playbook inkl. automatischer Updates    |
-| `install-ansible.sh`      | Ansible selbst auf einem frischen Host installieren |
-| `inventory.ini`           | Inventar (aktuell nur `localhost`)                  |
-| `terraform-install.yml`   | Terraform installieren                              |
-| `terraform-uninstall.yml` | Terraform entfernen                                 |
-| `minikube-install.yml`    | Minikube-Stack installieren und starten             |
-| `minikube-uninstall.yml`  | Minikube-Stack entfernen                            |
-| `notes.md`                | Lose Notizen zu interessanten CNCF-Projekten        |
