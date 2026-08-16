@@ -53,6 +53,28 @@ export TF_HTTP_USERNAME=nico
 export TF_HTTP_PASSWORD=<token mit write:package>
 ```
 
+Ein `export` überlebt die Shell nicht, in der es getippt wurde. Damit jedes
+neue Fenster die Werte hat, in eine eigene Datei legen statt in `~/.bashrc` —
+die ist `644` und damit für jedes Konto auf dem Rechner lesbar:
+
+```bash
+mkdir -p ~/.config/tofu && chmod 700 ~/.config/tofu
+umask 077 && cat > ~/.config/tofu/gitea.env <<'EOF'
+export TF_HTTP_USERNAME="nico"
+export TF_HTTP_PASSWORD="<token mit write:package>"
+EOF
+chmod 600 ~/.config/tofu/gitea.env
+
+echo '[ -f ~/.config/tofu/gitea.env ] && . ~/.config/tofu/gitea.env' >> ~/.bashrc
+```
+
+Der Token liegt damit im Klartext auf der Platte, geschützt allein durch die
+Dateirechte. Wem das zu wenig ist: als `gpg`-verschlüsselte Datei ablegen und
+in einer `tofu()`-Wrapper-Funktion erst beim Aufruf entschlüsseln.
+
+`~/.bashrc` gilt nur für interaktive Shells — Cron, systemd-Units und
+`ssh host 'tofu ...'` müssen die Datei selbst sourcen.
+
 ## Sicherung
 
 Hier liegt das, womit der Cluster wiederhergestellt wird — die Sicherung ist
