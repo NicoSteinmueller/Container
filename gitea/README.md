@@ -7,8 +7,7 @@ Zwei Aufgaben, ein Dienst:
 
 ## Ersteinrichtung
 
-Der Web-Installer ist mit `INSTALL_LOCK` von Anfang an tot — es gibt kein
-Zeitfenster, in dem `/install` offen steht. Das erste Konto entsteht deshalb
+Der Web-Installer ist mit `INSTALL_LOCK` von Anfang an tot. Das erste Konto entsteht deshalb
 auf der Kommandozeile:
 
 ```bash
@@ -17,69 +16,69 @@ docker exec -u 99:100 gitea gitea admin user create --username nico --email nico
 
 Danach anmelden, unter *Einstellungen → Anwendungen* einen Token anlegen und
 ihm die Berechtigungen **`write:package`** (State-Registry) und
-**`write:repository`** (tfvars) geben. Ein Token mit allen Rechten braucht es
-nicht.
+**`write:repository`** (tfvars) geben.
 
-Das Repo für die Werte anlegen — `FORCE_PRIVATE` sorgt dafür, dass es privat
-ist, auch wenn man beim Anlegen daneben klickt:
+## Die Datei `~/.config/tofu/gitea.env`
+
+| Variable | Liest | Wofür |
+|---|---|---|
+| `TF_HTTP_USERNAME`, `TF_HTTP_PASSWORD` | `tofu`, `git` | Auth gegen die State-Registry. `tofu` wertet die `TF_HTTP_*` für den `http`-Backend von allein aus — deshalb stehen im `backend`-Block keine Zugangsdaten. Derselbe Token zieht über einen Credential-Helper auch das Werte-Repo (siehe unten). |
+| `HOMELAB_VALUES` | [`tools/tf`](../tools/tf) | Wurzel des Werte-Repos. Der Wrapper hängt den Modulpfad an und landet bei der `terraform.tfvars`. Fehlt die Variable, nimmt er `~/Repos/homelab-values`. |
+
+Anlegen:
 
 ```bash
-git clone https://git.nico-steinmueller.de/nico/homelab-values.git
+mkdir -p ~/.config/tofu && chmod 700 ~/.config/tofu
+umask 077 && cat > ~/.config/tofu/gitea.env <<'EOF'
+export TF_HTTP_USERNAME="nico"
+export TF_HTTP_PASSWORD="<Token mit write:package>"
+export HOMELAB_VALUES="$HOME/Repos/Homelab/homelab-values"
+EOF
+chmod 600 ~/.config/tofu/gitea.env
 ```
 
-## OpenTofu anbinden
+Geladen wird sie nicht von `tofu`, sondern von der Shell — eine Zeile in
+`~/.bashrc` genügt:
+
+```bash
+echo '[ -f ~/.config/tofu/gitea.env ] && . ~/.config/tofu/gitea.env' >> ~/.bashrc
+```
+
+Das `[ -f ... ] &&` davor, damit eine Shell auf einem Rechner ohne die Datei
+nicht bei jedem Start eine Fehlermeldung wirft.
+
+Zum Prüfen, ohne den Token auf den Schirm zu holen:
+
+```bash
+env | grep -c 'TF_HTTP_\|HOMELAB_VALUES'   # erwartet: 3
+```
+
+Wer den Wrapper öfter braucht, legt ihn auf den `PATH` und ruft ihn danach aus
+jedem Modul einfach als `tf` auf:
+
+```bash
+ln -s ~/Repos/Homelab/Container/tools/tf ~/.local/bin/tf
+```
+
+## State anbinden
 
 Im `backend`-Block jedes Moduls `local` durch `http` ersetzen. Der Name am
-Ende der Adresse ist derselbe flache Schlüssel, den `tools/tf` heute schon
-bildet (`vm/talos` → `vm-talos`):
+Ende der Adresse ist der Modulpfad, flach geschrieben (`vm/talos` →
+`vm-talos`):
 
 ```hcl
 terraform {
   backend "http" {
-    address        = "https://git.nico-steinmueller.de/api/packages/nico/terraform/state/vm-talos"
-    lock_address   = "https://git.nico-steinmueller.de/api/packages/nico/terraform/state/vm-talos/lock"
-    unlock_address = "https://git.nico-steinmueller.de/api/packages/nico/terraform/state/vm-talos/lock"
+    address        = "https://git.local.nico-steinmueller.de/api/packages/nico/terraform/state/vm-talos"
+    lock_address   = "https://git.local.nico-steinmueller.de/api/packages/nico/terraform/state/vm-talos/lock"
+    unlock_address = "https://git.local.nico-steinmueller.de/api/packages/nico/terraform/state/vm-talos/lock"
     lock_method    = "POST"
     unlock_method  = "DELETE"
   }
 }
 ```
 
-Zugangsdaten gehören nicht in den Block — der `http`-Backend liest sie aus der
-Umgebung:
-
-```bash
-export TF_HTTP_USERNAME=nico
-export TF_HTTP_PASSWORD=<token mit write:package>
-```
-
-Ein `export` überlebt die Shell nicht, in der es getippt wurde. Damit jedes
-neue Fenster die Werte hat, in eine eigene Datei legen statt in `~/.bashrc` —
-die ist `644` und damit für jedes Konto auf dem Rechner lesbar:
-
-```bash
-mkdir -p ~/.config/tofu && chmod 700 ~/.config/tofu
-umask 077 && cat > ~/.config/tofu/gitea.env <<'EOF'
-export TF_HTTP_USERNAME="nico"
-export TF_HTTP_PASSWORD="<token mit write:package>"
-EOF
-chmod 600 ~/.config/tofu/gitea.env
-
-echo '[ -f ~/.config/tofu/gitea.env ] && . ~/.config/tofu/gitea.env' >> ~/.bashrc
-```
-
-Der Token liegt damit im Klartext auf der Platte, geschützt allein durch die
-Dateirechte. Wem das zu wenig ist: als `gpg`-verschlüsselte Datei ablegen und
-in einer `tofu()`-Wrapper-Funktion erst beim Aufruf entschlüsseln.
-
-`~/.bashrc` gilt nur für interaktive Shells — Cron, systemd-Units und
-`ssh host 'tofu ...'` müssen die Datei selbst sourcen.
-
 ## Sicherung
-
-Hier liegt das, womit der Cluster wiederhergestellt wird — die Sicherung ist
-kein Nebenaspekt, sondern der Grund für mehrere Entscheidungen weiter unten.
-Repos, SQLite-Datenbank und Package-Registry liegen alle unter einem Pfad:
 
 ```bash
 docker compose -f compose.yml -f compose.prod.yml stop gitea
@@ -88,4 +87,3 @@ docker compose -f compose.yml -f compose.prod.yml start gitea
 ```
 
 Im laufenden Betrieb geht auch `docker exec -u 99:100 gitea gitea dump -t /tmp`
-— das erzeugt ein konsistentes Archiv, ohne den Dienst anzuhalten.

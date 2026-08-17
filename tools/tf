@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+#
+# tofu-Aufruf mit den Werten aus dem privaten Werte-Repo.
+#
+# Die `terraform.tfvars` liegen nicht im Modul, sondern in einem eigenen,
+# privaten Gitea-Repo (`nico/homelab-values`). Grund: Dieses Repo hier geht
+# nach GitHub, und in den Werten stehen die eigene Netz- und
+# Zugangskonfiguration. Der Aufbau dort spiegelt die Modulpfade:
+#
+#   ~/Repos/homelab-values/vm/talos-simple/terraform.tfvars
+#
+# Damit ergibt sich der Pfad aus dem Verzeichnis, in dem `tf` läuft - es
+# braucht keine Tabelle, die man beim Anlegen eines Moduls pflegen muss.
+#
+# Bewusst kein Symlink ins Modul: der sähe wie eine Datei im Repo aus,
+# obwohl er auf ein Repo mit eigener Historie zeigt, das getrennt gepullt
+# und gepusht werden will.
+#
+set -euo pipefail
+
+VALUES="${HOMELAB_VALUES:-$HOME/Repos/homelab-values}"
+
+root="$(git rev-parse --show-toplevel)"
+module="$(realpath --relative-to="$root" "$PWD")"
+var_file="$VALUES/$module/terraform.tfvars"
+
+#
+# Nicht jedes Unterkommando nimmt -var-file. `output`, `init` und `state`
+# etwa lehnen es ab, und `apply <plandatei>` ebenfalls - dort stecken die
+# Werte schon im Plan.
+#
+add=0
+case "${1:-}" in
+  plan | refresh | import | console | taint | untaint)
+    add=1
+    ;;
+  apply | destroy)
+    add=1
+    for arg in "${@:2}"; do
+      case "$arg" in
+        -*) ;;
+        *) add=0 ;; # ein Positionsargument = Plandatei
+      esac
+    done
+    ;;
+esac
+
+if [ "$add" = 1 ]; then
+  if [ -f "$var_file" ]; then
+    # Direkt hinter das Unterkommando, nicht ans Ende: sonst landet es bei
+    # `import` hinter den Positionsargumenten.
+    set -- "$1" "-var-file=$var_file" "${@:2}"
+  elif [ -f terraform.tfvars ]; then
+    #
+    # Kein Abbruch: Die Module werden einzeln umgestellt, die übrigen haben
+    # ihre Werte weiterhin im eigenen Verzeichnis liegen und tofu findet sie
+    # dort von allein.
+    #
+    :
+  else
+    #
+    # Weder hier noch dort Werte. Das darf kein blosser Hinweis sein, denn es
+    # laeuft sonst durch: Fast alle Variablen haben einen Default, und der von
+    # `libvirt_uri` ist `qemu:///system` - der Apply ginge gegen den libvirt
+    # der eigenen Arbeitsstation statt gegen Unraid, ohne eine einzige
+    # Rueckfrage.
+    #
+    echo "tf: keine Werte fuer $module" >&2
+    echo "tf: erwartet unter $var_file" >&2
+    echo "tf: fehlt das Werte-Repo? git clone .../homelab-values.git \"\$HOME/Repos/homelab-values\"" >&2
+    exit 1
+  fi
+fi
+
+exec tofu "$@"

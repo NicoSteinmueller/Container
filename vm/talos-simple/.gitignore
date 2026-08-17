@@ -1,4 +1,7 @@
-# Enthält die eigene Netz- und Zugangskonfiguration - gehört nicht ins Repo.
+# Die Werte liegen im privaten Repo `homelab-values` und kommen über
+# tools/tf als -var-file herein. Der Eintrag bleibt trotzdem stehen: Er
+# faengt die Datei ab, wenn sie hier doch wieder entsteht - etwa durch ein
+# `cp terraform.tfvars.example terraform.tfvars` aus Gewohnheit.
 terraform.tfvars
 
 # Aus Terraform erzeugte Zugangsdaten - Client-Zertifikate mit vollem Cluster-
