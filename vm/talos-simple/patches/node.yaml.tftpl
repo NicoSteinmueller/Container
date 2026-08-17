@@ -1,14 +1,10 @@
 #
-# Netzwerk und Identität des Nodes.
+# Netzwerk und Identität des Nodes. Ein Bein, statisch adressiert: ${lan_ip}
+# ist zugleich Kubernetes-API-Endpoint und steht in kubeconfig wie talosconfig
+# - eine geliehene Adresse wäre dort falsch, sobald ein Lease ausbleibt.
 #
-# Ein Bein, statisch adressiert. Kein DHCP: ${lan_ip} ist zugleich der
-# Kubernetes-API-Endpoint und steht damit in kubeconfig, talosconfig und in
-# jedem Verweis auf den Cluster. Eine geliehene Adresse wäre an all diesen
-# Stellen falsch, sobald ein Lease einmal nicht kommt.
-#
-# Zugeordnet wird über die MAC, nicht über den Interface-Namen: enp1s0 hängt an
-# der PCI-Reihenfolge und kann sich bei einem Neuaufbau verschieben. Dieselbe
-# MAC steht in der libvirt-Domain; beide Seiten kommen aus derselben Variablen.
+# Zugeordnet über die MAC statt über den Interface-Namen, der an der
+# PCI-Reihenfolge hängt. Dieselbe MAC steht in der libvirt-Domain.
 #
 machine:
   network:
@@ -37,17 +33,15 @@ machine:
 
   features:
     #
-    # KubePrism: lokaler Endpoint der Kubernetes-API auf 127.0.0.1:7445.
-    # hostNetwork-Komponenten sprechen darüber mit der API - der Weg verlässt
-    # den Node nicht und überlebt einen Adresswechsel.
+    # Lokaler Endpoint der Kubernetes-API für hostNetwork-Komponenten: Der Weg
+    # verlässt den Node nicht und überlebt einen Adresswechsel.
     #
     kubePrism:
       enabled: true
       port: 7445
 
-    # apid prüft die ExtKeyUsage der Client-Zertifikate. Ohne das wäre ein
-    # beliebiges von der Talos-CA signiertes Zertifikat auch ein gültiges
-    # Admin-Zertifikat.
+    # apid prüft die ExtKeyUsage der Client-Zertifikate; sonst wäre jedes von
+    # der Talos-CA signierte Zertifikat auch ein Admin-Zertifikat.
     apidCheckExtKeyUsage: true
 
     # Kein Weg von einem Pod zur Talos-API. Der Cluster darf die Maschine nicht

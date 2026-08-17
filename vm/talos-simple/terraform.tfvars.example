@@ -1,81 +1,54 @@
 #
-# Kopieren nach terraform.tfvars und anpassen.
-#
-# Die Werte hier sind die für diesen Unraid-Host gemessenen, nicht geratene
-# Defaults - gegengeprüft mit `ip -br link`, `virsh pool-list --all` und
-# `ls /usr/share/qemu/ovmf-x64/` auf dem Host.
+# Vorlage. Die echten Werte liegen in
+# $HOMELAB_VALUES/vm/talos-simple/terraform.tfvars.
 #
 
 # --- libvirt -----------------------------------------------------------
-#
-# WICHTIG: Ohne diese Zeile läuft alles gegen den libvirt der eigenen
-# Arbeitsstation statt gegen Unraid.
-#
-libvirt_uri = "qemu+ssh://root@192.168.178.3/system"
 
-# Lokaler Testlauf stattdessen:
-# libvirt_uri = "qemu:///system"
+# Ohne diese Zeile läuft alles gegen die eigene Arbeitsstation.
+# Lokaler Testlauf: "qemu:///system".
+libvirt_uri = "qemu+ssh://root@<host>/system"
 
-#
-# Erst prüfen, wem der Pool gehört:
-#
-#   virsh --connect "$libvirt_uri" pool-list --all
-#
-# Kommt die Liste leer zurück, legt dieses Modul den Pool selbst an. Bringt ihn
-# dagegen schon vm/edge mit, bleibt manage_pool aus - ein libvirt-Objekt in zwei
-# Terraform-States ist eine Fehlerquelle beim Zerstören.
-#
+# Kommt `virsh --connect "$libvirt_uri" pool-list --all` leer zurück, legt
+# dieses Modul den Pool an; bringt ihn vm/edge mit, bleibt manage_pool aus -
+# ein libvirt-Objekt in zwei States ist beim Zerstören eine Fehlerquelle.
 libvirt_pool = "homelab"
 manage_pool  = true
 pool_path    = "/mnt/cache/domains"
 
-#
-# UEFI-Firmware. Auf Unraid zwingend: Der mitgelieferte libvirt-Deskriptor nennt
-# als NVRAM-Vorlage /usr/share/qemu/edk2-i386-vars.fd, und genau diese Datei
-# fehlt im Paket. Ohne die beiden Zeilen scheitert der Start mit
-#   Failed to open file '/usr/share/qemu/edk2-i386-vars.fd'
-#
+# UEFI-Firmware, auf Host zwingend: Der mitgelieferte libvirt-Deskriptor
+# nennt /usr/share/qemu/edk2-i386-vars.fd als NVRAM-Vorlage, und genau diese
+# Datei fehlt im Paket. Lokal beide Zeilen weglassen.
 efi_loader        = "/usr/share/qemu/ovmf-x64/OVMF_CODE-pure-efi.fd"
 efi_vars_template = "/usr/share/qemu/ovmf-x64/OVMF_VARS-pure-efi.fd"
 
-# Lokaler Testlauf: beide Zeilen weglassen, dann sucht libvirt die Firmware
-# selbst aus.
-
 # --- Netz --------------------------------------------------------------
-#
-# Auf diesem Host ist Bridging abgeschaltet - `ip -br link` zeigt bond0 und
-# vhost0, aber kein br0. Also macvtap auf dem physischen Interface.
-#
-# Folge: Das LAN erreicht die VM und die VM das LAN, aber der Unraid-Host
-# selbst und die VM sehen einander nicht.
-#
-lan_macvtap_dev = "bond0"
 
-# Unraid mit Bridging stattdessen:
-# lan_bridge = "br0"
-# Lokaler Testlauf ohne beides:
-# lan_libvirt_network = "default"
+# Genau einen Weg wählen. Zeigt `ip -br link` kein br0, ist Bridging aus - dann
+# macvtap, mit der Folge, dass Hypervisor und VM einander nicht sehen.
+lan_macvtap_dev = "<bond0|eth0>"
+# lan_bridge          = "br0"        # Host mit Bridging
+# lan_libvirt_network = "default"    # lokaler Testlauf
 
-lan_cidr    = "192.168.178.0/24"
-lan_ip      = "192.168.178.230"
-lan_gateway = "192.168.178.1"
+# lan_ip außerhalb des DHCP-Bereichs; zugleich API-Endpoint und talosctl-Ziel.
+lan_cidr    = "192.168.1.0/24"
+lan_ip      = "192.168.1.230"
+lan_gateway = "192.168.1.1"
 
-# Fritzbox als Resolver - ein Baustein weniger, der beim ersten Aufbau kaputt
-# sein kann. Auf den AdGuard-Container umstellen, sobald der Cluster steht:
-# dns_servers = ["192.168.178.4"]
+# Zuerst der Router, nicht ein Resolver im Cluster: ein Baustein weniger, der
+# beim ersten Aufbau kaputt sein kann.
 dns_servers = ["192.168.178.1"]
 ntp_servers = ["192.168.178.1"]
 
 # --- Dimensionierung ---------------------------------------------------
-#
-# Der Host hatte bei der Messung rund 7 GB `available`, während Nextcloud,
-# Immich und Paperless noch als Container laufen. 4 GB tragen den leeren
-# Cluster bequem; vor jeder Erhöhung `free -m` auf dem Host gegenprüfen.
-#
+
+# 4 GB tragen den leeren Cluster. Vor jeder Erhöhung `free -m` auf dem Host:
+# maßgeblich ist `available`, nicht `free`
 vm_memory_mib = 4096
 vm_vcpu       = 4
 vm_disk_gib   = 100
 
 # --- MAC ---------------------------------------------------------------
-# Nur ändern, wenn sie mit etwas anderem im Netz kollidiert.
-node_mac = "52:54:00:7a:30:01"
+
+# Im QEMU-Bereich 52:54:00 und kollisionsfrei.
+node_mac = "52:54:00:00:00:01"

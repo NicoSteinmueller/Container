@@ -1,5 +1,5 @@
 output "node_ip" {
-  description = "Feste Adresse des Nodes im Heimnetz. Ziel für talosctl und kubectl."
+  description = "Feste Adresse des Nodes. Ziel für talosctl und kubectl."
   value       = var.lan_ip
 }
 
@@ -14,10 +14,7 @@ output "cluster_endpoint" {
 }
 
 output "schematic_id" {
-  description = <<-EOT
-    Image-Factory-Schematic-ID. Bei jedem Talos-Upgrade mit exakt dieser ID
-    arbeiten, sonst gehen die System-Extensions verloren.
-  EOT
+  description = "Image-Factory-Schematic-ID. Bei jedem Talos-Upgrade mit exakt dieser ID arbeiten, sonst gehen die System-Extensions verloren."
   value       = talos_image_factory_schematic.this.id
 }
 
@@ -37,7 +34,7 @@ output "talosconfig_path" {
 }
 
 output "kubeconfig" {
-  description = "kubeconfig als Text. Wird bereits als Datei geschrieben - dieser Output ist für den Fall, dass sie woanders gebraucht wird."
+  description = "kubeconfig als Text, falls sie woanders gebraucht wird - als Datei liegt sie bereits vor."
   value       = talos_cluster_kubeconfig.this.kubeconfig_raw
   sensitive   = true
 }
