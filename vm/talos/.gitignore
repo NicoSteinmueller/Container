@@ -1,7 +1,0 @@
-# Enthält die eigene Netz- und Zugangskonfiguration - gehört nicht ins Repo.
-terraform.tfvars
-
-# Aus Terraform-Outputs erzeugte Zugangsdaten - Client-Zertifikate mit vollem
-# Cluster- bzw. Node-Zugriff.
-talosconfig
-kubeconfig

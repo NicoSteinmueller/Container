@@ -1,9 +1,0 @@
-#
-# Ein-Node-Cluster: Ohne diesen Patch trägt Talos den NoSchedule-Taint auf
-# die Control Plane und es gäbe keinen Node, auf dem Workloads laufen könnten.
-#
-# Für den späteren Prod-Cluster gilt dasselbe, solange er einen Node hat.
-# Kommen Worker dazu, gehört dieser Patch entfernt.
-#
-cluster:
-  allowSchedulingOnControlPlanes: true
