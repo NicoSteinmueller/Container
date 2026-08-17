@@ -1,7 +1,7 @@
 #
-# Kopieren nach terraform.tfvars und anpassen. Ohne die Datei laufen die
-# Voreinstellungen aus variables.tf - die passen für den Cluster aus
-# vm/talos-simple und dieses Repo.
+# Vorlage für $HOMELAB_VALUES/k8s/flux/terraform.tfvars - dorthin kopieren
+# und anpassen, nicht hierher: tools/tf reicht die Datei aus dem privaten
+# Werte-Repo als -var-file herein (siehe gitea/README.md).
 #
 
 # Cluster aus vm/talos-simple. Anderer Pfad nur, wenn Flux woandershin soll.
@@ -9,7 +9,6 @@
 
 #
 # Git-Quelle. Voreingestellt ist dieses Repo auf master, Pfad
-# k8s/flux/clusters/talos-cp1 - aktuell absichtlich leer, siehe README.
 #
 # git_url    = "https://github.com/NicoSteinmueller/Container.git"
 # git_branch = "master"
