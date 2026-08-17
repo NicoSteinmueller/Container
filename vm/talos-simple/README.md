@@ -36,63 +36,39 @@ Arbeitsstation. Mehr nicht — und das ist der Punkt.
 
 ## Cluster erstellen
 
-Der State dieses Moduls liegt in Gitea, nicht im Verzeichnis — als einziges
-Modul bisher. Die Zugangsdaten kommen aus der Umgebung, nicht aus dem
-`backend`-Block; Token anlegen und Details in [../../gitea/README.md](../../gitea/README.md).
+State **und** Werte dieses Moduls liegen in Gitea, nicht im Verzeichnis — als
+einziges Modul bisher. Wie man Gitea dafür einrichtet, steht in
+[../../gitea/README.md](../../gitea/README.md): Token anlegen, das Werte-Repo
+klonen, und die Umgebung über `~/.config/tofu/gitea.env` bereitstellen. Ohne
+das läuft hier nichts. Voraussetzung ist danach:
 
-Einmalig einrichten, damit sie jede Shell hat statt nur die eine:
+- `TF_HTTP_USERNAME` und `TF_HTTP_PASSWORD` in der Umgebung — sonst kommt
+  `tofu init` nicht an den State
+- `$HOMELAB_VALUES/vm/talos-simple/terraform.tfvars` vorhanden — dort liegen
+  die Werte dieses Moduls
 
-```bash
-mkdir -p ~/.config/tofu && chmod 700 ~/.config/tofu
-umask 077 && cat > ~/.config/tofu/gitea.env <<'EOF'
-export TF_HTTP_USERNAME="nico"
-export TF_HTTP_PASSWORD="<Gitea-Token mit write:package>"
-EOF
-chmod 600 ~/.config/tofu/gitea.env
-
-echo '[ -f ~/.config/tofu/gitea.env ] && . ~/.config/tofu/gitea.env' >> ~/.bashrc
-```
-
-Danach in einer neuen Shell:
+Dann in einer neuen Shell:
 
 ```bash
 cd vm/talos-simple
-cp terraform.tfvars.example terraform.tfvars   # Werte prüfen
-tofu init
-tofu apply
+git -C "$HOMELAB_VALUES" pull    # Werte auf Stand bringen
+../../tools/tf init
+../../tools/tf apply
 ```
 
-Warum eine eigene Datei und nicht direkt `~/.bashrc`: die ist `644`, also für
-jedes Konto auf dem Rechner lesbar. Die `600` hier schützt den Token allein
-über die Dateirechte — verschlüsselt ist er nicht.
+`tools/tf` hängt das `-var-file` auf das Werte-Repo an und bricht ab, wenn es
+dort nichts findet. Der Abbruch ist für dieses Modul der eigentliche Punkt: Ein
+direkter `tofu apply` fragt **nicht** nach den fehlenden Werten — fast alle
+Variablen in [variables.tf](variables.tf) haben einen Default, und der von
+`libvirt_uri` ist `qemu:///system`. Der Apply liefe damit lautlos gegen den
+libvirt der eigenen Arbeitsstation statt gegen Unraid; wie das endet, steht in
+[../../k8s/INBETRIEBNAHME.md](../../k8s/INBETRIEBNAHME.md) unter
+`AppArmor-Profil … kann nicht geladen werden`. Also immer über den Wrapper.
 
-Zwei Fallen:
-
-- `~/.bashrc` gilt nur für interaktive Shells. Cron, systemd-Units und
-  `ssh host 'tofu ...'` sehen die Variablen nicht und brauchen die Datei
-  explizit gesourct.
-- Wer den Token stattdessen von Hand exportiert, tippt das `export` mit
-  führendem Leerzeichen — dann hält `HISTCONTROL` ihn aus `~/.bash_history`
-  heraus, sonst steht er dort im Klartext.
-
-Meldet `tofu` trotz gesetzter Variablen `requires auth`, liegt es am
-Token-Scope, nicht an der Umgebung:
-
-```bash
-curl -s -o /dev/null -w '%{http_code}\n' -u "$TF_HTTP_USERNAME:$TF_HTTP_PASSWORD" \
-  https://git.local.nico-steinmueller.de/api/packages/nico/terraform/state/vm-talos-simple
-```
-
-Der State liegt in Gitea unverschlüsselt, und darin stehen die
-`talos_machine_secrets` — die CA, mit der sich beliebige Admin-Zertifikate für
-Talos und Kubernetes ausstellen lassen. Wer Zugriff auf das appdata-Verzeichnis
-oder ein Backup des Unraid-Hosts hat, hat damit den Cluster. Für den Zielzustand
-gehört hier `terraform { encryption { … } }` dazu.
-
-Ein `apply` sperrt den State für seine Laufzeit; ein zweiter Aufruf von einem
-anderen Gerät bricht mit einer Lock-Meldung ab, statt danebenzuschreiben. Bleibt
-nach einem Abbruch eine Sperre stehen, hebt `tofu force-unlock <ID>` sie auf —
-die ID steht in der Fehlermeldung.
+Im State dieses Moduls stehen die `talos_machine_secrets` — die CA, mit der
+sich beliebige Admin-Zertifikate für Talos und Kubernetes ausstellen lassen.
+Die Registry speichert ihn unverschlüsselt; wer an das appdata-Verzeichnis oder
+ein Backup des Unraid-Hosts kommt, hat damit den Cluster.
 
 `apply` kehrt erst zurück, wenn der Cluster wirklich gesund ist — die Data
 Source `talos_cluster_health` blockiert so lange. Ein grünes `apply` heißt also:
@@ -147,7 +123,7 @@ virsh -c qemu+ssh://root@192.168.178.3/system console talos-cp1
 ## Aufräumen
 
 ```bash
-tofu destroy -var wait_for_health=false
+../../tools/tf destroy -var wait_for_health=false
 ```
 
 Das `-var` ist kein Beiwerk: Data Sources werden vor jedem Plan gelesen, auch
@@ -160,7 +136,7 @@ Fehler beheben würde.
 
 ```bash
 talosctl etcd snapshot db.snapshot                                    # vorher
-talosctl upgrade --preserve --image "$(tofu output -raw installer_image)"
+talosctl upgrade --preserve --image "$(../../tools/tf output -raw installer_image)"
 talosctl upgrade-k8s --to 1.36.3
 ```
 
