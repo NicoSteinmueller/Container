@@ -8,8 +8,8 @@ variable "cluster_name" {
 }
 
 #
-# Versionen - explizit gepinnt, damit ein Neuaufbau dieselbe Version ergibt
-# wie der laufende Cluster.
+# Versionen - gepinnt, damit ein Neuaufbau dieselbe Version ergibt wie der
+# laufende Cluster.
 #
 variable "talos_version" {
   description = "Talos-Linux-Version. Releases: https://github.com/siderolabs/talos/releases"
@@ -40,30 +40,22 @@ variable "system_extensions" {
 # libvirt
 #
 variable "libvirt_uri" {
-  description = <<-EOT
-    libvirt-Connection-URI.
-
-    Ohne diese Angabe läuft alles gegen den libvirt der eigenen Arbeitsstation
-    statt gegen Unraid. Für Unraid: qemu+ssh://root@<host>/system
-  EOT
+  description = "libvirt-Connection-URI. Ohne läuft alles gegen den lokalen libvirt; für entfernten Hypervisor: qemu+ssh://root@<host>/system"
   type        = string
   default     = "qemu:///system"
 }
 
 variable "libvirt_pool" {
-  description = "Storage-Pool für ISO und System-Disk. Ob er schon existiert, hängt am Host - vm/edge bringt ihn mit, ein frisches Unraid nicht. Siehe manage_pool."
+  description = "Storage-Pool für ISO und System-Disk. Default ist der, den eine lokale libvirt-Installation mitbringt; auf dem Hypervisor der dortige Pool. Siehe manage_pool."
   type        = string
-  default     = "homelab"
+  default     = "default"
 }
 
 variable "manage_pool" {
   description = <<-EOT
-    Den Pool hier anlegen statt einen vorhandenen zu benutzen.
-
-    Standardmäßig aus, weil der Pool zu vm/edge gehört, sobald das Modul auf dem
-    Host läuft, und ein libvirt-Objekt in zwei Terraform-States eine Fehlerquelle
-    beim Zerstören ist. Einschalten, wenn dieses Modul allein läuft - dann ist
-    auch pool_path zu setzen.
+    Den Pool hier anlegen statt einen vorhandenen zu benutzen. Aus, weil ein
+    libvirt-Objekt in zwei Terraform-States beim Zerstören zur Fehlerquelle
+    wird. Einschalten, wenn dieses Modul allein läuft; dann auch pool_path setzen.
 
     Vor dem ersten Apply gegenprüfen, statt es anzunehmen:
 
@@ -78,25 +70,22 @@ variable "manage_pool" {
 
 variable "pool_path" {
   description = <<-EOT
-    Verzeichnis des Pools, nur relevant bei manage_pool = true. Auf Unraid der
-    Share `domains` über /mnt/cache statt /mnt/user: derselbe Ort, aber ohne
-    die shfs-FUSE-Schicht. Über /mnt/user läuft jeder Blockzugriff der VM durch
-    einen Userspace-Daemon, und etcd fsyncnt zu oft, als dass das kostenlos wäre.
+    Verzeichnis des Pools, nur relevant bei manage_pool = true.
   EOT
   type        = string
-  default     = "/mnt/cache/domains"
+  default     = "/var/lib/libvirt/images"
 
   #
-  # Kreuzprobe gegen den häufigsten Fehlgriff: Unraid-Pfad, aber lokaler
-  # Hypervisor. Ohne die Prüfung legt Terraform den Pool klaglos auf der
-  # Arbeitsstation an, und der Fehler fällt erst auf, wenn die VM nicht startet.
+  # Kreuzprobe gegen den häufigsten Fehlgriff: Host-Pfad, aber lokaler
+  # Hypervisor. Ohne sie legt Terraform den Pool klaglos auf der Arbeitsstation
+  # an, und der Fehler fällt erst auf, wenn die VM nicht startet.
   #
   validation {
     condition = !(
       (startswith(var.pool_path, "/mnt/user/") || startswith(var.pool_path, "/mnt/cache/")) &&
       (var.libvirt_uri == "qemu:///system" || var.libvirt_uri == "qemu:///session")
     )
-    error_message = "pool_path zeigt auf einen Unraid-Share, libvirt_uri aber auf den lokalen Hypervisor. Entweder libvirt_uri auf qemu+ssh://root@<unraid>/system setzen oder pool_path auf ein lokales Verzeichnis."
+    error_message = "pool_path zeigt auf einen Host-Share, libvirt_uri aber auf den lokalen Hypervisor."
   }
 }
 
@@ -105,29 +94,27 @@ variable "pool_path" {
 #
 # Drei Wege, in dieser Reihenfolge ausgewertet:
 #
-#   macvtap  - lan_macvtap_dev gesetzt. Für Unraid-Hosts ohne Bridging; dort
-#              gibt es kein br0, sondern nur bond0/ethX.
-#   Bridge   - lan_bridge gesetzt (Unraid mit Bridging: br0).
+#   macvtap  - lan_macvtap_dev gesetzt. Für Hosts ohne Bridging.
+#   Bridge   - lan_bridge gesetzt.
 #   libvirt  - keins von beidem: vorhandenes libvirt-Netz, lokaler Test.
 #
 variable "lan_macvtap_dev" {
   description = <<-EOT
-    Physisches Interface für ein macvtap-Bein. Auf diesem Unraid-Host ist
-    Bridging abgeschaltet (`ip -br link` zeigt bond0 und vhost0, kein br0),
-    deshalb "bond0".
+    Physisches Interface für ein macvtap-Bein. Nötig auf Hosts ohne Bridging -
+    zeigt `ip -br link` dort kein br0, sondern nur bond0/ethX, gehört dieses
+    Interface hierher.
 
-    Was macvtap bedeutet, und das ist kein Detail: Die VM erreicht das LAN und
-    das LAN erreicht die VM - aber die VM und der Unraid-Host selbst sehen
-    einander nicht. Von der Arbeitsstation aus ist der Node also erreichbar,
-    von einer SSH-Sitzung auf Unraid nicht. Docker-Container in einem
-    macvlan-Netz auf demselben Parent sind dagegen erreichbar.
+    macvtap heißt: LAN und VM erreichen einander, VM und Hypervisor nicht. Von
+    der Arbeitsstation ist der Node also erreichbar, aus einer SSH-Sitzung auf
+    dem Hypervisor nicht. Docker-Container in einem macvlan-Netz auf demselben
+    Parent dagegen schon.
   EOT
   type        = string
   default     = null
 }
 
 variable "lan_bridge" {
-  description = "Vorhandene Host-Bridge, wenn lan_macvtap_dev nicht gesetzt ist (Unraid mit Bridging: \"br0\")."
+  description = "Vorhandene Host-Bridge, wenn lan_macvtap_dev nicht gesetzt ist (meist \"br0\")."
   type        = string
   default     = null
 }
@@ -139,44 +126,46 @@ variable "lan_libvirt_network" {
 }
 
 variable "lan_cidr" {
-  description = "Heimnetz, in dem der Node steht."
+  description = "Netz, in dem der Node steht. Default ist das des libvirt-Netzes \"default\"."
   type        = string
-  default     = "192.168.178.0/24"
+  default     = "192.168.122.0/24"
 
   validation {
     condition     = can(cidrhost(var.lan_cidr, 0))
-    error_message = "lan_cidr muss ein CIDR sein, z. B. 192.168.178.0/24."
+    error_message = "lan_cidr muss ein CIDR sein, z. B. 192.168.1.0/24."
   }
 }
 
 variable "lan_ip" {
   description = <<-EOT
-    Feste Adresse des Nodes. Muss außerhalb des DHCP-Bereichs der Fritzbox
-    liegen und darf mit nichts anderem im Netz kollidieren.
+    Feste Adresse des Nodes, außerhalb des DHCP-Bereichs und kollisionsfrei.
+    Zugleich Kubernetes-API-Endpoint und talosctl-Ziel - sie steht deshalb auch
+    in kubeconfig und talosconfig.
 
-    Diese Adresse ist zugleich der Kubernetes-API-Endpoint und das Ziel für
-    talosctl - sie steht deshalb auch in kubeconfig und talosconfig.
+    Der Default liegt im libvirt-Netz "default", dort aber innerhalb des
+    DHCP-Bereichs (.2-.254): für einen Testlauf unkritisch, für Dauerbetrieb
+    den Bereich in der Netzdefinition verkleinern.
   EOT
   type        = string
-  default     = "192.168.178.230"
+  default     = "192.168.122.230"
 }
 
 variable "lan_gateway" {
-  description = "Default-Gateway, in der Regel die Fritzbox."
+  description = "Default-Gateway. Lokal virbr0, sonst der Router."
   type        = string
-  default     = "192.168.178.1"
+  default     = "192.168.122.1"
 }
 
 variable "dns_servers" {
   description = <<-EOT
     Resolver des Nodes. Ohne DNS kommt er an keine Container-Images.
 
-    Default ist bewusst die Fritzbox und nicht der AdGuard-Container: ein
-    Baustein weniger, der beim ersten Aufbau kaputt sein kann. Auf den internen
-    Resolver umstellen, sobald der Cluster steht.
+    Default ist der Resolver des libvirt-Netzes "default". Im LAN gehört
+    hierher zunächst der Router und nicht ein eigener Resolver - ein Baustein
+    weniger, der beim ersten Aufbau kaputt sein kann.
   EOT
   type        = list(string)
-  default     = ["192.168.178.1"]
+  default     = ["192.168.122.1"]
 
   validation {
     condition     = length(var.dns_servers) > 0
@@ -185,30 +174,27 @@ variable "dns_servers" {
 }
 
 variable "ntp_servers" {
-  description = "NTP-Quellen. Ohne korrekte Zeit schlagen etcd und die Zertifikatsprüfungen des Kubelets fehl."
+  description = "NTP-Quellen; ohne korrekte Zeit schlagen etcd und die Zertifikatsprüfungen des Kubelets fehl. Default ist der öffentliche Pool, weil das libvirt-Netz \"default\" kein NTP anbietet."
   type        = list(string)
-  default     = ["192.168.178.1"]
+  default     = ["pool.ntp.org"]
 }
 
 variable "node_mac" {
-  description = "MAC des Nodes. Muss im QEMU-Bereich 52:54:00 liegen. Dieselbe MAC wählt in der Machine-Config das Interface aus."
+  description = "MAC des Nodes, im QEMU-Bereich 52:54:00 und kollisionsfrei. Dieselbe MAC wählt in der Machine-Config das Interface aus."
   type        = string
-  default     = "52:54:00:7a:30:01"
+  default     = "52:54:00:00:00:01"
 }
 
 variable "maintenance_link" {
   description = <<-EOT
     Interface-Name, wie der Kernel das Bein beim Booten von der ISO benennt.
-
-    Geht als `ip=`-Kernel-Parameter ins Image und sorgt dafür, dass der Node
-    schon im Maintenance-Mode unter lan_ip erreichbar ist - vorher gäbe es dort
-    nur DHCP, und der Config-Apply liefe ins Leere.
-
-    Die Machine-Config selbst wählt das Interface später über die MAC, nicht
-    über den Namen. Diese Variable gilt nur für das Zeitfenster davor.
+    Geht als `ip=`-Kernel-Parameter ins Image, damit der Node schon im
+    Maintenance-Mode unter lan_ip erreichbar ist - vorher gäbe es dort nur
+    DHCP, und der Config-Apply liefe ins Leere. Später wählt die Machine-Config
+    das Interface über die MAC.
 
     "enp1s0" ist der erste virtio-Adapter im q35-Layout dieses Moduls.
-    Gegenprüfen am Node im Maintenance-Mode:
+    Gegenprüfen im Maintenance-Mode:
       talosctl get links --insecure -n <adresse> -e <adresse>
   EOT
   type        = string
@@ -219,7 +205,7 @@ variable "maintenance_link" {
 # Cluster-Netz
 #
 variable "pod_subnet" {
-  description = "Pod-CIDR. Darf sich mit nichts im Heimnetz überschneiden."
+  description = "Pod-CIDR. Darf sich mit nichts im LAN überschneiden."
   type        = string
   default     = "10.244.0.0/16"
 }
@@ -235,20 +221,13 @@ variable "service_subnet" {
 #
 variable "vm_memory_mib" {
   description = <<-EOT
-    RAM der VM in MiB.
+    RAM der VM in MiB. 4096 trägt einen leeren Cluster mit Flannel und CoreDNS
+    bequem. Vor jeder Erhöhung auf dem Hypervisor gegenprüfen:
 
-    4096 trägt einen leeren Cluster mit Flannel und CoreDNS bequem. Der Host
-    hat rund 7 GB `available`, während Nextcloud, Immich und Paperless noch als
-    Container laufen - vor jeder Erhöhung dort gegenprüfen:
+      ssh root@<host> free -m
 
-      ssh root@<unraid> free -m
-
-    Maßgeblich ist die Spalte `available`, nicht `free`. Bleibt sie unter etwa
-    1,5 GB, ist der nächste Schritt keine Erhöhung, sondern das Abschalten
-    eines Containers. Unraid hat ab Werk keinen Swap.
-
-    `memory` ist kein ForceNew-Feld: Ein Apply schreibt nur die
-    Domain-Definition neu, wirksam wird der Wert beim nächsten Start der VM.
+    Kein ForceNew-Feld: Ein Apply schreibt nur die Domain-Definition neu,
+    wirksam wird der Wert beim nächsten Start der VM.
   EOT
   type        = number
   default     = 4096
@@ -261,11 +240,7 @@ variable "vm_vcpu" {
 }
 
 variable "vm_disk_gib" {
-  description = <<-EOT
-    Größe der System-Disk in GiB. qcow2 ist dünn alloziert, der Platz wird also
-    nicht sofort belegt. Großzügig wählen: Die Kapazität nachträglich zu ändern,
-    ersetzt das Volume und damit den Cluster.
-  EOT
+  description = "Größe der System-Disk in GiB. qcow2 ist dünn alloziert, der Platz wird also nicht sofort belegt. Großzügig wählen: Die Kapazität nachträglich zu ändern, ersetzt das Volume und damit den Cluster."
   type        = number
   default     = 100
 }
@@ -279,35 +254,14 @@ variable "install_disk" {
 #
 # UEFI-Firmware
 #
-# Standardmäßig sucht libvirt sich die Firmware selbst aus. Das funktioniert auf
-# gängigen Distributionen - auf Unraid nicht: Dort nennt der mitgelieferte
-# Deskriptor 60-edk2-x86_64.json als NVRAM-Vorlage /usr/share/qemu/edk2-i386-vars.fd,
-# und genau diese Datei liefert das Paket nicht mit. Der Start scheitert dann mit
-#
-#   Failed to open file '/usr/share/qemu/edk2-i386-vars.fd': No such file or directory
-#
-# Unraid bringt stattdessen sein eigenes OVMF mit - diese beiden Variablen
-# schreiben die Pfade explizit ins Domain-XML, so wie es Unraids VM-Oberfläche
-# auch tut.
-#
 variable "efi_loader" {
-  description = <<-EOT
-    Pfad zum OVMF-Code (schreibgeschützt, pflash). Leer bedeutet: libvirt wählt
-    die Firmware selbst aus.
-
-    Auf Unraid: "/usr/share/qemu/ovmf-x64/OVMF_CODE-pure-efi.fd"
-  EOT
+  description = "Pfad zum OVMF-Code (schreibgeschützt, pflash). Leer: libvirt wählt selbst. Auf Unraid \"/usr/share/qemu/ovmf-x64/OVMF_CODE-pure-efi.fd\"."
   type        = string
   default     = ""
 }
 
 variable "efi_vars_template" {
-  description = <<-EOT
-    Vorlage für den NVRAM-Speicher der Firmware. libvirt kopiert sie beim ersten
-    Start nach nvram_dir.
-
-    Auf Unraid: "/usr/share/qemu/ovmf-x64/OVMF_VARS-pure-efi.fd"
-  EOT
+  description = "Vorlage für den NVRAM-Speicher, die libvirt beim ersten Start nach nvram_dir kopiert. Auf Unraid \"/usr/share/qemu/ovmf-x64/OVMF_VARS-pure-efi.fd\"."
   type        = string
   default     = ""
 
@@ -318,7 +272,7 @@ variable "efi_vars_template" {
 }
 
 variable "nvram_dir" {
-  description = "Verzeichnis für den NVRAM-Speicher je VM. Nur relevant, wenn efi_loader gesetzt ist. Muss auf dem Hypervisor existieren."
+  description = "Verzeichnis für den NVRAM-Speicher je VM. Nur relevant bei gesetztem efi_loader. Muss auf dem Hypervisor existieren."
   type        = string
   default     = "/etc/libvirt/qemu/nvram"
 }
@@ -328,20 +282,18 @@ variable "nvram_dir" {
 #
 variable "wait_for_health" {
   description = <<-EOT
-    Nach dem Bootstrap warten, bis Control Plane und Node gesund sind.
+    Nach dem Bootstrap warten, bis Control Plane und Node gesund sind. Ohne den
+    Check meldet `apply` auch dann Erfolg, wenn der Node NotReady bleibt.
 
-    Im Normalbetrieb an lassen: Ohne den Check meldet `terraform apply` auch
-    dann Erfolg, wenn der Node NotReady bleibt.
+    Auf false setzen für zwei Fälle:
 
-    Auf false setzen für zwei Fälle, beide unangenehm:
-
-      - `terraform destroy`, wenn die VM schon aus ist. Data Sources werden vor
-        jedem Plan gelesen, auch beim Zerstören - der Check läuft sonst erst in
+      - `destroy` bei schon ausgeschalteter VM. Data Sources werden vor jedem
+        Plan gelesen, auch beim Zerstören - der Check läuft sonst erst in
         seinen 20-Minuten-Timeout.
       - Reparaturläufe. Ist der Cluster kaputt, blockiert derselbe Check genau
         das `apply`, das den Fehler beheben würde.
 
-    In beiden Fällen als Flag mitgeben statt in die tfvars zu schreiben:
+    Beides als Flag mitgeben statt in die tfvars zu schreiben:
 
       terraform destroy -var wait_for_health=false
   EOT
