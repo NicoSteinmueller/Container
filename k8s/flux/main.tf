@@ -14,6 +14,18 @@
 # Weaveworks-Schließung 2024 ohne neue Releases.
 #
 terraform {
+  #
+  # State in der Gitea-Package-Registry, wie bei vm/talos-simple. Der Name am
+  # Ende der Adresse ist der Modulpfad, flach geschrieben.
+  #
+  backend "http" {
+    address        = "https://git.local.nico-steinmueller.de/api/packages/nico/terraform/state/k8s-flux"
+    lock_address   = "https://git.local.nico-steinmueller.de/api/packages/nico/terraform/state/k8s-flux/lock"
+    unlock_address = "https://git.local.nico-steinmueller.de/api/packages/nico/terraform/state/k8s-flux/lock"
+    lock_method    = "POST"
+    unlock_method  = "DELETE"
+  }
+
   required_providers {
     helm = {
       source  = "hashicorp/helm"
@@ -73,7 +85,8 @@ resource "kubernetes_namespace" "flux_system" {
 #
 # Leer angelegt - die eigentlichen Werte (username, password = PAT) trägt
 # niemand über Terraform ein. Ein echter PAT als Terraform-Variable stünde
-# im Klartext in terraform.tfstate, genau das, was dieses Repo bei jedem
+# im Klartext im State - unverschlüsselt in der Gitea-Package-Registry -,
+# genau das, was dieses Repo bei jedem
 # anderen Geheimnis vermeidet (step-ca-Provisioner, CrowdSec-Bouncer-Keys,
 # Headlamp-Tokens - siehe README).
 #

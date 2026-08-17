@@ -27,18 +27,19 @@ Manifeste ins Repo zurückschreibt.
 
 ## Anwenden
 
+State **und** Werte liegen in Gitea 
 ```bash
 cd k8s/flux
-cp terraform.tfvars.example terraform.tfvars   # bei Bedarf anpassen
-terraform init
-terraform apply
+git -C "$HOMELAB_VALUES" pull
+tf init
+tf apply
 ```
 
 **Zwei Durchläufe können nötig sein.** `kubernetes_manifest.flux_instance`
 braucht die CRD, die erst `helm_release.flux_operator` mitbringt - Terraform
 validiert das Manifest beim Planen gegen das CRD-Schema im Cluster. Schlägt
 der erste `apply` deshalb an der FluxInstance fehl, ist das kein Fehler im
-Modul: `terraform apply` einfach ein zweites Mal ausführen. Dasselbe Muster
+Modul: `tf apply` einfach ein zweites Mal ausführen. Dasselbe Muster
 beschreibt `k8s/platform/README.md` für `data.kubernetes_config_map.step_ca_certs`.
 
 Terraform legt das Secret `flux-git-auth` an, aber **leer** - die Werte
@@ -46,7 +47,7 @@ selbst trägt niemand über Terraform ein (siehe unten, "Warum das Secret
 leer aus Terraform kommt"). Eintragen per kubectl:
 
 ```bash
-terraform output fill_secret
+tf output fill_secret
 ```
 
 liefert den `kubectl patch secret`-Befehl (Headlamp als Alternative, falls
@@ -59,8 +60,8 @@ image-automation-controller Tags im Repo aktualisieren soll.
 Prüfen:
 
 ```bash
-terraform output status_commands
-terraform output access
+tf output status_commands
+tf output access
 ```
 
 Ein grüner Zustand heißt: `fluxinstance/flux` zeigt `Ready`, die
@@ -72,16 +73,17 @@ laufen.
 Dieselbe Regel wie bei step-ca und den Headlamp-Tokens
 (`k8s/platform/README.md`, `k8s/flux/clusters/talos-cp1/headlamp.yaml`): Was ein Geheimnis ist,
 geht nicht durch Terraform-State. Ein PAT als Terraform-Variable wäre im
-Klartext lesbar für jeden mit Zugriff auf die `.tfstate`-Datei - und die
-liegt lokal, nicht in einem verschlüsselten Backend.
+Klartext lesbar für jeden mit Zugriff auf den State - und der liegt
+unverschlüsselt in der Gitea-Package-Registry, geschützt nur durch den Token
+aus `TF_HTTP_PASSWORD`.
 
 Das Objekt `kubernetes_secret.flux_git_auth` existiert trotzdem, damit die
 FluxInstance einen gültigen `pullSecret`-Namen referenzieren kann - nur mit
 leeren Platzhaltern für `username`/`password`. Die echten Werte kommen per
-`kubectl patch secret` hinein (siehe oben, `terraform output fill_secret`)
+`kubectl patch secret` hinein (siehe oben, `tf output fill_secret`)
 und gehen damit direkt an die API, nie durch Terraform-State. Headlamp
 (Admin-Token, siehe `k8s/flux/clusters/talos-cp1/headlamp.yaml`) geht alternativ. `lifecycle.ignore_changes
-= [data]` auf der Ressource sorgt dafür, dass der nächste `terraform apply`
+= [data]` auf der Ressource sorgt dafür, dass der nächste `tf apply`
 diesen Eintrag nicht wieder auf leer zurücksetzt.
 
 ## Sicherheits-Abwägung: NodePort ohne Login

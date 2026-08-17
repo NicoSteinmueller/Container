@@ -1,2 +1,3 @@
-# Enthält die eigene Konfiguration - gehört nicht ins Repo.
+# Die Werte liegen im privaten Repo `homelab-values` und kommen über
+# tools/tf als -var-file herein.
 terraform.tfvars
