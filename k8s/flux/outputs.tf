@@ -13,9 +13,8 @@ output "access" {
 }
 
 #
-# Terraform legt kubernetes_secret.flux_git_auth leer an - die Werte trägt
-# niemand hier ein (siehe main.tf). Dieser Output beschreibt nur noch den
-# Weg, sie nachträglich einzutragen, nicht mehr den Inhalt.
+# Das Secret wird leer angelegt (main.tf) - dieser Output beschreibt nur den
+# Weg, die Werte nachzutragen.
 #
 output "fill_secret" {
   description = "Ohne echte Werte im Secret bleibt die GitRepository-Quelle \"Unknown\"."

@@ -1,22 +1,22 @@
 #
-# Vorlage für $HOMELAB_VALUES/k8s/flux/terraform.tfvars - dorthin kopieren
-# und anpassen, nicht hierher: tools/tf reicht die Datei aus dem privaten
+# Vorlage für $HOMELAB_VALUES/k8s/flux/terraform.tfvars - dorthin kopieren und
+# anpassen, nicht hierher: tools/tf reicht die Datei aus dem privaten
 # Werte-Repo als -var-file herein (siehe gitea/README.md).
 #
 
-# Cluster aus vm/talos-simple. Anderer Pfad nur, wenn Flux woandershin soll.
+# Cluster aus vm/talos-simple
 # kubeconfig_path = "../../vm/talos-simple/kubeconfig"
 
 #
-# Git-Quelle. Voreingestellt ist dieses Repo auf master, Pfad
+# Git-Quelle, die Flux beobachtet
 #
 # git_url    = "https://github.com/NicoSteinmueller/Container.git"
-# git_branch = "master"
+# git_branch = "kubernetes-try"
 # sync_path  = "k8s/flux/clusters/talos-cp1"
 
 #
-# Zugang zur Flux-Status-Seite. Voreingestellt ist NodePort 30081 - ohne
-# Login erreichbar, siehe README für die Abwägung gegenüber ClusterIP.
+# Zugang zur Flux-Status-Seite - NodePort ist ohne Login erreichbar, siehe
+# README für die Abwägung gegenüber ClusterIP.
 #
 # service_type = "NodePort"
 # node_port    = 30081

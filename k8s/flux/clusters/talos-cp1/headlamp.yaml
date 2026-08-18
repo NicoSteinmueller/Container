@@ -1,28 +1,15 @@
 #
-# Headlamp - Cluster-Dashboard für den Node aus vm/talos-simple.
+# Headlamp - Cluster-Dashboard. Fremder Chart, deshalb eine eigene
+# HelmRepository weiter unten statt der GitRepository flux-system.
 #
-# Anders als whoami.yaml ist der Chart hier kein lokaler im selben Repo,
-# sondern kommt aus einem fremden Helm-Repository - deshalb die zusätzliche
-# HelmRepository-Quelle weiter unten, statt sourceRef auf die GitRepository
-# flux-system zu setzen.
+# Namespace und RBAC stehen hier als eigene Manifeste, weil das Chart den
+# Namespace ohne PodSecurity-Label anlegt und seinen ServiceAccount ab Werk an
+# cluster-admin bindet. Stattdessen (clusterRoleBinding.create: false):
 #
-# Warum Headlamp und nicht das Kubernetes-Dashboard oder Rancher: siehe
-# k8s/flux/clusters/talos-cp1/README.md.
-#
-# Namespace und RBAC stehen hier als eigene Manifeste und nicht im Chart,
-# aus demselben Grund wie zuvor im Terraform-Modul k8s/dashboard:
-#
-#   - Das Chart legt den Namespace ohne PodSecurity-Label an - "restricted"
-#     kommt deshalb von hier.
-#   - Das Chart bindet seinen ServiceAccount ab Werk an cluster-admin
-#     (clusterRoleBinding.clusterRoleName: cluster-admin). Diese Voreinstellung
-#     wird unten mit clusterRoleBinding.create: false abgeschaltet und durch
-#     eine engere Aufteilung ersetzt:
-#
-#       headlamp        - Identität des Pods und des Lese-Tokens. Darf lesen,
-#                         nichts ändern, kommt an keine Secrets.
-#       headlamp-admin  - ein ServiceAccount ohne Pod und ohne Token. Wer
-#                         ändern will, erzeugt sich eines für eine Stunde.
+#   headlamp        - Identität des Pods und des Lese-Tokens. Kein Schreiben,
+#                     keine Secrets.
+#   headlamp-admin  - ServiceAccount ohne Pod und ohne Token. Wer ändern will,
+#                     erzeugt sich eines für eine Stunde.
 #
 
 apiVersion: v1
@@ -44,11 +31,9 @@ metadata:
   namespace: headlamp
 automountServiceAccountToken: true
 ---
-# Erste Hälfte der Leserechte: die eingebaute Rolle `view`. Deckt ab, was in
-# Namespaces liegt (Pods, Deployments, Services, ConfigMaps, Events, Logs) -
-# ausdrücklich ohne Secrets. Deshalb `view` und nicht eine eigene "alles
-# lesen"-Rolle, in der die Secrets-Ausnahme beim Zusammenschreiben leicht
-# verloren geht.
+# Erste Hälfte der Leserechte: die eingebaute Rolle `view` - alles in
+# Namespaces, ausdrücklich ohne Secrets. Eine selbstgeschriebene "alles
+# lesen"-Rolle verliert diese Ausnahme leicht.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -62,10 +47,8 @@ subjects:
     name: headlamp
     namespace: headlamp
 ---
-# Zweite Hälfte: was `view` nicht kennt. `view` ist auf Objekte in
-# Namespaces zugeschnitten - Nodes, PersistentVolumes, StorageClasses, CRDs
-# fehlen darin. Ohne diese Rolle startet das Dashboard, zeigt aber auf der
-# Übersichtsseite überall "Forbidden", und die Node-Ansicht bleibt leer.
+# Zweite Hälfte: was `view` nicht kennt - Nodes, PersistentVolumes,
+# StorageClasses, CRDs. Ohne sie zeigt die Übersicht überall "Forbidden".
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -85,9 +68,8 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingressclasses"]
     verbs: ["get", "list", "watch"]
-  # Die CRD-Objekte selbst, nicht deren Inhalte. Eine Wildcard über alle
-  # apiGroups wäre kürzer und würde jede künftige CRD einschließen - auch
-  # eine, die Zugangsdaten im Klartext in ihrer Spec trägt.
+  # Die CRD-Objekte selbst, nicht deren Inhalte - eine Wildcard schlösse
+  # jede künftige CRD ein, auch eine mit Zugangsdaten in der Spec.
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
     verbs: ["get", "list", "watch"]
@@ -108,8 +90,7 @@ rules:
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
     verbs: ["get", "list", "watch"]
-  # Damit die Oberfläche beim Anmelden abfragen kann, was sie anzeigen darf,
-  # statt jede Ansicht in einen Fehler laufen zu lassen.
+  # Damit die Oberfläche beim Anmelden abfragen kann, was sie zeigen darf.
   - apiGroups: ["authorization.k8s.io"]
     resources: ["selfsubjectaccessreviews", "selfsubjectrulesreviews"]
     verbs: ["create"]
@@ -127,10 +108,8 @@ subjects:
     name: headlamp
     namespace: headlamp
 ---
-# Der Weg zum Schreibzugriff, wenn er gebraucht wird. Kein Pod verwendet
-# diesen ServiceAccount und kein Secret trägt ein Token dafür - im
-# Ruhezustand ist er damit nicht benutzbar. Ein Token entsteht erst durch
-# einen ausdrücklichen Aufruf der TokenRequest-API:
+# Schreibzugriff auf Abruf: kein Pod nutzt diesen ServiceAccount, kein Secret
+# trägt ein Token. Eines entsteht erst per TokenRequest-API:
 #
 #   kubectl -n headlamp create token headlamp-admin --duration=1h
 #
@@ -190,21 +169,15 @@ spec:
       retries: 3
   values:
     #
-    # Wie sich hier jemand anmeldet - und warum das die eigentliche
-    # Entscheidung ist:
-    #
-    # Headlamp fragt beim Aufruf nach einem Token und spricht anschließend
-    # mit genau der Identität mit der API, zu der dieses Token gehört. Nicht
-    # mit der des Pods. Was jemand sieht und ändern darf, richtet sich also
-    # nach RBAC des angemeldeten ServiceAccounts, nicht danach, wer die
-    # Adresse aufrufen kann.
+    # Headlamp spricht mit der API als die Identität des beim Aufruf
+    # eingegebenen Tokens, nicht als die des Pods - RBAC des angemeldeten
+    # ServiceAccounts entscheidet, nicht wer die Adresse erreicht.
     #
     #   Lesen:    kubectl -n headlamp create token headlamp --duration=8h
     #   Ändern:   kubectl -n headlamp create token headlamp-admin --duration=1h
     #
-    # unsafeUseServiceAccountToken bleibt false: würde jeden Aufrufer als der
-    # ServiceAccount des Pods anmelden - dann wäre die Netzgrenze die
-    # einzige Kontrolle, und die ist in diesem Aufbau das Heimnetz.
+    # unsafeUseServiceAccountToken bleibt false: sonst wäre jeder Aufrufer der
+    # ServiceAccount des Pods und die Netzgrenze die einzige Kontrolle.
     #
     config:
       inCluster: true
@@ -213,15 +186,13 @@ spec:
       sessionTTL: 28800
 
       oidc:
-        # Das Chart legt sonst ein leeres Secret namens "oidc" an, das kein
-        # Container einbindet. Wenn hier später Keycloak angebunden wird,
-        # kommt es zurück - dann aber mit Inhalt.
+        # Das Chart legt sonst ein leeres Secret "oidc" an, das niemand
+        # einbindet. Kommt zurück, wenn hier Keycloak angebunden wird.
         secret:
           create: false
 
-    # ServiceAccount und Rechte kommen von den Manifesten oben, nicht von
-    # diesem Chart - dessen Voreinstellung ist cluster-admin, siehe Kopf
-    # dieser Datei.
+    # ServiceAccount und Rechte von den Manifesten oben - die Voreinstellung
+    # des Charts ist cluster-admin, siehe Kopf dieser Datei.
     serviceAccount:
       create: false
       name: headlamp
@@ -229,9 +200,8 @@ spec:
     clusterRoleBinding:
       create: false
 
-    # PodSecurity "restricted" im Namespace headlamp. Das Chart setzt von
-    # sich aus nur runAsNonRoot und runAsUser; der Rest steht hier, weil
-    # "restricted" das Anlegen sonst ablehnt.
+    # Für PodSecurity "restricted": Das Chart setzt nur runAsNonRoot und
+    # runAsUser, der Rest steht hier - sonst lehnt der Namespace den Pod ab.
     podSecurityContext:
       seccompProfile:
         type: RuntimeDefault
@@ -250,10 +220,9 @@ spec:
         drop:
           - ALL
 
-    # Erreichbar aus dem gesamten Heimnetz ohne kubectl - das Token geht
-    # dabei als unverschlüsseltes HTTP übers LAN, eine bewusste Entscheidung
-    # (siehe README). Kein Ingress: dieser Cluster hat weder Controller noch
-    # cert-manager.
+    # Ohne kubectl aus dem Heimnetz erreichbar - das Token geht dabei
+    # unverschlüsselt übers LAN (README). Kein Ingress: kein Controller, kein
+    # cert-manager in diesem Cluster.
     service:
       type: NodePort
       port: 80
@@ -262,7 +231,7 @@ spec:
     ingress:
       enabled: false
 
-    # Knapp bemessen, weil der RAM auf diesem Node die knappe Größe ist.
+    # Knapp bemessen - RAM ist auf diesem Node die knappe Größe.
     resources:
       requests:
         cpu: 20m
