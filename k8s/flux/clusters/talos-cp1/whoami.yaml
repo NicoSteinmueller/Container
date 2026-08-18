@@ -1,17 +1,9 @@
 #
-# Erster Workload, den Flux tatsächlich ausrollt (siehe README.md in diesem
-# Verzeichnis und k8s/flux/README.md, Abschnitt "Erster Workload: whoami").
+# whoami aus dem lokalen Chart k8s/whoami/chart - HelmRelease statt
+# Kustomization, sourceRef auf die GitRepository flux-system (README.md).
 #
-# HelmRelease statt Kustomization: k8s/whoami/chart ist ein lokales Chart im
-# selben Repo (chart.spec.sourceRef zeigt auf dieselbe GitRepository, die auch
-# die kustomize-controller-Kustomizations beobachten würden - kein zweites
-# Source-Objekt nötig). valuesFiles wählt die Umgebung; values-prod.yaml
-# setzt aktuell den NodePort-Zugriff (siehe k8s/whoami/README.md).
-#
-# valuesFiles-Pfade sind relativ zur Wurzel der GitRepository, NICHT relativ
-# zu chart.spec.chart - deshalb der volle Pfad ab k8s/whoami/chart/ statt nur
-# des Dateinamens. Ohne das: "values files merge error: no values file found
-# at path '/values.yaml'" (HelmChart sucht an der Repo-Wurzel).
+# valuesFiles-Pfade sind relativ zur Repo-Wurzel, NICHT zu chart.spec.chart -
+# sonst: "no values file found at path '/values.yaml'".
 #
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease

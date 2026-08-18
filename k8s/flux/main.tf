@@ -1,22 +1,10 @@
 #
-# Flux (GitOps) für den Cluster aus vm/talos-simple - Push auf den Branch aus
-# var.git_branch soll ausrollen, ohne dass jemand `kubectl apply` von Hand
-# tippt. Dieselbe Idee, die Portainer bislang für die Compose-Stacks übernimmt.
-#
-# Warum Flux Operator und nicht `flux bootstrap` / terraform-provider-flux:
-# Der klassische Weg committet die flux-system-Manifeste selbst ins Repo und
-# braucht dafür Schreibrechte auf den Branch. Flux Operator dreht das um -
-# eine einzige FluxInstance-Ressource beschreibt, welche Controller in
-# welcher Version laufen sollen, und der Operator hält sie dort. Zusätzlich
-# bringt er seit Flux 2.8 (GA Februar 2026) die einzige noch gepflegte
-# In-Cluster-Oberfläche mit: Capacitor ist inzwischen ein lokales Binary
-# (liest kubeconfig wie talosctl), Weave GitOps ist seit der
-# Weaveworks-Schließung 2024 ohne neue Releases.
+# Flux (GitOps) für den Cluster aus vm/talos-simple - Push auf var.git_branch
+# rollt aus.
 #
 terraform {
   #
-  # State in der Gitea-Package-Registry, wie bei vm/talos-simple. Der Name am
-  # Ende der Adresse ist der Modulpfad, flach geschrieben.
+  # State in der Gitea-Package-Registry
   #
   backend "http" {
     address        = "https://git.local.nico-steinmueller.de/api/packages/nico/terraform/state/k8s-flux"
@@ -39,9 +27,8 @@ terraform {
 }
 
 #
-# Beide Provider sprechen über die kubeconfig, die vm/talos-simple schreibt.
-# Ein Pfad, kein Wert aus einer anderen Ressource - siehe k8s/platform/main.tf
-# für dieselbe Begründung.
+# Beide Provider über die kubeconfig aus vm/talos-simple - ein Pfad, kein Wert
+# aus einer anderen Ressource.
 #
 provider "helm" {
   kubernetes {
@@ -58,12 +45,8 @@ provider "kubernetes" {
 # =====================================================================
 
 #
-# Bewusst ohne pod-security.kubernetes.io/enforce: restricted, anders als bei
-# Headlamp (k8s/flux/clusters/talos-cp1/headlamp.yaml). Kustomize-controller
-# und helm-controller müssen im Cluster anwenden dürfen, was im beobachteten
-# Repo-Pfad steht - das ist der Kern von GitOps, keine übersehene Härtung.
-# Die eigentliche Kontrolle
-# liegt darin, wer auf var.git_branch schreiben darf, nicht in PodSecurity.
+# Bewusst ohne pod-security enforce: restricted, anders als bei Headlamp -
+# die Controller müssen anwenden dürfen, was im Repo steht.
 #
 resource "kubernetes_namespace" "flux_system" {
   metadata {
@@ -71,11 +54,8 @@ resource "kubernetes_namespace" "flux_system" {
   }
 
   #
-  # Die FluxInstance verwaltet flux-system als Teil ihrer eigenen
-  # Root-Kustomization und markiert den Namespace dafür mit eigenen
-  # Labels/Annotations (fluxcd.controlplane.io/*, kustomize.toolkit.fluxcd.io/*).
-  # Ohne ignore_changes würde jeder terraform apply diese Markierungen wieder
-  # entfernen und mit Flux um dasselbe Objekt konkurrieren.
+  # Die FluxInstance verwaltet flux-system mit und setzt eigene
+  # Labels/Annotations - ohne ignore_changes entfernt sie jeder apply wieder.
   #
   lifecycle {
     ignore_changes = [metadata[0].labels, metadata[0].annotations]
@@ -83,26 +63,11 @@ resource "kubernetes_namespace" "flux_system" {
 }
 
 #
-# Leer angelegt - die eigentlichen Werte (username, password = PAT) trägt
-# niemand über Terraform ein. Ein echter PAT als Terraform-Variable stünde
-# im Klartext im State - unverschlüsselt in der Gitea-Package-Registry -,
-# genau das, was dieses Repo bei jedem
-# anderen Geheimnis vermeidet (step-ca-Provisioner, CrowdSec-Bouncer-Keys,
-# Headlamp-Tokens - siehe README).
-#
-# Stattdessen: Objekt existiert, damit die FluxInstance unten einen
-# gültigen pullSecret-Namen referenzieren kann, und wird per
-# `kubectl patch secret` nachträglich befüllt (siehe outputs.tf,
-# fill_secret) - der Wert geht direkt an die API, nie durch
-# Terraform-State. Headlamp (Admin-Token, siehe
-# k8s/flux/clusters/talos-cp1/headlamp.yaml) geht alternativ, falls gerade
-# kein kubeconfig zur Hand ist.
-#
-# ignore_changes ist deshalb kein Sicherheitsnetz gegen fremde Änderungen,
-# sondern der Grund, warum das überhaupt funktioniert: Ohne die Zeile würde
-# der nächste `terraform apply` data wieder auf die leeren Platzhalter aus
-# diesem Manifest zurücksetzen und den per kubectl eingetragenen PAT
-# überschreiben.
+# Leer angelegt: Der PAT als Terraform-Variable stünde im Klartext im State.
+# Das Objekt existiert nur, damit die FluxInstance einen gültigen
+# pullSecret-Namen hat; befüllt wird per `kubectl patch secret` (outputs.tf,
+# fill_secret). ignore_changes hält diesen Wert - sonst setzt ihn der nächste
+# apply auf die leeren Platzhalter zurück.
 #
 resource "kubernetes_secret" "flux_git_auth" {
   metadata {
@@ -127,9 +92,8 @@ resource "kubernetes_secret" "flux_git_auth" {
 # =====================================================================
 
 #
-# Installiert nur den Operator und seine CRDs (u.a. FluxInstance). Die
-# eigentlichen Flux-Controller kommen erst durch helm_release.flux_instance
-# unten - der Operator liest die FluxInstance und richtet sie ein.
+# Nur der Operator und seine CRDs (u.a. FluxInstance). Die Flux-Controller
+# selbst richtet er erst anhand von helm_release.flux_instance unten ein.
 #
 resource "helm_release" "flux_operator" {
   name       = "flux-operator"
@@ -144,11 +108,7 @@ resource "helm_release" "flux_operator" {
   timeout = 300
 
   #
-  # web.enabled schaltet die Flux-Status-Seite (Port 9080) frei - siehe
-  # README für die Abwägung, sie ohne Login zu zeigen. Das Chart legt dafür
-  # nur eine ClusterIP-Service an (templates/service.yaml kennt keinen
-  # service.type) - NodePort kommt deshalb unten als eigene Ressource dazu,
-  # statt einen nicht existierenden Values-Schlüssel zu erfinden.
+  # Schaltet die Flux-Status-Seite (Port 9080) frei - ohne Login.
   #
   values = [yamlencode({
     web = {
@@ -158,11 +118,8 @@ resource "helm_release" "flux_operator" {
 }
 
 #
-# Das Chart bindet Port 9080 nur an eine ClusterIP-Service
-# (Name kommt aus "flux-operator.fullname" - hier gleich dem Release-Namen
-# "flux-operator", weil der Release-Name den Chart-Namen schon enthält).
-# Für NodePort-Zugriff eine zweite Service mit denselben Selector-Labels,
-# statt das Chart zu etwas zu zwingen, das es nicht vorsieht.
+# Das Chart kennt keinen service.type und legt nur eine ClusterIP-Service an -
+# für NodePort deshalb eine zweite Service mit denselben Selector-Labels.
 #
 resource "kubernetes_service" "flux_web_nodeport" {
   count = var.service_type == "NodePort" ? 1 : 0
@@ -195,12 +152,8 @@ resource "kubernetes_service" "flux_web_nodeport" {
 # =====================================================================
 
 #
-# Ein einziges Objekt, das dem Operator sagt: welche Flux-Version, welche
-# Controller, welches Repo.
-#
-# Als Helm-Release, nicht als kubernetes_manifest: Das Chart kommt aus demselben
-# Repo wie der Operator und legt genau diese eine Ressource an (Name "flux",
-# per fullnameOverride im Chart).
+# Ein Objekt, das dem Operator sagt: welche Flux-Version, welche Controller,
+# welches Repo.
 #
 resource "helm_release" "flux_instance" {
   name       = "flux"
@@ -212,10 +165,9 @@ resource "helm_release" "flux_instance" {
   create_namespace = false
 
   #
-  # wait bezieht sich nur auf das Anlegen der FluxInstance, nicht auf einen
-  # gesunden Sync: healthcheck.enabled bleibt aus (Chart-Default). Sonst
-  # wartete der Release auf eine GitRepository, die ohne den erst danach
-  # von Hand eingetragenen PAT gar nicht ready werden kann - siehe README.
+  # wait gilt nur dem Anlegen, nicht einem gesunden Sync: healthcheck.enabled
+  # bleibt aus (Chart-Default), sonst liefe der apply ohne den erst danach
+  # eingetragenen PAT zwangsläufig in seinen Timeout.
   #
   wait    = true
   timeout = 300
@@ -238,13 +190,7 @@ resource "helm_release" "flux_instance" {
         type = "kubernetes"
         size = "small"
 
-        #
-        # false, weil hier ein einzelner Autor auf var.git_branch schreibt -
-        # dieselbe Vertrauensbasis, die bislang für Portainers Auto-Deploy
-        # galt. Mit multitenant: true schränkt sich das kustomize-controller
-        # von selbst auf definierte Service-Accounts pro Namespace ein; das
-        # kommt, sobald mehr als eine Quelle auf diesen Cluster schreibt.
-        #
+        # false: ein einzelner Autor schreibt auf var.git_branch (README).
         multitenant   = false
         networkPolicy = true
       }
@@ -255,11 +201,7 @@ resource "helm_release" "flux_instance" {
         ref  = "refs/heads/${var.git_branch}"
         path = var.sync_path
 
-        #
-        # Verweist auf kubernetes_secret.flux_git_auth oben - leer angelegt,
-        # bis jemand die Werte per kubectl einträgt. Siehe outputs.tf
-        # (fill_secret) und README.
-        #
+        # kubernetes_secret.flux_git_auth oben - leer bis zum kubectl patch.
         pullSecret = var.git_secret_name
       }
     }

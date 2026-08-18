@@ -1,10 +1,5 @@
 variable "kubeconfig_path" {
-  description = <<-EOT
-    kubeconfig des Zielclusters. Voreingestellt ist die Datei, die
-    vm/talos-simple nach einem erfolgreichen `terraform apply` schreibt.
-
-    Sie ist gleichbedeutend mit Cluster-Admin und steht dort in .gitignore.
-  EOT
+  description = "kubeconfig des Zielclusters. Voreingestellt die Datei aus vm/talos-simple - Cluster-Admin, dort in .gitignore."
   type        = string
   default     = "../../vm/talos-simple/kubeconfig"
 }
@@ -23,24 +18,17 @@ variable "flux_operator_chart_version" {
 
 variable "flux_instance_chart_version" {
   description = <<-EOT
-    Chart-Version von flux-instance - legt die FluxInstance an, die der
-    Operator dann einrichtet.
+    Chart-Version von flux-instance - legt die FluxInstance an.
 
-    Kommt aus demselben Repo wie flux-operator und wird mit ihm zusammen
-    veröffentlicht: gleich halten mit flux_operator_chart_version, sonst
-    rendert ein Chart gegen ein CRD-Schema einer anderen Operator-Version.
+    Gleich halten mit flux_operator_chart_version: beide Charts kommen aus
+    demselben Repo, sonst rendert das eine gegen ein fremdes CRD-Schema.
   EOT
   type        = string
   default     = "0.57.0"
 }
 
 variable "flux_version" {
-  description = <<-EOT
-    Flux-Distribution, die die FluxInstance einrichtet. "2.9.x" statt einer
-    exakten Version - der Operator zieht innerhalb der Minor-Version
-    automatisch Patch-Releases nach, ohne dass variables.tf dafür geändert
-    werden muss.
-  EOT
+  description = "Flux-Distribution der FluxInstance. \"2.9.x\": Patch-Releases zieht der Operator selbst nach."
   type        = string
   default     = "2.9.x"
 }
@@ -62,25 +50,17 @@ variable "git_branch" {
 }
 
 variable "sync_path" {
-  description = <<-EOT
-    Pfad im Repo, den die FluxInstance als Wurzel-Kustomization anwendet.
-
-    Zeigt auf k8s/flux/clusters/talos-cp1 - aktuell absichtlich leer (nur ein
-    README). Der nächste Schritt ist, dort eine Kustomization abzulegen, die
-    z.B. k8s/whoami einbindet - siehe README.
-  EOT
+  description = "Pfad im Repo, den die FluxInstance als Wurzel-Kustomization anwendet."
   type        = string
   default     = "k8s/flux/clusters/talos-cp1"
 }
 
 variable "git_secret_name" {
   description = <<-EOT
-    Name des Secrets mit den Git-Zugangsdaten (Keys: username, password).
+    Secret mit den Git-Zugangsdaten (Keys: username, password).
 
-    Wird von diesem Modul leer angelegt (kubernetes_secret.flux_git_auth) -
-    die echten Werte trägt niemand über Terraform ein, dieselbe Regel wie
-    bei step-ca und den Headlamp-Tokens. Der Befehl zum nachträglichen
-    Befüllen per kubectl steht im Output `fill_secret`.
+    Wird leer angelegt - die echten Werte gehen nicht durch Terraform-State.
+    Befehl zum Befüllen: Output `fill_secret`.
   EOT
   type        = string
   default     = "flux-git-auth"
@@ -93,17 +73,11 @@ variable "service_type" {
   description = <<-EOT
     Wie die Flux-Status-Seite (Port 9080) erreichbar ist:
 
-      ClusterIP  - gar nicht von außen. Zugang über
+      ClusterIP  - nur per port-forward svc/flux-operator 9080:9080
+      NodePort   - http://<node_ip>:<node_port> aus dem Heimnetz
 
-                     kubectl -n <namespace> port-forward svc/flux-operator 9080:9080
-
-      NodePort   - erreichbar unter http://<node_ip>:<node_port> aus dem
-                   Heimnetz, ohne kubectl.
-
-    Anders als bei Headlamp verlangt die Oberfläche standardmäßig KEIN Token -
-    NodePort bedeutet hier also: jeder im Heimnetz sieht den GitOps-Zustand
-    ohne jede Anmeldung. Sie zeigt dafür weder Secrets noch ConfigMaps.
-    Abwägung ausführlich im README.
+    Die Seite verlangt kein Token, zeigt aber weder Secrets noch ConfigMaps -
+    NodePort heißt also: jeder im Heimnetz sieht den GitOps-Zustand. README.
   EOT
   type        = string
   default     = "NodePort"
@@ -115,7 +89,7 @@ variable "service_type" {
 }
 
 variable "node_port" {
-  description = "Port auf dem Node, nur bei service_type = \"NodePort\". Muss im NodePort-Bereich liegen (30000-32767)."
+  description = "Port auf dem Node, nur bei service_type = \"NodePort\" (30000-32767)."
   type        = number
   default     = 30081
 

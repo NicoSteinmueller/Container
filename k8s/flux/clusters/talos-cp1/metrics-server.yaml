@@ -1,13 +1,10 @@
 #
-# metrics-server - Quelle für `kubectl top` und für die Auslastungsanzeigen
-# (CPU, Speicher) in Headlamp (headlamp.yaml). Ohne ihn bleiben die
-# entsprechenden Felder dort leer, obwohl die RBAC-Regel für metrics.k8s.io
-# schon bereitsteht (ClusterRole headlamp-cluster-read).
+# metrics-server - Quelle für `kubectl top` und die Auslastungsanzeigen in
+# Headlamp.
 #
-# targetNamespace kube-system, nicht ein eigener Namespace: metrics-server
-# meldet sich als APIService v1beta1.metrics.k8s.io an, der kube-apiserver
-# reicht Anfragen an ihn weiter. Ein eigener Namespace mit Default-Deny-
-# Policies müsste genau diesen Weg wieder öffnen.
+# targetNamespace kube-system: Er meldet sich als APIService
+# v1beta1.metrics.k8s.io an, der kube-apiserver reicht Anfragen an ihn weiter -
+# ein eigener Namespace mit Default-Deny müsste diesen Weg wieder öffnen.
 #
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -45,24 +42,14 @@ spec:
       retries: 3
   values:
     #
-    # Anders als in k8s/platform steht hier --kubelet-insecure-tls.
+    # --kubelet-insecure-tls, anders als in k8s/platform: Der Weg dort
+    # (echtes Kubelet-Zertifikat per CSR-Approver) setzt serverTLSBootstrap
+    # voraus, das vm/talos-simple bewusst weglässt - sonst scheitert der
+    # Abruf an "x509: certificate signed by unknown authority".
     #
-    # Der sichere Weg dort - ein echtes Kubelet-Serverzertifikat statt eines
-    # selbstsignierten, ausgestellt über einen CSR, den kubelet-csr-approver
-    # genehmigt - setzt serverTLSBootstrap in der Talos-Machine-Config
-    # voraus. Genau das fehlt in vm/talos-simple bewusst; siehe dessen
-    # README unter "Was hier bewusst fehlt". Ohne serverTLSBootstrap bleibt
-    # das Kubelet-Zertifikat selbstsigniert, und metrics-server kann es
-    # nicht gegen eine bekannte CA prüfen - der Abruf schlägt mit "x509:
-    # certificate signed by unknown authority" fehl.
-    #
-    # --kubelet-insecure-tls verzichtet auf genau diese Prüfung. Die
-    # Verbindung bleibt verschlüsselt, aber ungeprüft: Ein Angreifer mit
-    # Stellung im Node-Netz (10.244.0.0/16 bzw. das Heimnetz selbst) könnte
-    # sich als Kubelet ausgeben. Für den Ein-Node-Aufbau im eigenen LAN ist
-    # das vertretbar - es ist aber der Punkt, der beim Umstieg auf
-    # serverTLSBootstrap (und die CSR-Approver-Kette aus k8s/platform) als
-    # Erstes wieder verschwinden sollte.
+    # Die Verbindung bleibt verschlüsselt, aber ungeprüft: Wer im Node-Netz
+    # steht, könnte sich als Kubelet ausgeben. Im Ein-Node-LAN vertretbar,
+    # sollte beim Umstieg auf serverTLSBootstrap aber als Erstes weichen.
     #
     replicas: 1
 
