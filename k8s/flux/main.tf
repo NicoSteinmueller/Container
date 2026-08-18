@@ -128,7 +128,7 @@ resource "kubernetes_secret" "flux_git_auth" {
 
 #
 # Installiert nur den Operator und seine CRDs (u.a. FluxInstance). Die
-# eigentlichen Flux-Controller kommen erst durch kubernetes_manifest.flux
+# eigentlichen Flux-Controller kommen erst durch helm_release.flux_instance
 # unten - der Operator liest die FluxInstance und richtet sie ein.
 #
 resource "helm_release" "flux_operator" {
@@ -196,24 +196,32 @@ resource "kubernetes_service" "flux_web_nodeport" {
 
 #
 # Ein einziges Objekt, das dem Operator sagt: welche Flux-Version, welche
-# Controller, welches Repo. Braucht die CRD aus helm_release.flux_operator -
-# beim allerersten `terraform apply` kann das scheitern, weil Terraform die
-# Struktur des Manifests gegen ein CRD-Schema validiert, das noch nicht im
-# Cluster ist. Genau das Muster aus k8s/platform/README.md
-# (data.kubernetes_config_map.step_ca_certs): zweiter `terraform apply`
-# behebt es, siehe README hier.
+# Controller, welches Repo.
 #
-resource "kubernetes_manifest" "flux_instance" {
-  manifest = {
-    apiVersion = "fluxcd.controlplane.io/v1"
-    kind       = "FluxInstance"
+# Als Helm-Release, nicht als kubernetes_manifest: Das Chart kommt aus demselben
+# Repo wie der Operator und legt genau diese eine Ressource an (Name "flux",
+# per fullnameOverride im Chart).
+#
+resource "helm_release" "flux_instance" {
+  name       = "flux"
+  repository = "oci://ghcr.io/controlplaneio-fluxcd/charts"
+  chart      = "flux-instance"
+  version    = var.flux_instance_chart_version
+  namespace  = kubernetes_namespace.flux_system.metadata[0].name
 
-    metadata = {
-      name      = "flux"
-      namespace = kubernetes_namespace.flux_system.metadata[0].name
-    }
+  create_namespace = false
 
-    spec = {
+  #
+  # wait bezieht sich nur auf das Anlegen der FluxInstance, nicht auf einen
+  # gesunden Sync: healthcheck.enabled bleibt aus (Chart-Default). Sonst
+  # wartete der Release auf eine GitRepository, die ohne den erst danach
+  # von Hand eingetragenen PAT gar nicht ready werden kann - siehe README.
+  #
+  wait    = true
+  timeout = 300
+
+  values = [yamlencode({
+    instance = {
       distribution = {
         version  = var.flux_version
         registry = "ghcr.io/fluxcd"
@@ -255,7 +263,7 @@ resource "kubernetes_manifest" "flux_instance" {
         pullSecret = var.git_secret_name
       }
     }
-  }
+  })]
 
   depends_on = [
     helm_release.flux_operator,
