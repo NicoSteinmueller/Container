@@ -21,6 +21,19 @@ variable "flux_operator_chart_version" {
   default     = "0.57.0"
 }
 
+variable "flux_instance_chart_version" {
+  description = <<-EOT
+    Chart-Version von flux-instance - legt die FluxInstance an, die der
+    Operator dann einrichtet.
+
+    Kommt aus demselben Repo wie flux-operator und wird mit ihm zusammen
+    veröffentlicht: gleich halten mit flux_operator_chart_version, sonst
+    rendert ein Chart gegen ein CRD-Schema einer anderen Operator-Version.
+  EOT
+  type        = string
+  default     = "0.57.0"
+}
+
 variable "flux_version" {
   description = <<-EOT
     Flux-Distribution, die die FluxInstance einrichtet. "2.9.x" statt einer

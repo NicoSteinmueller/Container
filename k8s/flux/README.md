@@ -35,12 +35,10 @@ tf init
 tf apply
 ```
 
-**Zwei Durchläufe können nötig sein.** `kubernetes_manifest.flux_instance`
-braucht die CRD, die erst `helm_release.flux_operator` mitbringt - Terraform
-validiert das Manifest beim Planen gegen das CRD-Schema im Cluster. Schlägt
-der erste `apply` deshalb an der FluxInstance fehl, ist das kein Fehler im
-Modul: `tf apply` einfach ein zweites Mal ausführen. Dasselbe Muster
-beschreibt `k8s/platform/README.md` für `data.kubernetes_config_map.step_ca_certs`.
+Ein Durchlauf genügt, auch gegen einen frischen Cluster. Die FluxInstance
+kommt als zweites Helm-Release (`flux-instance` aus demselben Repo wie der
+Operator), nicht als `kubernetes_manifest` - siehe unten, "Warum die
+FluxInstance ein Helm-Release ist".
 
 Terraform legt das Secret `flux-git-auth` an, aber **leer** - die Werte
 selbst trägt niemand über Terraform ein (siehe unten, "Warum das Secret
@@ -85,6 +83,25 @@ und gehen damit direkt an die API, nie durch Terraform-State. Headlamp
 (Admin-Token, siehe `k8s/flux/clusters/talos-cp1/headlamp.yaml`) geht alternativ. `lifecycle.ignore_changes
 = [data]` auf der Ressource sorgt dafür, dass der nächste `tf apply`
 diesen Eintrag nicht wieder auf leer zurücksetzt.
+
+## Warum die FluxInstance ein Helm-Release ist
+
+Naheliegender wäre `kubernetes_manifest` - ein CR, ein Manifest, fertig. Der
+Weg funktioniert hier aber nicht: Diese Ressource prüft ihr Manifest schon
+beim **Planen** gegen das OpenAPI-Schema des Clusters, und die CRD
+`FluxInstance` bringt erst `helm_release.flux_operator` im selben Lauf mit.
+
+`helm_release` rendert dagegen erst zur Laufzeit und kennt das Henne-Ei-Problem
+nicht. ControlPlane veröffentlicht die FluxInstance dafür als eigenes Chart
+(`flux-instance`) neben dem Operator-Chart. Preis: Die `spec` steht als
+`yamlencode`-Values statt als HCL-Objekt, und `flux_instance_chart_version`
+will mit `flux_operator_chart_version` zusammen nachgezogen werden - beide
+Charts kommen aus demselben Repo und werden gemeinsam veröffentlicht.
+
+`healthcheck.enabled` des Charts bleibt auf dem Default `false`. Angeschaltet
+wartete der Release auf einen gesunden Sync - der kann ohne den erst danach
+von Hand eingetragenen PAT gar nicht eintreten, der `apply` liefe also
+zwangsläufig in seinen Timeout.
 
 ## Sicherheits-Abwägung: NodePort ohne Login
 
