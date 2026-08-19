@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 #
-# tofu-Aufruf mit den Werten aus dem privaten Werte-Repo.
+# tofu-Aufruf mit den Werten und Geheimnissen dieser Arbeitsstation.
 #
-# Die `terraform.tfvars` liegen nicht im Modul, sondern in einem eigenen,
-# privaten Gitea-Repo (`nico/homelab-values`). Grund: Dieses Repo hier geht
-# nach GitHub, und in den Werten stehen die eigene Netz- und
-# Zugangskonfiguration. Der Aufbau dort spiegelt die Modulpfade:
+# Drei Dinge holt der Wrapper zusammen, die tofu selbst nicht findet:
 #
-#   ~/Repos/homelab-values/vm/talos-simple/terraform.tfvars
+#   1. die `terraform.tfvars` aus dem privaten Werte-Repo (`nico/homelab-values`)
+#   2. Benutzername und Gitea-Token für den `http`-Backend (TF_HTTP_*)
+#   3. die Passphrase für die State-Verschlüsselung (TF_ENCRYPTION)
+#
+# Die tfvars liegen nicht im Modul, sondern in einem eigenen, privaten
+# Gitea-Repo. Grund: Dieses Repo hier geht nach GitHub, und in den Werten steht
+# die eigene Netz- und Zugangskonfiguration. Der Aufbau dort spiegelt die
+# Modulpfade:
+#
+#   ~/Repos/Homelab/homelab-values/vm/talos-simple/terraform.tfvars
 #
 # Damit ergibt sich der Pfad aus dem Verzeichnis, in dem `tf` läuft - es
 # braucht keine Tabelle, die man beim Anlegen eines Moduls pflegen muss.
@@ -16,9 +22,17 @@
 # obwohl er auf ein Repo mit eigener Historie zeigt, das getrennt gepullt
 # und gepusht werden will.
 #
+# Die beiden Geheimnisse kommen aus dem Schlüsselbund
+#
 set -euo pipefail
 
-VALUES="${HOMELAB_VALUES:-$HOME/Repos/homelab-values}"
+#
+# Wurzel des Werte-Repos. Der Pfad steht hier statt in einer Konfigurationsdatei
+# neben dem Wrapper: Er ist nicht geheim, und eine Datei fuer eine einzige Zeile
+# ist ein Ort mehr, den man auf einer neuen Maschine erst anlegen muss. Wessen
+# Klon woanders liegt, setzt HOMELAB_VALUES in der Umgebung.
+#
+VALUES="${HOMELAB_VALUES:-$HOME/Repos/Homelab/homelab-values}"
 
 root="$(git rev-parse --show-toplevel)"
 module="$(realpath --relative-to="$root" "$PWD")"
@@ -70,6 +84,117 @@ if [ "$add" = 1 ]; then
     echo "tf: fehlt das Werte-Repo? git clone .../homelab-values.git \"\$HOME/Repos/homelab-values\"" >&2
     exit 1
   fi
+fi
+
+# =====================================================================
+# Geheimnisse aus dem Schlüsselbund
+# =====================================================================
+
+#
+# Eine Ausschluss- statt einer Einschlussliste: Wer hier ein Unterkommando
+# vergisst, bekommt eine überflüssige Schlüsselbund-Abfrage - andersherum
+# liefe tofu ohne Zugangsdaten in einen 401 oder schriebe im schlimmsten Fall
+# unverschlüsselt.
+#
+needs_secrets=1
+case "${1:-}" in
+  fmt | validate | version | test | -help | --help | -version | --version | "")
+    needs_secrets=0
+    ;;
+esac
+
+if [ "$needs_secrets" = 1 ]; then
+  if ! command -v secret-tool >/dev/null; then
+    echo "tf: secret-tool fehlt - sudo apt install libsecret-tools" >&2
+    exit 1
+  fi
+
+  #
+  # Gitea-Token. Reicht nur bis zum *verschlüsselten* State - wer ihn hat, kann
+  # das Chiffrat holen, aber nicht lesen.
+  #
+  gitea_token="$(secret-tool lookup homelab gitea-token || true)"
+  if [ -z "$gitea_token" ]; then
+    echo "tf: Gitea-Token nicht im Schlüsselbund (Attribut homelab=gitea-token)" >&2
+    echo "tf: Gegenprobe   -> secret-tool search --all homelab gitea-token" >&2
+    echo "tf: neu anlegen  -> gitea/README.md, Abschnitt \"Geheimnisse im Schlüsselbund\"" >&2
+    exit 1
+  fi
+  export TF_HTTP_PASSWORD="$gitea_token"
+  unset gitea_token
+
+  #
+  # Der Benutzername steht als Attribut am selben Eintrag, nicht in der
+  # Konfigurationsdatei: Token und Konto gehören zusammen und können so nicht
+  # auseinanderlaufen, wenn eines von beiden gewechselt wird.
+  #
+  # `secret-tool search` teilt seine Ausgabe auf - Label und Geheimnis nach
+  # stdout, die Attribute nach stderr. Das `2>&1 >/dev/null` dreht genau das um
+  # und laesst nur die Attribute in die Pipe; der Token kommt dabei gar nicht
+  # erst vorbei.
+  #
+  gitea_user="$(secret-tool search --all homelab gitea-token 2>&1 >/dev/null \
+                | sed -n 's/^attribute\.username = //p' | head -1)"
+  if [ -z "$gitea_user" ]; then
+    echo "tf: kein username am Gitea-Eintrag im Schlüsselbund" >&2
+    echo "tf: neu ablegen -> secret-tool store --collection=login \\" >&2
+    echo "tf:                  --label='Gitea Token' homelab gitea-token username <name>" >&2
+    exit 1
+  fi
+  export TF_HTTP_USERNAME="$gitea_user"
+  unset gitea_user
+
+  #
+  # State-Passphrase. Liegt bewusst im selben Schlüsselbund wie der Token:
+  # Ein eigener, separat entsperrter Schlüsselbund wäre strenger, kostet aber je
+  # Sitzung eine Passwortabfrage - und gegen jemanden, der hier ohnehin schon
+  # als `nico` Code ausführt, schützt auch der nicht. Der Gewinn liegt darin,
+  # dass der State das Gerät nur verschlüsselt verlässt.
+  #
+  passphrase="$(secret-tool lookup homelab tofu-state || true)"
+  if [ -z "$passphrase" ]; then
+    echo "tf: State-Passphrase nicht im Schlüsselbund (Attribut homelab=tofu-state)" >&2
+    echo "tf: anlegen -> gitea/README.md, Abschnitt \"Geheimnisse im Schlüsselbund\"" >&2
+    exit 1
+  fi
+
+  #
+  # Die Passphrase wird unten in eine HCL-Zeichenkette eingesetzt. " und \
+  # würden sie zerreißen - und der Fehler käme als unverständlicher
+  # Parse-Fehler im encryption-Block zurück.
+  #
+  case "$passphrase" in
+    *[\"\\]*)
+      echo "tf: Passphrase enthält \" oder \\ - im Schlüsselbund durch eine ohne ersetzen" >&2
+      exit 1
+      ;;
+  esac
+
+  #
+  # `enforced` ohne Ausnahme und ohne Schalter: Ein Notausgang, der
+  # unverschlüsselten State durchlässt, wird irgendwann benutzt, um eine
+  # unverstandene Fehlermeldung wegzubekommen - und danach liegt der State
+  # wieder im Klartext in der Registry. Taucht doch einmal ein gefuellter
+  # Klartext-State auf, ist das Handarbeit: `method "unencrypted"` als fallback
+  # in einem von Hand gesetzten TF_ENCRYPTION, einmal `apply -refresh-only`,
+  # fertig - nicht hier.
+  #
+  export TF_ENCRYPTION="key_provider \"pbkdf2\" \"main\" {
+  passphrase = \"$passphrase\"
+}
+method \"aes_gcm\" \"main\" {
+  keys = key_provider.pbkdf2.main
+}
+state {
+  method = method.aes_gcm.main
+  enforced = true
+}
+plan {
+  method = method.aes_gcm.main
+  enforced = true
+}"
+
+  unset passphrase
 fi
 
 exec tofu "$@"
