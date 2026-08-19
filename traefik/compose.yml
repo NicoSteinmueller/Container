@@ -4,7 +4,7 @@ services:
   # TODO https://doc.traefik.io/traefik/setup/docker/
   traefik:
     # ------------ Identität ------------------------
-    image: traefik:3.7.10@sha256:9c3b91d5fb7770853ca5c1124a23c34bf2d9b47ffaebeab2614cbaf410dcb2ac
+    image: traefik:3.7.11@sha256:eb37f58646a901dc7727cf448cae36daaefaba79de33b5058dab79aa4c04aefb
     container_name: traefik
 
     # ------------ Abhängigkeiten & Start -----------
