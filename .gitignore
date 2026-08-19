@@ -60,6 +60,11 @@ build/
 # cloud-init-user_data der Edge-VM; sie gehoeren unter keinen Umstaenden in
 # einen Commit.
 **/terraform.tfstate*
+# Schreibt tofu, wenn der State nach einem Apply nicht in den Backend
+# zurueckgeschrieben werden kann - etwa weil der Lock haengt. Der Name faengt
+# nicht mit terraform. an, das Muster darueber greift also nicht. Inhalt ist
+# derselbe wie im State, mit denselben Geheimnissen.
+**/errored.tfstate
 **/.terraform/
 **/.terraform.tfstate.lock.info
 
