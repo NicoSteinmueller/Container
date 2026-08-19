@@ -7,8 +7,7 @@
 # Rollenname" erhalten, ohne die eigentliche Arbeit je Tool zu kopieren. Die
 # Vorlage fuer einen solchen Wrapper steht in ../../README.md.
 #
-# Derzeit gibt es keinen Wrapper - die Rolle ist Grundaufbau fuer das naechste
-# Tool, das es fertig in den Distributionsquellen gibt.
+# Wrapper derzeit: roles/libsecret-tools.
 
 # Bewusst ein eigener Name statt tool_state: Der Wrapper reicht den Zustand
 # ausdruecklich als distro_package_state weiter. Verliesse man sich darauf, dass
