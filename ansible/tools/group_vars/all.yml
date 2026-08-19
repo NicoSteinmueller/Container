@@ -9,3 +9,4 @@
 # Host-spezifische Abweichungen gehoeren nach host_vars/<host>.yml.
 managed_tools:
   opentofu: present
+  libsecret-tools: present

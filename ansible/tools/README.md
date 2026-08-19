@@ -17,7 +17,7 @@ Der Unterschied liegt nicht in der Bedienung - beide stehen gleichberechtigt in
 
 | | **Eigenes Repository** | **Distributionspaket** |
 |---|---|---|
-| Verwaltet | `opentofu` | derzeit keins - `distro_package` steht bereit |
+| Verwaltet | `opentofu` | `libsecret-tools` |
 | Rolle | eine je Tool, richtet Keyrings und apt-Repo ein | duenner Wrapper auf die gemeinsame Rolle `distro_package` |
 | Update-Kanal | wird von der Rolle nach `52-ansible-managed-tools` geschrieben | steht schon in `50unattended-upgrades` |
 | Buchfuehrung | `tool_update_coverage` | `tool_update_sources` |
@@ -39,7 +39,8 @@ Kanal, den `unattended-upgrades` bedienen koennte.
 ```yaml
 # group_vars/all.yml
 managed_tools:
-  opentofu: present    # installieren und aktuell halten
+  opentofu: present          # installieren und aktuell halten
+  libsecret-tools: present
 ```
 
 `absent` entfernt Paket, Repository und Signing-Keys - und nimmt das Tool
@@ -86,9 +87,14 @@ Rueckgelesene unattended-upgrades-Muster) nur im echten Lauf.
 
 ## Verfuegbare Tools
 
-| Tool       | Paket  | Quelle                                    |
-| ---------- | ------ | ----------------------------------------- |
-| `opentofu` | `tofu` | `packages.opentofu.org` (zwei GPG-Keys)   |
+| Tool              | Paket             | Binary        | Quelle                                  |
+| ----------------- | ----------------- | ------------- | --------------------------------------- |
+| `opentofu`        | `tofu`            | `tofu`        | `packages.opentofu.org` (zwei GPG-Keys) |
+| `libsecret-tools` | `libsecret-tools` | `secret-tool` | Distributionsquellen                    |
+
+`secret-tool` liest den Gitea-Token und die Passphrase der
+State-Verschluesselung aus dem GNOME-Schluesselbund - ohne das Paket bricht
+`tools/tf` ab. Hintergrund in [gitea/README.md](../../gitea/README.md).
 
 ## Wie die automatischen Updates funktionieren
 
