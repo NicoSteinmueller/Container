@@ -17,6 +17,16 @@
     # Deklaration waere doppelte Wahrheit.
     tool_update_sources: {}
 
+    # Dritte Sorte: Binaries aus GitHub Releases, fuer die es ueberhaupt kein
+    # apt-Repository gibt. Sie landen bewusst NICHT in der
+    # unattended-upgrades-Konfiguration - es gaebe keinen Origin einzutragen,
+    # und ein erfundener waere schlimmer als keiner. Der Kanal ist hier der
+    # Versions-Pin in der jeweiligen Rolle, den Renovate anhebt und der
+    # naechste Lauf nachzieht. Festgehalten wird er, damit der Assert unten
+    # nicht zwischen "hat keinen Kanal" und "hat einen anderen Kanal"
+    # verwechselt.
+    tool_update_pinned: {}
+
   pre_tasks:
     - name: Validate requested tool states
       ansible.builtin.assert:
@@ -46,14 +56,18 @@
     - name: Ensure every installed tool registered an update source
       ansible.builtin.assert:
         that:
-          - item.key in tool_update_coverage or item.key in tool_update_sources
+          - >-
+            item.key in tool_update_coverage
+            or item.key in tool_update_sources
+            or item.key in tool_update_pinned
         fail_msg: >-
           Die Rolle '{{ item.key }}' hat keinen Update-Kanal registriert. Jede
-          Rolle muss beim Installieren entweder tool_update_coverage um ihre
-          eigenen apt-Origins ergaenzen (eigenes Repository) oder
-          tool_update_sources um den Kanal, auf den sie sich verlaesst
-          (Distributionspaket). Sonst gibt es fuer das Tool keine automatischen
-          Updates.
+          Rolle muss beim Installieren genau eine der drei Buchfuehrungen
+          ergaenzen: tool_update_coverage um ihre eigenen apt-Origins (eigenes
+          Repository), tool_update_sources um den Kanal, auf den sie sich
+          verlaesst (Distributionspaket), oder tool_update_pinned um die
+          gepinnte Version (Binary aus GitHub Releases). Sonst gibt es fuer das
+          Tool keinen Update-Pfad.
         quiet: true
       loop: "{{ managed_tools | dict2items | selectattr('value', 'equalto', 'present') | list }}"
       loop_control:
@@ -62,3 +76,17 @@
     - name: Configure unattended-upgrades for all managed tools
       ansible.builtin.include_role:
         name: auto_updates
+
+    #
+    # auto_updates sieht die gepinnten Binaries nicht - sie stehen in keiner
+    # apt-Konfiguration. Ohne diese Zeile endete der Lauf mit einer
+    # Zusammenfassung, in der sie schlicht fehlen, und das laese sich als
+    # "wird automatisch aktualisiert" missverstehen.
+    #
+    - name: Summarise pinned release binaries
+      ansible.builtin.debug:
+        msg: >-
+          Ueber gepinnte Versionen (Renovate hebt an, der naechste Playbook-Lauf
+          zieht nach - kein Timer):
+          {{ tool_update_pinned.items() | map('join', ' ') | join(', ') }}.
+      when: tool_update_pinned | length > 0

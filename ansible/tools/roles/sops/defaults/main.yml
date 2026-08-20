@@ -1,0 +1,7 @@
+---
+# Die eine Zeile, die Renovate anhebt. Der Kommentar darueber ist kein
+# Schmuck - er sagt Renovate, welches GitHub-Repo gemeint ist (Custom Manager
+# in renovate.json5).
+#
+# renovate: datasource=github-releases depName=getsops/sops
+sops_version: v3.13.3

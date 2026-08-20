@@ -1,0 +1,24 @@
+---
+# Duenner Wrapper auf distro_package - age kommt fertig aus den
+# Distributionsquellen (universe), es gibt also kein Repository und keine Keys
+# einzurichten.
+#
+# Gebraucht werden daraus zwei Binaries:
+#
+#   age-keygen  erzeugt die beiden Schluesselpaare fuer homelab-secrets - den
+#               Arbeitsschluessel fuer den Schluesselbund und den
+#               Recovery-Schluessel fuer das Wechselmedium.
+#   age         der Unterbau, auf dem sops verschluesselt.
+#
+# Zusammen mit sops: k8s/flux/README.md, Abschnitt Secrets.
+- name: Manage age as a distribution package
+  ansible.builtin.include_role:
+    name: distro_package
+  vars:
+    distro_package_state: "{{ tool_state }}"
+    distro_package_name: age
+    distro_package_tool: age
+
+    # Paket und Binary heissen gleich; age-keygen kommt aus demselben Paket.
+    # Die Restpruefung nach dem Entfernen laeuft ueber `age`.
+    distro_package_binary: age

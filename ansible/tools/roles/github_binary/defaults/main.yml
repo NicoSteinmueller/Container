@@ -1,0 +1,70 @@
+---
+# Gemeinsame Rolle fuer Tools, die es nur als Binary aus GitHub Releases gibt -
+# die dritte Sorte neben "eigenes apt-Repository" (roles/opentofu) und
+# "Distributionspaket" (roles/distro_package).
+#
+# Sie wird nicht direkt in managed_tools eingetragen: dort steht der Name einer
+# duennen Wrapper-Rolle, die Repository, Version und Dateinamen setzt und die
+# Arbeit hierher weiterreicht. Damit bleibt die Regel "Schluessel in
+# managed_tools = Rollenname" erhalten.
+#
+# Wrapper derzeit: roles/sops.
+#
+# ---------------------------------------------------------------------------
+# Zum Update-Kanal, denn hier liegt der Unterschied zu den anderen beiden:
+#
+# unattended-upgrades kann diese Tools nicht bedienen - es gibt kein apt-Repo,
+# dessen Origin man eintragen koennte. Der Kanal ist stattdessen die gepinnte
+# Version in der Wrapper-Rolle: Renovate hebt sie per Pull Request an
+# (renovate.json5 im Wurzelverzeichnis), und der naechste Playbook-Lauf zieht
+# sie nach. Ein Lauf ohne Pin-Aenderung tauscht nichts aus.
+#
+# Das ist schwaecher als ein apt-Repo, und zwar messbar: Zwischen Release und
+# eingespieltem Update liegt ein Merge und ein Playbook-Lauf, nicht ein Timer.
+# Es ist aber ein Kanal, der einen Verantwortlichen hat - und damit etwas
+# anderes als eine von Hand kopierte Binary, die niemand mehr anfasst.
+# ---------------------------------------------------------------------------
+
+# Bewusst ein eigener Name statt tool_state - dieselbe Begruendung wie bei
+# distro_package: Der Wrapper reicht den Zustand ausdruecklich weiter, sonst
+# fiele die Rolle still auf 'present' zurueck und ignorierte jedes 'absent'.
+github_binary_state: present
+
+# "owner/repo", z.B. "getsops/sops". Ohne das bricht install.yml ab.
+github_binary_repo: ""
+
+# Das Release-Tag, wie es in der URL steht - typischerweise mit fuehrendem "v".
+# Genau diese Zeile hebt Renovate an.
+github_binary_version: ""
+
+# Dateiname des Assets im Release. Darf {{ github_binary_version }} enthalten.
+github_binary_asset: ""
+
+# Datei im selben Release, die "<sha256>  <dateiname>" je Zeile enthaelt.
+# Leer lassen heisst: keine Pruefsumme verfuegbar - dann bricht die Rolle ab.
+# Das ist Absicht. Eine Binary aus dem Netz ohne Pruefsumme auf einem Rechner
+# zu installieren, der die Cluster-Geheimnisse entschluesselt, ist kein
+# akzeptabler Kompromiss.
+github_binary_checksums_asset: ""
+
+# Schluessel in managed_tools und in der Update-Buchfuehrung, also der Name der
+# Wrapper-Rolle.
+github_binary_tool: ""
+
+# Name der Datei am Zielort - der Befehl, den man danach tippt.
+github_binary_name: "{{ github_binary_tool }}"
+
+# /usr/local/bin und nicht ~/.local/bin: Das Playbook laeuft mit become und
+# richtet den Host ein, nicht ein einzelnes Benutzerkonto. Ein Tool, das je
+# Benutzer verschieden waere, waere kein Soll-Zustand des Hosts.
+github_binary_dest_dir: /usr/local/bin
+
+# Argumente, mit denen sich das Tool nach seiner Version fragen laesst. Die
+# Ausgabe wird nur nach der ersten Zeichenfolge x.y.z durchsucht - das reicht
+# fuer sops, kubectl, flux und helm gleichermassen.
+#
+# Der Vergleich mit der gepinnten Version ist der Grund, warum ein Lauf ohne
+# Aenderung nichts herunterlaedt: Stimmt sie ueberein, endet die Rolle nach
+# dieser einen Abfrage.
+github_binary_version_args:
+  - --version

@@ -97,6 +97,26 @@
       depNameTemplate: 'kubernetes/kubernetes',
     },
     {
+      // Gepinnte Release-Binaries der Tool-Rollen
+      // (ansible/tools/roles/<tool>/defaults/main.yml). Fuer diese Sorte gibt
+      // es kein apt-Repository, das unattended-upgrades bedienen koennte -
+      // dieser Manager *ist* ihr Update-Kanal, zusammen mit dem naechsten
+      // Playbook-Lauf. Siehe ansible/tools/README.md.
+      //
+      // Bewusst generisch ueber alle Rollen: Datasource und Repo stehen als
+      // Kommentar an der Version selbst, damit eine neue Rolle hier nichts
+      // nachtragen muss. Die Pruefsumme zieht die Rolle zur Laufzeit aus dem
+      // Release - anders als bei der Edge-VM ist hier nichts von Hand
+      // nachzuziehen.
+      customType: 'regex',
+      managerFilePatterns: [
+        '/(^|/)ansible\\/tools\\/roles\\/[^/]+\\/defaults\\/main\\.ya?ml$/',
+      ],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>\\S+)\\s+\\w+_version:\\s*(?<currentValue>\\S+)',
+      ],
+    },
+    {
       // Talos Linux des Prod-Nodes (vm/talos/variables.tf). Ein Update ist
       // hier kein Merge, sondern ein Wartungsfenster: `talosctl upgrade` mit
       // der Schematic-ID aus dem Output - siehe vm/talos/README.md.
@@ -414,6 +434,18 @@
       prCreation: 'immediate',
       prBodyNotes: [
         '### 🧩 Update der Cluster-Ausstattung\n\nNach dem Merge:\n\n```bash\ncd k8s/platform && terraform apply\nverify/assert-platform.sh\n```\n\n⚠️ Bei Traefik und Kyverno lohnt der Blick in die Breaking Changes: An beiden hängt eine Sicherheitszusage – die mTLS-Pflicht auf `ingress-public` und die Regel auf `ingressClassName: public`.',
+      ],
+    },
+    {
+      description: 'Tool-Binaries: Der Merge installiert noch nichts',
+      matchManagers: [
+        'custom.regex',
+      ],
+      matchFileNames: [
+        'ansible/tools/roles/**',
+      ],
+      prBodyNotes: [
+        '### 🧰 Gepinnte Tool-Binary\n\nDer Merge hebt nur den Pin. Eingespielt wird er beim nächsten Lauf:\n\n```bash\ncd ansible/tools\nansible-playbook -i inventory.ini tools.yml\n```\n\nDie Prüfsumme zieht die Rolle selbst aus dem Release – hier ist nichts von Hand nachzutragen.',
       ],
     },
     {
