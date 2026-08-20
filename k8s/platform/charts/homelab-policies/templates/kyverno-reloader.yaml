@@ -1,0 +1,74 @@
+{{- if .Values.reloader.enabled }}
+{{/*
+  Die Annotation, die aus einem rotierten Secret einen Neustart macht.
+
+  Reloader beobachtet nur Workloads, die ausdruecklich dafuer markiert sind
+  (reloadStrategy: annotations, siehe k8s/flux/clusters/talos-cp1/reloader.yaml).
+  Diese Markierung an jedem Chart einzeln zu setzen hiesse, sie irgendwann zu
+  vergessen - und das faellt nicht auf: Der Dienst laeuft weiter, nur eben mit
+  dem Passwort von vorgestern. Genau die Art Fehler, gegen die eine zentrale
+  Regel besser ist als Sorgfalt.
+
+  Dasselbe Muster wie bei kyverno-ingress-class.yaml: Die Regel steht an einer
+  Stelle, nicht in jedem Manifest, und ein aus einem anderen Dienst kopiertes
+  Deployment kann sie nicht auslassen.
+
+  Mutate statt Validate: Ein fehlendes Reloader-Annotation ist kein
+  Sicherheitsverstoss, den man ablehnen muesste - es ist eine Voreinstellung,
+  die gesetzt gehoert. Wer sie nicht will, setzt sie ausdruecklich auf "false";
+  das ueberschreibt Kyverno nicht (+(annotations) legt nur an, was fehlt).
+*/}}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: add-reloader-annotation
+  annotations:
+    policies.kyverno.io/title: Workloads bei Secret-Aenderung neu starten
+    policies.kyverno.io/category: Homelab
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Setzt reloader.stakater.com/auto an Deployments, StatefulSets und
+      DaemonSets, damit ein rotiertes Secret auch tatsaechlich ankommt.
+      Ausgenommen: {{ join ", " .Values.reloader.excludeNamespaces }}.
+spec:
+  #
+  # background: true zieht die Annotation auch an Workloads nach, die es schon
+  # gab, als die Regel dazukam - sonst gaelte sie erst ab dem naechsten
+  # Neuanlegen, und genau die bestehenden Dienste sind die, an die niemand
+  # mehr denkt.
+  #
+  background: true
+  rules:
+    - name: annotate-workloads
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+      exclude:
+        any:
+          {{/*
+            Die Plattform-Komponenten kommen aus k8s/platform und nicht ueber
+            homelab-secrets. Sie verwalten ihre Zertifikate und Tokens selbst
+            und wuerden von einem Neustart bei jeder Rotation nur gestoert -
+            cert-manager erneuert Zertifikate stuendlich, step-ca ist die CA,
+            an der die halbe Topologie haengt.
+          */}}
+          - resources:
+              namespaces:
+                {{- range .Values.reloader.excludeNamespaces }}
+                - {{ . }}
+                {{- end }}
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            annotations:
+              {{/*
+                +() setzt den Wert nur, wenn der Schluessel fehlt. Ein Chart,
+                das ausdruecklich "false" mitbringt, behaelt sein "false" -
+                die Regel ist eine Voreinstellung, keine Uebersteuerung.
+              */}}
+              +(reloader.stakater.com/auto): "true"
+{{- end }}
