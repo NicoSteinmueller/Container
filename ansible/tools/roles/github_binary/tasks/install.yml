@@ -1,0 +1,163 @@
+---
+- name: Ensure the wrapper role provided all required values
+  ansible.builtin.assert:
+    that:
+      - github_binary_repo | length > 0
+      - github_binary_version | length > 0
+      - github_binary_asset | length > 0
+      - github_binary_tool | length > 0
+      # Ohne Pruefsumme wird nichts installiert - Begruendung in defaults/main.yml.
+      - github_binary_checksums_asset | length > 0
+    fail_msg: >-
+      github_binary braucht repo, version, asset, tool und checksums_asset. Die
+      Rolle gehoert nicht direkt in managed_tools, sondern wird von einer
+      Wrapper-Rolle aufgerufen - Vorlage in ansible/tools/README.md.
+    quiet: true
+
+- name: "Set paths for {{ github_binary_name }}"
+  ansible.builtin.set_fact:
+    github_binary_path: "{{ github_binary_dest_dir }}/{{ github_binary_name }}"
+    github_binary_base_url: >-
+      https://github.com/{{ github_binary_repo }}/releases/download/{{ github_binary_version }}
+
+# --- Ist-Zustand -------------------------------------------------------
+#
+# Erst fragen, dann handeln: Stimmt die installierte Version mit dem Pin
+# ueberein, endet die Rolle hier. Ohne diesen Schritt luede jeder Lauf die
+# Binary neu herunter und meldete "changed" - und ein Playbook, das immer
+# "changed" sagt, taugt nicht mehr zum Drift-Check.
+#
+- name: "Check whether {{ github_binary_name }} is present"
+  ansible.builtin.stat:
+    path: "{{ github_binary_path }}"
+  register: github_binary_stat
+
+- name: "Read installed version of {{ github_binary_name }}"
+  ansible.builtin.command:
+    cmd: "{{ github_binary_path }} {{ github_binary_version_args | join(' ') }}"
+  register: github_binary_installed
+  failed_when: false
+  changed_when: false
+  when: github_binary_stat.stat.exists
+
+- name: "Compare installed version of {{ github_binary_name }} with the pin"
+  ansible.builtin.set_fact:
+    # Nur die erste x.y.z-Folge der Ausgabe, verglichen mit dem Tag ohne
+    # fuehrendes "v". Ein Tool, dessen Versionsausgabe kein solches Muster
+    # enthaelt, gilt als abweichend und wird neu installiert - lieber einmal
+    # zu viel als eine unbemerkt alte Binary.
+    github_binary_up_to_date: >-
+      {{
+        github_binary_stat.stat.exists
+        and github_binary_installed.rc | default(1) == 0
+        and (github_binary_installed.stdout | default('')
+             | regex_search('[0-9]+\.[0-9]+\.[0-9]+'))
+            == github_binary_version | regex_replace('^v', '')
+      }}
+
+# --- Herunterladen und pruefen -----------------------------------------
+- name: "Download and verify {{ github_binary_name }} {{ github_binary_version }}"
+  when:
+    - not github_binary_up_to_date | bool
+    # Unter --check wurde nichts heruntergeladen; die Tasks unten wuerden gegen
+    # ein nicht existierendes Verzeichnis laufen und abbrechen, statt die
+    # geplante Aenderung zu zeigen.
+    - not ansible_check_mode
+  block:
+    - name: "Create a scratch directory for {{ github_binary_name }}"
+      ansible.builtin.tempfile:
+        state: directory
+        suffix: "-{{ github_binary_tool }}"
+      register: github_binary_tmp
+
+    - name: "Fetch the checksums file for {{ github_binary_name }}"
+      ansible.builtin.get_url:
+        url: "{{ github_binary_base_url }}/{{ github_binary_checksums_asset }}"
+        dest: "{{ github_binary_tmp.path }}/checksums.txt"
+        mode: "0644"
+
+    - name: "Read the checksums file for {{ github_binary_name }}"
+      ansible.builtin.slurp:
+        src: "{{ github_binary_tmp.path }}/checksums.txt"
+      register: github_binary_checksums
+
+    #
+    # Die erwartete Pruefsumme kommt aus der Zeile, die auf genau diesen
+    # Dateinamen endet. Ein Release enthaelt Assets fuer mehrere Architekturen,
+    # und deren Namen sind Praefixe voneinander (…linux.amd64 gegen
+    # …linux.amd64.sig) - deshalb der Anker am Zeilenende.
+    #
+    - name: "Extract the expected checksum for {{ github_binary_asset }}"
+      ansible.builtin.set_fact:
+        # default([], true) steht VOR first, nicht danach: Ohne Treffer liefert
+        # regex_search None, und `None | first` bricht mit einem Jinja-Fehler
+        # ab, bevor der sprechende Assert unten ueberhaupt laeuft.
+        github_binary_sha: >-
+          {{
+            (github_binary_checksums.content | b64decode
+             | regex_search('^([0-9a-f]{64})\s+' ~ (github_binary_asset | regex_escape) ~ '$',
+                            '\1', multiline=true)
+             | default([], true))
+            | first | default('', true)
+          }}
+
+    - name: "Ensure a checksum was found for {{ github_binary_asset }}"
+      ansible.builtin.assert:
+        that:
+          - github_binary_sha | length == 64
+        fail_msg: >-
+          In {{ github_binary_checksums_asset }} steht keine Zeile fuer
+          {{ github_binary_asset }}. Stimmt der Asset-Name des Releases
+          {{ github_binary_version }} noch? Ein Upstream, der seine
+          Dateinamen aendert, faellt sonst als stiller Fehlschlag auf.
+        quiet: true
+
+    #
+    # get_url prueft die Summe selbst und laesst die Datei bei Abweichung gar
+    # nicht erst liegen - die Pruefung findet also vor dem Schreiben statt und
+    # nicht danach.
+    #
+    - name: "Download {{ github_binary_asset }}"
+      ansible.builtin.get_url:
+        url: "{{ github_binary_base_url }}/{{ github_binary_asset }}"
+        dest: "{{ github_binary_tmp.path }}/{{ github_binary_name }}"
+        checksum: "sha256:{{ github_binary_sha }}"
+        mode: "0755"
+
+    - name: "Install {{ github_binary_name }} to {{ github_binary_dest_dir }}"
+      ansible.builtin.copy:
+        src: "{{ github_binary_tmp.path }}/{{ github_binary_name }}"
+        dest: "{{ github_binary_path }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0755"
+
+  always:
+    - name: "Remove the scratch directory for {{ github_binary_name }}"
+      ansible.builtin.file:
+        path: "{{ github_binary_tmp.path }}"
+        state: absent
+      when: github_binary_tmp.path is defined
+
+# --- Buchfuehrung ------------------------------------------------------
+#
+# Dritte Kategorie neben tool_update_coverage (eigenes apt-Repo) und
+# tool_update_sources (Distributionsquellen). Sie wird bewusst NICHT an
+# auto_updates weitergereicht: Es gibt keinen apt-Origin, den
+# unattended-upgrades bedienen koennte, und ein erfundener Eintrag waere
+# schlimmer als keiner. Der Eintrag erfuellt den Assert in tools.yml und haelt
+# fest, worauf sich das Tool verlaesst.
+#
+- name: "Register {{ github_binary_tool }} as a pinned release binary"
+  ansible.builtin.set_fact:
+    tool_update_pinned: >-
+      {{ tool_update_pinned | combine({github_binary_tool: github_binary_version}) }}
+
+- name: "Print {{ github_binary_name }} state"
+  ansible.builtin.debug:
+    msg: >-
+      {{ github_binary_name }} {{ github_binary_version }}
+      {{ 'war bereits aktuell' if github_binary_up_to_date | bool else 'installiert' }}
+      (Updates ueber den Versions-Pin in roles/{{ github_binary_tool }}, angehoben von Renovate)
+  when: not ansible_check_mode

@@ -1,0 +1,16 @@
+---
+# Duenner Wrapper auf distro_package - jq kommt fertig aus den
+# Distributionsquellen.
+#
+# Gebraucht von tools/sops-bootstrap im Container-Repo: Es baut damit die
+# Patch-Dokumente fuer `kubectl patch` und reicht sie ueber stdin weiter,
+# statt die Geheimnisse als Argument auf die Kommandozeile zu setzen - dort
+# stuenden sie in der Prozessliste und in der Shell-Historie.
+- name: Manage jq as a distribution package
+  ansible.builtin.include_role:
+    name: distro_package
+  vars:
+    distro_package_state: "{{ tool_state }}"
+    distro_package_name: jq
+    distro_package_tool: jq
+    distro_package_binary: jq

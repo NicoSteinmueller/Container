@@ -1,0 +1,21 @@
+---
+# Faengt den Fall ab, dass ein Wrapper den Zustand nicht durchreicht - ohne die
+# Pruefung liefe die Rolle mit dem Default 'present' weiter und wuerde ein
+# angefordertes 'absent' stillschweigend verschlucken.
+- name: Validate the requested state was passed through
+  ansible.builtin.assert:
+    that:
+      - github_binary_state in ['present', 'absent']
+    fail_msg: >-
+      github_binary_state ist '{{ github_binary_state }}'. Die Wrapper-Rolle
+      muss den Zustand ausdruecklich weiterreichen:
+      github_binary_state: "{{ '{{ tool_state }}' }}".
+    quiet: true
+
+- name: Install release binary
+  ansible.builtin.include_tasks: install.yml
+  when: github_binary_state == 'present'
+
+- name: Uninstall release binary
+  ansible.builtin.include_tasks: uninstall.yml
+  when: github_binary_state == 'absent'

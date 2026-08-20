@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+#
+# Die drei Geheimnisse in den Cluster bringen, die nicht aus Git kommen koennen.
+#
+# Alles andere liegt verschluesselt in `homelab-secrets`. Diese drei nicht,
+# und zwar nicht aus Bequemlichkeit, sondern weil die Kette ohne sie nirgends
+# anfaengt:
+#
+#   sops-age               entschluesselt homelab-secrets. Laege der Schluessel
+#                          dort, muesste man ihn zum Lesen schon haben.
+#   flux-git-auth          holt das Container-Repo. Erst *dort* steht die
+#                          GitRepository fuer homelab-secrets.
+#   homelab-secrets-auth   holt homelab-secrets aus dem Gitea.
+#
+# Terraform legt alle drei leer an (k8s/flux/main.tf) - die Werte gehen nicht
+# durch den State. Dieses Skript fragt sie ab und traegt sie nach.
+#
+# Bewusst abgefragt und nicht aus dem Schluesselbund gelesen, anders als bei
+# `tools/tf`: Das hier ist kein Befehl, den man taeglich tippt, sondern ein
+# Handgriff bei der Inbetriebnahme und beim Wiederaufbau. In genau dem Moment
+# ist der Schluesselbund dieser Maschine unter Umstaenden gar nicht die Quelle
+# der Wahrheit - der age-Schluessel kann vom Wechselmedium kommen, der PAT
+# frisch erzeugt sein. Eine Abfrage, die zeigt, was sie setzt, ist dort
+# ehrlicher als ein stiller Lookup.
+#
+# Idempotent: mehrfach aufrufen ist folgenlos. Wer nur einen Wert wechseln
+# will, bestaetigt die uebrigen Abfragen mit einer leeren Eingabe - dann
+# bleibt das jeweilige Secret unveraendert.
+#
+set -euo pipefail
+
+NS="${FLUX_NAMESPACE:-flux-system}"
+KUBECONFIG_PATH="${KUBECONFIG:-$(dirname "$0")/../vm/talos-simple/kubeconfig}"
+export KUBECONFIG="$KUBECONFIG_PATH"
+
+for c in kubectl jq; do
+  command -v "$c" >/dev/null || {
+    echo "sops-bootstrap: $c fehlt" >&2
+    echo "sops-bootstrap: einrichten -> cd ansible/tools && ansible-playbook -i inventory.ini tools.yml" >&2
+    exit 1
+  }
+done
+
+if [ ! -f "$KUBECONFIG" ]; then
+  echo "sops-bootstrap: kein kubeconfig unter $KUBECONFIG" >&2
+  echo "sops-bootstrap: aus vm/talos-simple holen oder KUBECONFIG setzen" >&2
+  exit 1
+fi
+
+#
+# Alle Ein- und Ausgaben ueber /dev/tty statt stdin/stdout. Sonst laese eine
+# Abfrage bei `sops-bootstrap < datei` oder in einer Pipe stillschweigend die
+# falsche Quelle - und genau das faellt bei einer verdeckten Eingabe nicht auf.
+#
+if [ ! -t 0 ] && [ ! -e /dev/tty ]; then
+  echo "sops-bootstrap: kein Terminal - dieses Skript fragt seine Werte ab" >&2
+  exit 1
+fi
+
+say() { printf '%s\n' "$*" > /dev/tty; }
+
+#
+# Verdeckte Eingabe. Das Ergebnis landet in der genannten Variablen, nicht auf
+# stdout: Ein `wert=$(ask_secret ...)` wuerde die Subshell-Ausgabe abfangen und
+# damit auch die Abfrage selbst - und der Wert stuende dann in einer
+# Kommandosubstitution, die manche Shells mitschreiben.
+#
+ask_secret() {
+  local __var="$1" __input
+  printf '  > ' > /dev/tty
+  IFS= read -rs __input < /dev/tty || true
+  printf '\n' > /dev/tty
+  printf -v "$__var" '%s' "$__input"
+}
+
+ask_plain() {
+  local __var="$1" __input
+  printf '  > ' > /dev/tty
+  IFS= read -r __input < /dev/tty || true
+  printf -v "$__var" '%s' "$__input"
+}
+
+#
+# Der Wert geht ueber stdin an kubectl, nicht als Argument: sonst stuende er in
+# der Prozessliste. `--patch-file /dev/stdin` ist der Weg, auf dem kubectl das
+# annimmt.
+#
+patch_secret() {
+  kubectl -n "$NS" patch secret "$1" --type=merge --patch-file /dev/stdin
+}
+
+skipped=0
+
+# --- 1. age-Schluessel -------------------------------------------------
+say ""
+say "1/3  sops-age  -  der private age-Schluessel"
+say ""
+say "     Damit entschluesselt kustomize-controller die Manifeste aus"
+say "     homelab-secrets. Erwartet wird die eine Zeile, die mit"
+say "     AGE-SECRET-KEY-1 beginnt - nicht die ganze Datei aus age-keygen."
+say "     Leer lassen laesst das Secret unveraendert."
+say ""
+
+ask_secret age_key
+if [ -z "$age_key" ]; then
+  say "     uebersprungen"
+  skipped=$((skipped + 1))
+else
+  #
+  # Formatpruefung vor dem Schreiben. Ein abgeschnittener Einfuegevorgang
+  # faellt sonst erst im Cluster auf, und dort als "no matching identity" an
+  # der Kustomization - eine Meldung, die nach einem falschen Empfaenger in
+  # .sops.yaml aussieht und nicht nach einem Tippfehler hier.
+  #
+  if [[ ! "$age_key" =~ ^AGE-SECRET-KEY-1[0-9A-Z]+$ ]]; then
+    echo "sops-bootstrap: das sieht nicht nach einem age-Schluessel aus" >&2
+    echo "sops-bootstrap: erwartet AGE-SECRET-KEY-1..., ohne Leerzeichen und Kommentarzeilen" >&2
+    exit 1
+  fi
+
+  #
+  # Der Schluesselname endet auf .agekey - danach sucht kustomize-controller in
+  # einem sops-Secret. Ein anderer Name laesst die Entschluesselung mit
+  # "no matching identity" scheitern, obwohl der Schluessel da ist.
+  #
+  jq -n --arg v "$age_key" '{stringData:{"identity.agekey":$v}}' | patch_secret sops-age > /dev/null
+
+  #
+  # Gegenprobe, die etwas taugt: den oeffentlichen Teil ableiten und anzeigen.
+  # Er muss in .sops.yaml als Empfaenger stehen - stimmt er nicht ueberein,
+  # wurde gegen einen Schluessel verschluesselt, den der Cluster nicht hat.
+  #
+  if command -v age-keygen >/dev/null; then
+    say "     gesetzt. Public Key: $(printf '%s\n' "$age_key" | age-keygen -y -)"
+    say "     Dieser Wert muss in .sops.yaml als Empfaenger stehen."
+  else
+    say "     gesetzt."
+  fi
+fi
+unset age_key
+
+# --- 2. Gitea ----------------------------------------------------------
+say ""
+say "2/3  homelab-secrets-auth  -  Zugang zum Secrets-Repo im Gitea"
+say ""
+say "     Benutzername und ein Token mit Leserecht auf nico/homelab-secrets."
+say "     Benutzername leer lassen laesst das Secret unveraendert."
+say ""
+say "     Benutzername:"
+
+ask_plain gitea_user
+if [ -z "$gitea_user" ]; then
+  say "     uebersprungen"
+  skipped=$((skipped + 1))
+else
+  say "     Token:"
+  ask_secret gitea_token
+  if [ -z "$gitea_token" ]; then
+    echo "sops-bootstrap: Benutzername ohne Token - das Secret bliebe unbrauchbar" >&2
+    exit 1
+  fi
+  jq -n --arg u "$gitea_user" --arg p "$gitea_token" \
+    '{stringData:{username:$u,password:$p}}' | patch_secret homelab-secrets-auth > /dev/null
+  say "     gesetzt."
+fi
+unset gitea_user gitea_token
+
+# --- 3. GitHub ---------------------------------------------------------
+#
+# Das Container-Repo ist oeffentlich und liesse sich auch ohne Zugangsdaten
+# klonen - der PAT haelt den Weg offen, falls es das einmal nicht mehr ist, und
+# hebt das Ratelimit an. Ueberspringen ist hier deshalb der Normalfall.
+#
+say ""
+say "3/3  flux-git-auth  -  GitHub-PAT fuer das Container-Repo"
+say ""
+say "     Optional: Das Repo ist oeffentlich, Flux kommt auch ohne Token daran."
+say "     Fein-scoped auf NicoSteinmueller/Container, Contents: Read."
+say "     Leer lassen ueberspringt - das ist hier der Normalfall."
+say ""
+
+ask_secret github_token
+if [ -z "$github_token" ]; then
+  say "     uebersprungen"
+  skipped=$((skipped + 1))
+else
+  jq -n --arg p "$github_token" \
+    '{stringData:{username:"git",password:$p}}' | patch_secret flux-git-auth > /dev/null
+  say "     gesetzt."
+fi
+unset github_token
+
+# --- Abschluss ---------------------------------------------------------
+say ""
+if [ "$skipped" -gt 0 ]; then
+  say "$skipped von 3 uebersprungen - unveraendert, nicht geleert."
+fi
+
+cat > /dev/tty <<'HINT'
+
+Flux zieht innerhalb seines Intervalls von selbst nach. Sofort anstossen:
+
+  kubectl -n flux-system annotate --overwrite gitrepository/homelab-secrets \
+    reconcile.fluxcd.io/requestedAt="$(date +%s)"
+
+Gegenprobe:
+
+  kubectl -n flux-system get gitrepositories
+  kubectl -n flux-system get kustomizations
+  kubectl -n flux-system get secret sops-smoketest -o jsonpath='{.data.probe}' | base64 -d; echo
+HINT

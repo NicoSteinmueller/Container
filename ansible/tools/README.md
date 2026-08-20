@@ -10,18 +10,19 @@ Fuer jedes installierte Tool werden automatische Updates ueber
 registriert eine Rolle keinen Update-Kanal, bricht das Playbook mit einem Fehler
 ab, statt ein Tool ohne Update-Pfad zurueckzulassen.
 
-## Zwei Sorten Tool
+## Drei Sorten Tool
 
 Der Unterschied liegt nicht in der Bedienung - beide stehen gleichberechtigt in
 `managed_tools` - sondern darin, woher die Updates kommen:
 
-| | **Eigenes Repository** | **Distributionspaket** |
-|---|---|---|
-| Verwaltet | `opentofu` | `libsecret-tools` |
-| Rolle | eine je Tool, richtet Keyrings und apt-Repo ein | duenner Wrapper auf die gemeinsame Rolle `distro_package` |
-| Update-Kanal | wird von der Rolle nach `52-ansible-managed-tools` geschrieben | steht schon in `50unattended-upgrades` |
-| Buchfuehrung | `tool_update_coverage` | `tool_update_sources` |
-| Rolle des Playbooks | **setzen** und danach pruefen, dass apt das Muster kennt | nur **pruefen**, dass der Kanal erlaubt ist |
+| | **Eigenes Repository** | **Distributionspaket** | **Release-Binary** |
+|---|---|---|---|
+| Verwaltet | `opentofu` | `libsecret-tools`, `age`, `jq` | `sops` |
+| Rolle | eine je Tool, richtet Keyrings und apt-Repo ein | duenner Wrapper auf die gemeinsame Rolle `distro_package` | duenner Wrapper auf die gemeinsame Rolle `github_binary` |
+| Update-Kanal | wird von der Rolle nach `52-ansible-managed-tools` geschrieben | steht schon in `50unattended-upgrades` | der Versions-Pin in der Rolle, angehoben von Renovate |
+| Buchfuehrung | `tool_update_coverage` | `tool_update_sources` | `tool_update_pinned` |
+| Rolle des Playbooks | **setzen** und danach pruefen, dass apt das Muster kennt | nur **pruefen**, dass der Kanal erlaubt ist | **einspielen**, was der Pin sagt |
+| Eingespielt durch | `apt-daily-upgrade.timer` | `apt-daily-upgrade.timer` | den naechsten Playbook-Lauf |
 
 Die Trennung ist Absicht. Ein Distributionspaket wird bereits ueber
 `${distro_id}:${distro_codename}` und `-security` aktualisiert; diese Origins
@@ -31,8 +32,20 @@ Nicht-Security-Updates fuer das ganze System ein. Stattdessen prueft
 `auto_updates` bei jedem Lauf nach, dass die Kanaele wirklich erlaubt sind, und
 bricht ab, wenn jemand sie aus `50unattended-upgrades` entfernt hat.
 
-Reine Binary-Downloads bleiben aussen vor - fuer sie gibt es ueberhaupt keinen
-Kanal, den `unattended-upgrades` bedienen koennte.
+Die dritte Spalte ist die juengste und die schwaechste, und das soll sie auch
+bleiben. `unattended-upgrades` kann diese Tools nicht bedienen - es gibt kein
+Repository, dessen Origin man eintragen koennte. Statt sie deshalb ganz
+auszuschliessen (was frueher hier stand) tragen sie ihren Pin in
+`tool_update_pinned` ein: Renovate hebt die Version per Pull Request an
+(`renovate.json5`, Manager auf `ansible/tools/roles/*/defaults/main.yml`), der
+naechste Playbook-Lauf zieht sie nach.
+
+Der Unterschied zu den ersten beiden Spalten ist messbar und wird nicht
+weggeredet: Zwischen Release und eingespieltem Update liegen ein Merge und ein
+Playbook-Lauf, nicht ein Timer. Es ist aber ein Kanal mit einem
+Verantwortlichen - und damit etwas anderes als eine von Hand kopierte Binary,
+die niemand mehr anfasst. Wo ein Tool auch als Paket zu haben ist, gehoert es
+weiterhin in Spalte zwei.
 
 ## Soll-Zustand definieren
 
@@ -41,6 +54,9 @@ Kanal, den `unattended-upgrades` bedienen koennte.
 managed_tools:
   opentofu: present          # installieren und aktuell halten
   libsecret-tools: present
+  age: present
+  sops: present
+  jq: present
 ```
 
 `absent` entfernt Paket, Repository und Signing-Keys - und nimmt das Tool
@@ -87,14 +103,25 @@ Rueckgelesene unattended-upgrades-Muster) nur im echten Lauf.
 
 ## Verfuegbare Tools
 
-| Tool              | Paket             | Binary        | Quelle                                  |
-| ----------------- | ----------------- | ------------- | --------------------------------------- |
-| `opentofu`        | `tofu`            | `tofu`        | `packages.opentofu.org` (zwei GPG-Keys) |
-| `libsecret-tools` | `libsecret-tools` | `secret-tool` | Distributionsquellen                    |
+| Tool              | Paket             | Binary                | Quelle                                  |
+| ----------------- | ----------------- | --------------------- | --------------------------------------- |
+| `opentofu`        | `tofu`            | `tofu`                | `packages.opentofu.org` (zwei GPG-Keys) |
+| `libsecret-tools` | `libsecret-tools` | `secret-tool`         | Distributionsquellen                    |
+| `age`             | `age`             | `age`, `age-keygen`   | Distributionsquellen (universe)         |
+| `sops`            | -                 | `sops`                | GitHub Releases `getsops/sops`, gepinnt |
+| `jq`              | `jq`              | `jq`                  | Distributionsquellen                    |
 
 `secret-tool` liest den Gitea-Token und die Passphrase der
 State-Verschluesselung aus dem GNOME-Schluesselbund - ohne das Paket bricht
 `tools/tf` ab. Hintergrund in [gitea/README.md](../../gitea/README.md).
+
+`age` und `sops` gehoeren zusammen: `age-keygen` erzeugt die Schluessel,
+`sops` ver- und entschluesselt damit die Kubernetes-Secrets in
+`homelab-secrets`. Weil dieser Rechner damit die Geheimnisse des Clusters
+aufschliesst, wird die sops-Binary nie ohne Pruefsummenabgleich installiert -
+`github_binary` bricht ab, wenn das Release keine passende Zeile in seiner
+`checksums.txt` enthaelt. Hintergrund in
+[k8s/flux/README.md](../../k8s/flux/README.md).
 
 ## Wie die automatischen Updates funktionieren
 
@@ -165,9 +192,26 @@ Vorlage:
    Werte liefert `apt-cache policy` in der Zeile `release o=...,l=...`.
 3. Das Tool in `group_vars/all.yml` unter `managed_tools` eintragen.
 
-Reine Binary-Downloads passen weiterhin in kein Schema, weil es fuer sie keinen
-Update-Kanal gibt, den `unattended-upgrades` bedienen koennte. Der Assert in
-`tools.yml` macht darauf aufmerksam, statt sie stillschweigend ungepatcht zu
-lassen. Solche Tools brauchen einen eigenen Mechanismus - der
-Assert in `tools.yml` macht darauf aufmerksam, statt sie stillschweigend
-ungepatcht zu lassen.
+**Als Release-Binary von GitHub** - wenn es das Tool weder als Paket noch aus
+einem apt-Repository des Herstellers gibt (`apt-cache policy <paket>` bleibt
+leer). `roles/sops` ist die Vorlage, drei Schritte:
+
+1. `roles/<tool>/defaults/main.yml` mit der gepinnten Version anlegen. Der
+   Kommentar darueber ist nicht optional - er sagt Renovate, welches Repo
+   gemeint ist:
+
+   ```yaml
+   # renovate: datasource=github-releases depName=<owner>/<repo>
+   <tool>_version: v1.2.3
+   ```
+
+2. `roles/<tool>/tasks/main.yml` anlegen, das `github_binary` einbindet und
+   Repository, Asset-Namen und die Datei mit den Pruefsummen setzt. Ohne
+   `github_binary_checksums_asset` bricht die Rolle ab - eine Binary aus dem
+   Netz ohne Pruefsumme wird hier nicht installiert.
+
+3. Das Tool in `group_vars/all.yml` unter `managed_tools` eintragen.
+
+Am `renovate.json5` ist nichts nachzutragen: Der Manager greift generisch auf
+`ansible/tools/roles/*/defaults/main.yml` und liest Datasource und Repo aus dem
+Kommentar.

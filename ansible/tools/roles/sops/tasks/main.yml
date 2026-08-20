@@ -1,0 +1,31 @@
+---
+# Duenner Wrapper auf github_binary - sops gibt es weder in den
+# Distributionsquellen noch in einem apt-Repository des Herstellers, nur als
+# Binary aus GitHub Releases.
+#
+# Gebraucht wird es fuer die Cluster-Geheimnisse: `tools/sops` im Container-Repo
+# ver- und entschluesselt damit die Manifeste in homelab-secrets, und Flux tut
+# im Cluster dasselbe (k8s/flux/README.md, Abschnitt Secrets).
+#
+# Weil dieser Rechner damit die Geheimnisse des Clusters entschluesselt, wird
+# die Binary nie ohne Pruefsummenabgleich installiert - github_binary bricht ab,
+# wenn checksums_asset fehlt oder das Release keine passende Zeile enthaelt.
+- name: Manage sops as a pinned release binary
+  ansible.builtin.include_role:
+    name: github_binary
+  vars:
+    github_binary_state: "{{ tool_state }}"
+    github_binary_tool: sops
+    github_binary_repo: getsops/sops
+    github_binary_version: "{{ sops_version }}"
+    github_binary_asset: "sops-{{ sops_version }}.linux.amd64"
+    github_binary_checksums_asset: "sops-{{ sops_version }}.checksums.txt"
+    github_binary_name: sops
+
+    # `sops --version` fragt sonst bei GitHub nach, ob es eine neuere Fassung
+    # gibt. Das kostet bei jedem Lauf eine Netzabfrage und liefe auf einem Host
+    # ohne Internet in einen Timeout - die Versionsnummer steht auch ohne sie in
+    # der Ausgabe.
+    github_binary_version_args:
+      - --version
+      - --disable-version-check
