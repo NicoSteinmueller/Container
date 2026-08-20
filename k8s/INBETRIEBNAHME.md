@@ -7,6 +7,9 @@ Ausführlich steht alles in [../vm/edge/README.md](../vm/edge/README.md),
 [../vm/talos/README.md](../vm/talos/README.md) und
 [platform/README.md](platform/README.md); das hier ist der Ablauf.
 
+Was bewusst *nicht* Teil der Inbetriebnahme ist, sondern später kommt, steht in
+[AUSBAUSTUFEN.md](AUSBAUSTUFEN.md).
+
 ## 0. Voraussetzungen auf dem Unraid-Host
 
 | Punkt | Prüfen mit |

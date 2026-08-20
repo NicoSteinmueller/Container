@@ -21,6 +21,42 @@ kubectl -n whoami get pods,svc
 curl http://<node-ip>:30083
 ```
 
+## `secrets.yaml`
+
+Die zweite Git-Quelle: `GitRepository` auf `homelab-secrets` im Gitea plus die
+`Kustomization`, die sie anwendet. Der `decryption`-Block darin ist die
+eigentliche Zeile — ohne ihn landete `ENC[AES256_GCM,...]` wörtlich als Wert im
+Cluster, und die Kustomization bliebe dabei grün.
+
+Warum ein zweites Repo statt einer Datei hier: Dieses geht öffentlich nach
+GitHub, und auch Ciphertext soll dort nicht liegen. Begründung im Kopf der
+Datei, Umgang damit in [../../README.md](../../README.md#secrets).
+
+```bash
+kubectl -n flux-system get gitrepository homelab-secrets
+kubectl -n flux-system get kustomization homelab-secrets
+
+# Beweisfall - erwartet wird "entschluesselt":
+kubectl -n flux-system get secret sops-smoketest \
+  -o jsonpath='{.data.probe}' | base64 -d; echo
+```
+
+## `reloader.yaml`
+
+Startet neu, was ein geändertes Secret benutzt — sonst arbeitet ein Pod nach
+einer Rotation bis zu seinem nächsten Start mit dem alten Wert weiter. Fremder
+Chart, deshalb eine eigene `HelmRepository`.
+
+Reloader fasst nur an, was `reloader.stakater.com/auto` trägt; die Annotation
+setzt Kyverno cluster-weit
+([kyverno-reloader.yaml](../../../platform/charts/homelab-policies/templates/kyverno-reloader.yaml))
+mit den Plattform-Namespaces als Ausnahme.
+
+```bash
+kubectl -n reloader get pods
+kubectl -n reloader logs deploy/reloader-reloader | tail
+```
+
 ## `headlamp.yaml`, `metrics-server.yaml`
 
 Beide Charts kommen aus fremden Helm-Repositories - `chart.spec.sourceRef`

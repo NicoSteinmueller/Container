@@ -67,6 +67,37 @@ variable "git_secret_name" {
 }
 
 #
+# Secrets - das zweite Repo und sein Schluessel
+#
+# Die Adresse des Repos steht nicht hier, sondern in
+# clusters/talos-cp1/secrets.yaml: Sie ist Teil dessen, was Flux anwendet, und
+# nicht Teil dessen, womit Terraform Flux einrichtet. Terraform legt hier nur
+# die Gefaesse an, die vor dem ersten Sync existieren muessen.
+#
+variable "secrets_git_secret_name" {
+  description = <<-EOT
+    Secret mit den Gitea-Zugangsdaten fuer homelab-secrets (Keys: username,
+    password).
+
+    Wird leer angelegt, gefuellt von tools/sops-bootstrap aus dem
+    Schluesselbund - derselbe Eintrag, den auch tools/tf benutzt.
+  EOT
+  type        = string
+  default     = "homelab-secrets-auth"
+}
+
+variable "sops_secret_name" {
+  description = <<-EOT
+    Secret mit dem privaten age-Schluessel (Key: identity.agekey).
+
+    Damit entschluesselt kustomize-controller die Manifeste aus
+    homelab-secrets. Wird leer angelegt, gefuellt von tools/sops-bootstrap.
+  EOT
+  type        = string
+  default     = "sops-age"
+}
+
+#
 # Der Weg zur Flux-Status-Seite
 #
 variable "service_type" {

@@ -17,6 +17,22 @@ headlamp:
   # Admin-Sitzungen im Dashboard. Auf false, wenn dort nur gelesen wird.
   adminServiceAccount: true
 
+# Automatischer Neustart bei rotierten Secrets. Siehe
+# templates/kyverno-reloader.yaml und k8s/flux/clusters/talos-cp1/reloader.yaml.
+reloader:
+  enabled: true
+  # Namespaces, in denen die Annotation *nicht* gesetzt wird: die
+  # Plattform-Komponenten selbst. Sie kommen aus k8s/platform statt aus
+  # homelab-secrets und drehen ihre Zertifikate im eigenen Takt.
+  excludeNamespaces:
+    - kube-system
+    - flux-system
+    - kyverno
+    - cert-manager
+    - step-ca
+    - crowdsec
+    - reloader
+
 # Namespaces, in denen ingressClassName: public zulässig ist. Nur zur
 # Anzeige in der Fehlermeldung - erzwungen wird über das Namespace-Label
 # homelab.io/zone.

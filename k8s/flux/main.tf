@@ -87,6 +87,61 @@ resource "kubernetes_secret" "flux_git_auth" {
   }
 }
 
+#
+# Zugang zum Secrets-Repo im Gitea (clusters/talos-cp1/secrets.yaml). Gleiche
+# Bauart und gleicher Grund wie oben: leer angelegt, per tools/sops-bootstrap
+# gefuellt, ignore_changes haelt den Wert.
+#
+resource "kubernetes_secret" "homelab_secrets_auth" {
+  metadata {
+    name      = var.secrets_git_secret_name
+    namespace = kubernetes_namespace.flux_system.metadata[0].name
+  }
+
+  type = "Opaque"
+
+  data = {
+    username = ""
+    password = ""
+  }
+
+  lifecycle {
+    ignore_changes = [data]
+  }
+}
+
+#
+# Der age-Schluessel, mit dem kustomize-controller die Manifeste aus
+# homelab-secrets entschluesselt.
+#
+# Der Schluesselname endet auf .agekey - danach sucht kustomize-controller in
+# einem sops-Secret. Ein anderer Name laesst die Entschluesselung mit
+# "no matching identity" scheitern, obwohl der Schluessel da ist.
+#
+# Warum auch dieser leer angelegt wird, obwohl der State inzwischen
+# verschluesselt ist (tools/tf, TF_ENCRYPTION mit enforced = true): Der
+# Schluessel ist das eine Geheimnis, aus dem sich alle anderen ergeben. Ihn
+# durch den State laufen zu lassen, machte die Passphrase der
+# State-Verschluesselung zu seinem Vorhaengeschloss - eine Abhaengigkeit, die
+# man beim Wechsel der Passphrase mitdenken muesste und dann nicht mitdenkt.
+#
+resource "kubernetes_secret" "sops_age" {
+  metadata {
+    name      = var.sops_secret_name
+    namespace = kubernetes_namespace.flux_system.metadata[0].name
+  }
+
+  type = "Opaque"
+
+  data = {
+    "identity.agekey" = ""
+  }
+
+  lifecycle {
+    ignore_changes = [data]
+  }
+}
+
 # =====================================================================
 # Flux Operator
 # =====================================================================
@@ -207,8 +262,15 @@ resource "helm_release" "flux_instance" {
     }
   })]
 
+  #
+  # Die drei Bootstrap-Secrets muessen existieren, bevor der Sync anlaeuft -
+  # sonst zieht die Wurzel-Kustomization secrets.yaml, findet sops-age nicht
+  # und meldet einen Entschluesselungsfehler, der nur eine Reihenfolge ist.
+  #
   depends_on = [
     helm_release.flux_operator,
     kubernetes_secret.flux_git_auth,
+    kubernetes_secret.homelab_secrets_auth,
+    kubernetes_secret.sops_age,
   ]
 }

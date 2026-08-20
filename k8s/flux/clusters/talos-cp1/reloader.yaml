@@ -1,0 +1,146 @@
+#
+# Reloader - startet neu, was ein geändertes Secret benutzt.
+#
+# Der Grund: Ein `secretKeyRef` in `env` wird genau einmal aufgelöst, beim
+# Start des Pods. Rotiert ein Passwort in homelab-secrets, schreibt Flux das
+# Secret neu - der laufende Prozess arbeitet aber bis zu seinem nächsten Start
+# mit dem alten Wert weiter. Bei gemounteten Secret-Volumes aktualisiert das
+# kubelet zwar die Datei, aber kaum eine Anwendung liest sie erneut.
+#
+# Der übliche Helm-Trick dagegen greift hier nicht: Charts hängen eine
+# Prüfsumme ihres *eigenen* Secrets ins Pod-Template. Unsere Secrets kommen aus
+# einem anderen Repo und werden nur referenziert - das Pod-Template bleibt
+# byte-gleich, und Kubernetes hat keinen Anlass, irgendetwas zu tun.
+#
+# Reloader schließt genau diese Lücke: Er beobachtet Secrets und ConfigMaps und
+# schreibt bei Änderung eine Annotation ins Pod-Template der Konsumenten. Das
+# ist eine echte Änderung am Deployment und läuft damit als gewöhnlicher
+# Rolling Update - mit den Probes und der Update-Strategie des Dienstes, und
+# mit Rollback, wenn er nicht hochkommt.
+#
+# Reloader fasst dabei nur an, was die Annotation reloader.stakater.com/auto
+# trägt (autoReloadAll: false unten). Setzen muss sie niemand von Hand:
+# Kyverno hängt sie cluster-weit an
+# (k8s/platform/charts/homelab-policies/templates/kyverno-reloader.yaml).
+#
+# Was Reloader *nicht* tut: das Passwort auf der Gegenseite ändern. Ein
+# rotiertes Postgres-Passwort im Secret startet Nextcloud neu, und Nextcloud
+# kommt dann nicht mehr an die Datenbank, weil dort noch das alte gilt. Diese
+# Hälfte gehört einem Operator, der beide Seiten besitzt - siehe
+# k8s/AUSBAUSTUFEN.md, CloudNativePG.
+#
+
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: stakater
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://stakater.github.io/stakater-charts
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: reloader
+  labels:
+    #
+    # Der Controller braucht weder Privilegien noch Host-Zugriff - er spricht
+    # ausschließlich mit der API. "restricted" ist deshalb kein Zugeständnis,
+    # sondern der Normalfall.
+    #
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: reloader
+  namespace: flux-system
+spec:
+  interval: 10m
+  releaseName: reloader
+  targetNamespace: reloader
+  storageNamespace: reloader
+  chart:
+    spec:
+      chart: reloader
+      version: "2.2.16"
+      sourceRef:
+        kind: HelmRepository
+        name: stakater
+        namespace: flux-system
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    reloader:
+      #
+      # Cluster-weit, nicht auf eine Namespace-Liste beschränkt: Eine Liste
+      # müsste bei jedem neuen Dienst nachgezogen werden, und das Vergessen
+      # fällt nicht auf - der Dienst läuft ja, nur eben mit dem alten Passwort.
+      #
+      # Der Preis steht im Klartext hier, damit er nicht untergeht: Reloader
+      # bekommt damit get/list/watch auf Secrets in allen Namespaces. Ein
+      # weiterer Leser aller Geheimnisse des Clusters, neben
+      # kustomize-controller. Er wertet sie nicht aus - er vergleicht Hashes -
+      # aber die Berechtigung ist dieselbe.
+      #
+      watchGlobally: true
+
+      #
+      # Das ist der Schalter für "nur auf Zuruf": Bei false fasst Reloader
+      # ausschließlich Workloads mit der Annotation reloader.stakater.com/auto
+      # an. Bei true gälte jeder Workload als annotiert - dann wären auch die
+      # Plattform-Komponenten aus k8s/platform dabei, die ihre Zertifikate im
+      # eigenen Takt drehen und von einem Neustart nur gestört würden.
+      #
+      # Die Annotation setzt Kyverno, mit genau diesen Ausnahmen
+      # (charts/homelab-policies/templates/kyverno-reloader.yaml). Damit ist
+      # die Liste der Ausnahmen an einer Stelle statt an zweien.
+      #
+      autoReloadAll: false
+
+      #
+      # Wie die Änderung ins Pod-Template kommt, nicht *ob*. Die Voreinstellung
+      # "default" hängt dem Container eine Umgebungsvariable
+      # STAKATER_<NAME>_SECRET an - das verändert die Container-Spezifikation
+      # eines fremden Charts. "annotations" schreibt stattdessen eine
+      # Annotation ins Pod-Template: derselbe Effekt (das Template ändert sich,
+      # Kubernetes rollt neu aus), ohne in die Container hineinzufassen.
+      #
+      reloadStrategy: annotations
+
+      deployment:
+        # Nichts zu tun, solange kein Secret sich ändert.
+        resources:
+          requests:
+            cpu: 10m
+            memory: 48Mi
+          limits:
+            memory: 128Mi
+
+        #
+        # Der Pod-Teil (runAsNonRoot, runAsUser 65534, seccompProfile) steht
+        # schon so in den Chart-Defaults. Was fehlt, ist der Container-Teil -
+        # und der ist ein eigener Wert: allowPrivilegeEscalation, capabilities
+        # und readOnlyRootFilesystem gibt es im PodSecurityContext gar nicht,
+        # dort eingetragen lehnte die API sie ab.
+        #
+        containerSecurityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+
+      # Braucht kein ServiceMonitor - es gibt keinen Prometheus in diesem
+      # Cluster. Kommt einer, gehört hier serviceMonitor.enabled: true hin.
+      serviceMonitor:
+        enabled: false
