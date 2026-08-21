@@ -20,57 +20,72 @@ ihm die Berechtigungen **`write:package`** (State-Registry) und
 
 ## Konfiguration der Arbeitsstation
 
-Alles Geheime liegt im Schlüsselbund, sonst nirgends:
+Was `tofu` und `git` brauchen, liegt unter `~/.config/homelab`:
 
 | Was | Wo | Warum dort |
 |---|---|-|
-| Gitea-Token samt Benutzername | Schlüsselbund | |
-| State-Passphrase | Schlüsselbund | |
+| Gitea-Token samt Benutzername | `~/.config/homelab/gitea.env` | |
+| State-Passphrase | `~/.config/homelab/tofu.env` | |
 
-**Beides im Schlüsselbund heißt:** Jeder Prozess, der als du läuft, kann beide Werte
-lesen. Ein eigener, separat entsperrter Schlüsselbund wäre strenger, kostet aber bei 
-jeder Sitzung eine Passwortabfrage. Gewinn: Der State verlässt das Gerät nur 
-verschlüsselt, im Gitea-Backup steckt keine Cluster-PKI mehr, und nichts davon steht 
-in der Umgebung jeder Shell. Gegen jemanden, der bereits als du Code auf dieser
+**Klartext im Dateisystem heißt:** Jeder Prozess, der als du läuft, kann die
+Werte lesen — sie liegen im Klartext auf der Platte, geschützt allein durch die
+Dateirechte (`700` auf das Verzeichnis, `600` auf die Dateien). Ein separat
+entsperrter Schlüsselbund wäre strenger, kostet aber bei jeder Sitzung eine
+Passwortabfrage. Gewinn: Der State verlässt das Gerät nur verschlüsselt, im
+Gitea-Backup steckt keine Cluster-PKI mehr, und nichts davon steht in der
+Umgebung jeder Shell. Gegen jemanden, der bereits als du Code auf dieser
 Maschine ausführt, schützt keine der beiden Varianten wirklich.
 
-Geheimnisse holt [`tools/tf`](../tools/tf) beim Aufruf und gibt sie nur an den einen
-tofu-Prozess weiter.
+Bewusst außerhalb der Repos: Eine Datei neben dem Modul wäre genau die, die
+beim nächsten `git add .` im falschen Verzeichnis mitgeht.
 
-### Geheimnisse im Schlüsselbund
+Geheimnisse holt [`tools/tf`](../tools/tf) beim Aufruf und gibt sie nur an den
+einen tofu-Prozess weiter — über die Umgebung, nicht als Argument: Argumente
+stehen in der Prozessliste, die Umgebung eines fremden Prozesses nicht.
+
+### Geheimnisse auf der Arbeitsstation
 
 ```bash
-sudo apt install libsecret-tools
+mkdir -p ~/.config/homelab && chmod 700 ~/.config/homelab
+umask 077
+
+cat > ~/.config/homelab/gitea.env <<'EOF'
+HOMELAB_GITEA_USER='nico'
+HOMELAB_GITEA_TOKEN='<token>'
+EOF
+
+cat > ~/.config/homelab/tofu.env <<'EOF'
+HOMELAB_TOFU_STATE='<passphrase>'
+EOF
 ```
 
-*Über richtiges Terminal ausführen (nicht IntelliJ)*
-```bash
-secret-tool store --label='Gitea Token' homelab gitea-token username nico
-secret-tool store --label='OpenTofu State' homelab tofu-state
-```
+Die Werte stehen in **einfachen** Anführungszeichen: Die Dateien werden von den
+Wrappern gesourct, ohne sie machte ein `$` oder ein Leerzeichen im Token aus
+dem Wert etwas anderes. Enthält ein Wert selbst ein `'`, wird es als
+`'\''` geschrieben.
 
-Der Gitea-Eintrag trägt zwei Angaben: der **Token ist das Geheimnis**, der
-**Benutzername ein Attribut** daneben. `secret-tool lookup homelab gitea-token` 
-findet den Eintrag weiterhin; die angegebenen Attribute müssen nur vorhandenen sein.
+Der age-Schlüssel für SOPS liegt **nicht** hier, sondern unter
+`~/.config/sops/age/keys.txt` — dort, wo sops von allein sucht. Angelegt wird er
+in `homelab-secrets/README.md`.
 
 Gegenprobe, ohne die Werte auf den Schirm zu holen — die Länge verrät einen
 verschluckten Einfügevorgang sofort:
 
 ```bash
-secret-tool search --all homelab gitea-token   # Pfad .../collection/login/<n>, dazu attribute.username
-secret-tool lookup homelab gitea-token | wc -c # 40 (Gitea-Token)
-secret-tool lookup homelab tofu-state  | wc -c # so lang wie die Passphrase
+ls -l ~/.config/homelab                    # 600, Besitzer du
+( . ~/.config/homelab/gitea.env; echo ${#HOMELAB_GITEA_TOKEN} )  # 40 (Gitea-Token)
+( . ~/.config/homelab/tofu.env;  echo ${#HOMELAB_TOFU_STATE} )   # so lang wie die Passphrase
 ```
-
 
 ### Credential-Helper für das Werte-Repo
 
 Einmal im Werte-Repo setzen (lokal, nicht global — der Helper gilt nur für
-dieses Remote):
+dieses Remote). Er zeigt auf denselben Helper, den auch `tf` benutzt, damit es
+beim Tokenwechsel keine zweite Stelle gibt:
 
 ```bash
 git -C "$HOMELAB_VALUES" config credential.helper \
-  '!f() { test "$1" = get || return 0; secret-tool search --all homelab gitea-token 2>&1 >/dev/null | sed -n "s/^attribute.username = /username=/p" | head -1; echo "password=$(secret-tool lookup homelab gitea-token)"; }; f'
+  '!/home/nico/Repos/Homelab/Container/tools/gitea-credential'
 ```
 
 ### Wrapper für tofu

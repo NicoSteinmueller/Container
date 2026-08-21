@@ -17,7 +17,7 @@ Der Unterschied liegt nicht in der Bedienung - beide stehen gleichberechtigt in
 
 | | **Eigenes Repository** | **Distributionspaket** | **Release-Binary** |
 |---|---|---|---|
-| Verwaltet | `opentofu` | `libsecret-tools`, `age`, `jq` | `sops` |
+| Verwaltet | `opentofu` | `age` | `sops` |
 | Rolle | eine je Tool, richtet Keyrings und apt-Repo ein | duenner Wrapper auf die gemeinsame Rolle `distro_package` | duenner Wrapper auf die gemeinsame Rolle `github_binary` |
 | Update-Kanal | wird von der Rolle nach `52-ansible-managed-tools` geschrieben | steht schon in `50unattended-upgrades` | der Versions-Pin in der Rolle, angehoben von Renovate |
 | Buchfuehrung | `tool_update_coverage` | `tool_update_sources` | `tool_update_pinned` |
@@ -53,10 +53,8 @@ weiterhin in Spalte zwei.
 # group_vars/all.yml
 managed_tools:
   opentofu: present          # installieren und aktuell halten
-  libsecret-tools: present
   age: present
   sops: present
-  jq: present
 ```
 
 `absent` entfernt Paket, Repository und Signing-Keys - und nimmt das Tool
@@ -106,14 +104,8 @@ Rueckgelesene unattended-upgrades-Muster) nur im echten Lauf.
 | Tool              | Paket             | Binary                | Quelle                                  |
 | ----------------- | ----------------- | --------------------- | --------------------------------------- |
 | `opentofu`        | `tofu`            | `tofu`                | `packages.opentofu.org` (zwei GPG-Keys) |
-| `libsecret-tools` | `libsecret-tools` | `secret-tool`         | Distributionsquellen                    |
 | `age`             | `age`             | `age`, `age-keygen`   | Distributionsquellen (universe)         |
 | `sops`            | -                 | `sops`                | GitHub Releases `getsops/sops`, gepinnt |
-| `jq`              | `jq`              | `jq`                  | Distributionsquellen                    |
-
-`secret-tool` liest den Gitea-Token und die Passphrase der
-State-Verschluesselung aus dem GNOME-Schluesselbund - ohne das Paket bricht
-`tools/tf` ab. Hintergrund in [gitea/README.md](../../gitea/README.md).
 
 `age` und `sops` gehoeren zusammen: `age-keygen` erzeugt die Schluessel,
 `sops` ver- und entschluesselt damit die Kubernetes-Secrets in

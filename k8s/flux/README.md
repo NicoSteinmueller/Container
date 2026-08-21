@@ -52,11 +52,11 @@ Flux dieses Repo nicht, ohne dieses Repo kennt es `homelab-secrets` nicht, und
 ohne `sops-age` könnte es dort nichts lesen. Terraform legt alle drei leer an,
 die Werte trägt man von Hand nach.
 
-Von Hand und nicht aus dem Schlüsselbund gelesen, anders als bei `tools/tf`:
+Von Hand und nicht aus dem lokalen Bestand gelesen, anders als bei `tools/tf`:
 Das ist kein täglicher Befehl, sondern ein Handgriff bei Inbetriebnahme und
-Wiederaufbau. Genau dann ist der Schlüsselbund dieser Maschine womöglich nicht
-die Quelle der Wahrheit — der age-Schlüssel kann vom Wechselmedium kommen, der
-PAT frisch erzeugt sein. Ein Skript, das diesen Handgriff versteckt, müsste
+Wiederaufbau. Genau dann ist der Bestand dieser Maschine womöglich nicht die
+Quelle der Wahrheit — der age-Schlüssel kann vom Wechselmedium kommen, der PAT
+frisch erzeugt sein. Ein Skript, das diesen Handgriff versteckt, müsste
 gepflegt werden für drei Befehle, die man im Leben eines Clusters zweimal tippt.
 
 Die Werte gehören in den Befehl, jeder an die Stelle des Platzhalters. Sie
@@ -108,9 +108,10 @@ kubectl -n flux-system annotate --overwrite gitrepository/homelab-secrets \
   reconcile.fluxcd.io/requestedAt="$(date +%s)"
 ```
 
-Der age-Schlüssel liegt bewusst nicht als Datei unter `~/.config/sops`, sondern
-im selben Schlüsselbund wie der Gitea-Token — ein Ort für Geheimnisse auf der
-Arbeitsstation, nicht zwei. `tools/sops` reicht ihn an `sops` durch.
+Der age-Schlüssel liegt unter `~/.config/sops/age/keys.txt` — dort, wo sops von
+allein sucht. `tools/sops` setzt deshalb nichts, ein blankes `sops` tut dasselbe;
+der Wrapper prüft nur vorab auf fehlende Binary und fehlenden Schlüssel, weil
+sops dafür nur ein knappes "no keys found" liefert.
 
 Die Werkzeuge dafür kommen aus dem Tools-Playbook, nicht von Hand
 (`ansible/tools/group_vars/all.yml`: `age`, `sops`):
