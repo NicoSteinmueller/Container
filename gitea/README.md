@@ -85,7 +85,7 @@ beim Tokenwechsel keine zweite Stelle gibt:
 
 ```bash
 git -C "$HOMELAB_VALUES" config credential.helper \
-  '!/home/nico/Repos/Homelab/Container/tools/gitea-credential'
+  '!/home/nico/Repos/Homelab/Containers/tools/gitea-credential'
 ```
 
 ### Wrapper für tofu
@@ -93,8 +93,19 @@ Wer den Wrapper öfter braucht, legt ihn auf den `PATH` und ruft ihn danach aus
 jedem Modul einfach als `tf` auf:
 
 ```bash
-ln -s ~/Repos/Homelab/Container/tools/tf ~/.local/bin/tf
+mkdir -p ~/.local/bin
+ln -s ~/Repos/Homelab/Containers/tools/tf ~/.local/bin/tf
 ```
+
+Das `mkdir` gehört dazu: `ln` legt kein fehlendes Zielverzeichnis an und bricht
+sonst mit *No such file or directory* ab. Und `~/.profile` nimmt `~/.local/bin`
+nur dann in den `PATH` auf, wenn es beim Anmelden **schon** existiert — wurde es
+gerade erst angelegt, wirkt der Symlink erst nach `. ~/.profile` oder einer
+neuen Sitzung.
+
+Symlink statt Kopie, damit der Wrapper mit dem Repo mitwandert. Welches Modul
+gemeint ist, liest `tf` aus dem Arbeitsverzeichnis, nicht aus dem eigenen Pfad —
+der Aufruf über den Symlink ändert daran nichts.
 
 ## State-Verschlüsselung
 
