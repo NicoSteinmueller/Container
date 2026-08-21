@@ -79,8 +79,8 @@ variable "secrets_git_secret_name" {
     Secret mit den Gitea-Zugangsdaten fuer homelab-secrets (Keys: username,
     password).
 
-    Wird leer angelegt, gefuellt von tools/sops-bootstrap aus dem
-    Schluesselbund - derselbe Eintrag, den auch tools/tf benutzt.
+    Wird leer angelegt und von Hand nachgetragen - der Befehl dafuer steht
+    im README.
   EOT
   type        = string
   default     = "homelab-secrets-auth"
@@ -91,7 +91,8 @@ variable "sops_secret_name" {
     Secret mit dem privaten age-Schluessel (Key: identity.agekey).
 
     Damit entschluesselt kustomize-controller die Manifeste aus
-    homelab-secrets. Wird leer angelegt, gefuellt von tools/sops-bootstrap.
+    homelab-secrets. Wird leer angelegt und von Hand nachgetragen - der
+    Befehl dafuer steht im README.
   EOT
   type        = string
   default     = "sops-age"
