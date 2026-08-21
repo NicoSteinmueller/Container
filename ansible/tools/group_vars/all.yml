@@ -9,7 +9,6 @@
 # Host-spezifische Abweichungen gehoeren nach host_vars/<host>.yml.
 managed_tools:
   opentofu: present
-  libsecret-tools: present
   # Fuer die Cluster-Geheimnisse: age erzeugt die Schluessel, sops ver- und
   # entschluesselt damit die Manifeste in homelab-secrets.
   age: present

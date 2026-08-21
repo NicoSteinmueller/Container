@@ -22,7 +22,7 @@
 # obwohl er auf ein Repo mit eigener Historie zeigt, das getrennt gepullt
 # und gepusht werden will.
 #
-# Die beiden Geheimnisse kommen aus dem Schlüsselbund
+# Die beiden Geheimnisse kommen aus ~/.config/homelab
 #
 set -euo pipefail
 
@@ -87,13 +87,13 @@ if [ "$add" = 1 ]; then
 fi
 
 # =====================================================================
-# Geheimnisse aus dem Schlüsselbund
+# Geheimnisse aus ~/.config/homelab
 # =====================================================================
 
 #
 # Eine Ausschluss- statt einer Einschlussliste: Wer hier ein Unterkommando
-# vergisst, bekommt eine überflüssige Schlüsselbund-Abfrage - andersherum
-# liefe tofu ohne Zugangsdaten in einen 401 oder schriebe im schlimmsten Fall
+# vergisst, bekommt einen überflüssigen Dateizugriff - andersherum liefe tofu
+# ohne Zugangsdaten in einen 401 oder schriebe im schlimmsten Fall
 # unverschlüsselt.
 #
 needs_secrets=1
@@ -104,57 +104,59 @@ case "${1:-}" in
 esac
 
 if [ "$needs_secrets" = 1 ]; then
-  if ! command -v secret-tool >/dev/null; then
-    echo "tf: secret-tool fehlt - sudo apt install libsecret-tools" >&2
+  #
+  # Ein Verzeichnis für alle Geheimnisse dieser Maschine, außerhalb der Repos.
+  # Wer seines woanders liegen hat, setzt HOMELAB_CONFIG.
+  #
+  CONFIG="${HOMELAB_CONFIG:-$HOME/.config/homelab}"
+
+  for f in gitea.env tofu.env; do
+    [ -r "$CONFIG/$f" ] && continue
+    echo "tf: $CONFIG/$f fehlt oder ist nicht lesbar" >&2
+    echo "tf: anlegen -> gitea/README.md, Abschnitt \"Geheimnisse auf der Arbeitsstation\"" >&2
     exit 1
-  fi
+  done
+
+  # shellcheck source=/dev/null
+  . "$CONFIG/gitea.env"
+  # shellcheck source=/dev/null
+  . "$CONFIG/tofu.env"
 
   #
   # Gitea-Token. Reicht nur bis zum *verschlüsselten* State - wer ihn hat, kann
   # das Chiffrat holen, aber nicht lesen.
   #
-  gitea_token="$(secret-tool lookup homelab gitea-token || true)"
-  if [ -z "$gitea_token" ]; then
-    echo "tf: Gitea-Token nicht im Schlüsselbund (Attribut homelab=gitea-token)" >&2
-    echo "tf: Gegenprobe   -> secret-tool search --all homelab gitea-token" >&2
-    echo "tf: neu anlegen  -> gitea/README.md, Abschnitt \"Geheimnisse im Schlüsselbund\"" >&2
+  if [ -z "${HOMELAB_GITEA_TOKEN:-}" ]; then
+    echo "tf: HOMELAB_GITEA_TOKEN steht nicht in $CONFIG/gitea.env" >&2
     exit 1
   fi
-  export TF_HTTP_PASSWORD="$gitea_token"
-  unset gitea_token
+  export TF_HTTP_PASSWORD="$HOMELAB_GITEA_TOKEN"
 
   #
-  # Der Benutzername steht als Attribut am selben Eintrag, nicht in der
-  # Konfigurationsdatei: Token und Konto gehören zusammen und können so nicht
-  # auseinanderlaufen, wenn eines von beiden gewechselt wird.
+  # Der Benutzername steht in derselben Datei, nicht in der
+  # Konfigurationsdatei des Moduls: Token und Konto gehören zusammen und können
+  # so nicht auseinanderlaufen, wenn eines von beiden gewechselt wird.
   #
-  # `secret-tool search` teilt seine Ausgabe auf - Label und Geheimnis nach
-  # stdout, die Attribute nach stderr. Das `2>&1 >/dev/null` dreht genau das um
-  # und laesst nur die Attribute in die Pipe; der Token kommt dabei gar nicht
-  # erst vorbei.
-  #
-  gitea_user="$(secret-tool search --all homelab gitea-token 2>&1 >/dev/null \
-                | sed -n 's/^attribute\.username = //p' | head -1)"
-  if [ -z "$gitea_user" ]; then
-    echo "tf: kein username am Gitea-Eintrag im Schlüsselbund" >&2
-    echo "tf: neu ablegen -> secret-tool store --collection=login \\" >&2
-    echo "tf:                  --label='Gitea Token' homelab gitea-token username <name>" >&2
+  if [ -z "${HOMELAB_GITEA_USER:-}" ]; then
+    echo "tf: HOMELAB_GITEA_USER steht nicht in $CONFIG/gitea.env" >&2
     exit 1
   fi
-  export TF_HTTP_USERNAME="$gitea_user"
-  unset gitea_user
+  export TF_HTTP_USERNAME="$HOMELAB_GITEA_USER"
+
+  unset HOMELAB_GITEA_TOKEN HOMELAB_GITEA_USER
 
   #
-  # State-Passphrase. Liegt bewusst im selben Schlüsselbund wie der Token:
-  # Ein eigener, separat entsperrter Schlüsselbund wäre strenger, kostet aber je
-  # Sitzung eine Passwortabfrage - und gegen jemanden, der hier ohnehin schon
-  # als `nico` Code ausführt, schützt auch der nicht. Der Gewinn liegt darin,
-  # dass der State das Gerät nur verschlüsselt verlässt.
+  # State-Passphrase. Liegt bewusst neben dem Token: Ein eigener, separat
+  # entsperrter Speicher wäre strenger, kostet aber je Sitzung eine
+  # Passwortabfrage - und gegen jemanden, der hier ohnehin schon als `nico`
+  # Code ausführt, schützt auch der nicht. Der Gewinn liegt darin, dass der
+  # State das Gerät nur verschlüsselt verlässt.
   #
-  passphrase="$(secret-tool lookup homelab tofu-state || true)"
+  passphrase="${HOMELAB_TOFU_STATE:-}"
+  unset HOMELAB_TOFU_STATE
   if [ -z "$passphrase" ]; then
-    echo "tf: State-Passphrase nicht im Schlüsselbund (Attribut homelab=tofu-state)" >&2
-    echo "tf: anlegen -> gitea/README.md, Abschnitt \"Geheimnisse im Schlüsselbund\"" >&2
+    echo "tf: HOMELAB_TOFU_STATE steht nicht in $CONFIG/tofu.env" >&2
+    echo "tf: anlegen -> gitea/README.md, Abschnitt \"Geheimnisse auf der Arbeitsstation\"" >&2
     exit 1
   fi
 
@@ -165,7 +167,7 @@ if [ "$needs_secrets" = 1 ]; then
   #
   case "$passphrase" in
     *[\"\\]*)
-      echo "tf: Passphrase enthält \" oder \\ - im Schlüsselbund durch eine ohne ersetzen" >&2
+      echo "tf: Passphrase enthält \" oder \\ - in $CONFIG/tofu.env durch eine ohne ersetzen" >&2
       exit 1
       ;;
   esac

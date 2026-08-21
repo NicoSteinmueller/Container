@@ -6,7 +6,7 @@
 # Gebraucht werden daraus zwei Binaries:
 #
 #   age-keygen  erzeugt die beiden Schluesselpaare fuer homelab-secrets - den
-#               Arbeitsschluessel fuer den Schluesselbund und den
+#               Arbeitsschluessel unter ~/.config/sops/age und den
 #               Recovery-Schluessel fuer das Wechselmedium.
 #   age         der Unterbau, auf dem sops verschluesselt.
 #
