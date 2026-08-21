@@ -9,7 +9,7 @@ Flux Operator und eine `FluxInstance`, die dieses Repo beobachtet.
 | Quelle | `k8s/flux/clusters/talos-cp1` aus diesem Repo (`sync_path`) |
 | Zugang | Flux-Status-Seite, NodePort `30081`, ohne Login |
 | Secrets | `homelab-secrets` (Gitea), SOPS-verschlüsselt |
-| Bootstrap | drei Secrets, leer angelegt, per `tools/sops-bootstrap` befüllt |
+| Bootstrap | drei Secrets, leer angelegt, von Hand befüllt (drei `kubectl patch`) |
 
 ## Anwenden
 
@@ -23,14 +23,8 @@ tf apply
 ```
 
 Ein Durchlauf genügt, auch gegen einen frischen Cluster. Danach die drei
-Bootstrap-Geheimnisse eintragen:
-
-```bash
-../../tools/sops-bootstrap
-```
-
-`tf output bootstrap` beschreibt denselben Weg von Hand, falls gerade kein
-Schlüsselbund da ist.
+Bootstrap-Geheimnisse eintragen — die Befehle dafür stehen unter
+[Secrets](#die-drei-geheimnisse-die-nicht-aus-git-kommen-können).
 
 Prüfen mit `tf output status_commands` und `tf output access`: `fluxinstance/flux`
 und `GitRepository flux-system` auf `Ready`, alle Flux-Pods laufen.
@@ -56,25 +50,70 @@ Der Umgang damit — anlegen, ändern, Schlüssel wechseln — steht im
 Das ist keine Bequemlichkeit, sondern die Kette: Ohne `flux-git-auth` erreicht
 Flux dieses Repo nicht, ohne dieses Repo kennt es `homelab-secrets` nicht, und
 ohne `sops-age` könnte es dort nichts lesen. Terraform legt alle drei leer an,
-`tools/sops-bootstrap` fragt sie ab und trägt sie nach — verdeckte Eingabe,
-leere Eingabe lässt das jeweilige Secret unverändert.
+die Werte trägt man von Hand nach.
 
-Abgefragt und nicht aus dem Schlüsselbund gelesen, anders als bei `tools/tf`:
+Von Hand und nicht aus dem Schlüsselbund gelesen, anders als bei `tools/tf`:
 Das ist kein täglicher Befehl, sondern ein Handgriff bei Inbetriebnahme und
 Wiederaufbau. Genau dann ist der Schlüsselbund dieser Maschine womöglich nicht
 die Quelle der Wahrheit — der age-Schlüssel kann vom Wechselmedium kommen, der
-PAT frisch erzeugt sein.
+PAT frisch erzeugt sein. Ein Skript, das diesen Handgriff versteckt, müsste
+gepflegt werden für drei Befehle, die man im Leben eines Clusters zweimal tippt.
 
-Nach dem Setzen zeigt das Skript den abgeleiteten Public Key an. Er muss in
-`.sops.yaml` als Empfänger stehen; stimmt er nicht überein, wurde gegen einen
-Schlüssel verschlüsselt, den der Cluster nicht hat.
+Die Werte gehören in den Befehl, jeder an die Stelle des Platzhalters. Sie
+stehen damit in der Shell-Historie und, während der Befehl läuft, in der
+Prozessliste — bei einer Neuinstallation hinnehmbar, andernfalls die Zeile mit
+einem führenden Leerzeichen beginnen (`HISTCONTROL=ignorespace`) und die
+Historie danach durchsehen.
+
+**1. `sops-age`** — erwartet wird die eine Zeile ab `AGE-SECRET-KEY-1`, nicht
+die ganze Datei aus `age-keygen`. Der Schlüsselname muss auf `.agekey` enden,
+danach sucht kustomize-controller:
+
+```bash
+kubectl -n flux-system patch secret sops-age --type=merge \
+  -p '{"stringData":{"identity.agekey":"AGE-SECRET-KEY-1..."}}'
+```
+
+Gegenprobe — der öffentliche Teil muss in `.sops.yaml` als Empfänger stehen:
+
+```bash
+echo 'AGE-SECRET-KEY-1...' | age-keygen -y -
+```
+
+Stimmt er nicht überein, wurde gegen einen Schlüssel verschlüsselt, den der
+Cluster nicht hat; die Kustomization scheitert dann mit `no matching identity`.
+
+**2. `homelab-secrets-auth`** — Benutzername und ein Token mit Leserecht auf
+`nico/homelab-secrets`:
+
+```bash
+kubectl -n flux-system patch secret homelab-secrets-auth --type=merge \
+  -p '{"stringData":{"username":"<gitea-user>","password":"<gitea-token>"}}'
+```
+
+**3. `flux-git-auth`** — optional, im Normalfall zu überspringen: Das Repo ist
+öffentlich. Der PAT hält den Weg offen, falls es das einmal nicht mehr ist, und
+hebt das Ratelimit an (fein-scoped auf `NicoSteinmueller/Container`,
+`Contents: Read`):
+
+```bash
+kubectl -n flux-system patch secret flux-git-auth --type=merge \
+  -p '{"stringData":{"username":"git","password":"<github-pat>"}}'
+```
+
+Danach zieht Flux innerhalb seines Intervalls von selbst nach. Sofort:
+
+```bash
+kubectl -n flux-system annotate --overwrite gitrepository/homelab-secrets \
+  reconcile.fluxcd.io/requestedAt="$(date +%s)"
+```
 
 Der age-Schlüssel liegt bewusst nicht als Datei unter `~/.config/sops`, sondern
 im selben Schlüsselbund wie der Gitea-Token — ein Ort für Geheimnisse auf der
 Arbeitsstation, nicht zwei. `tools/sops` reicht ihn an `sops` durch.
 
 Die Werkzeuge dafür kommen aus dem Tools-Playbook, nicht von Hand
-(`ansible/tools/group_vars/all.yml`: `age`, `sops`, `jq`):
+(`ansible/tools/group_vars/all.yml`: `age`, `sops`):
 
 ```bash
 cd ansible/tools && ansible-playbook -i inventory.ini tools.yml --ask-become-pass
