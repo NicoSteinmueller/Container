@@ -40,14 +40,26 @@ spec:
 ---
 # Erlaubt eingehenden Traffic für den NodePort-Zugriff aus dem LAN.
 #
-# Bewusst ohne Quellen-Einschränkung (ipBlock auf die Heimnetz-CIDR o.ä.):
-# Bei NodePort-Traffic wertet Cilium ipBlock-Regeln nicht gegen die
-# reservierten Identitäten "host"/"remote-node" aus (siehe dieselbe
-# Einschränkung in k8s/platform/charts/homelab-base/templates/networkpolicies.yaml)
-# - eine vermeintliche IP-Beschränkung hier würde entweder nichts bewirken
-# oder den Zugriff ganz blockieren, je nach externalTrafficPolicy. Whoami ist
-# ein Testdienst ohne schützenswerte Daten; die eigentliche Grenze ist "nur
-# aus dem LAN erreichbar", nicht "nur von bestimmten LAN-Clients".
+# Ohne Quellen-Einschränkung - aber nicht aus dem Grund, der hier früher stand.
+#
+# Die alte Begründung lautete, Cilium werte ipBlock-Regeln bei NodePort-Traffic
+# nicht aus. Das war aus einem anderen Fall übertragen: Die Einschränkung
+# betrifft die reservierten Identitäten "host" und "remote-node", also Pods,
+# die den Node selbst ansprechen (siehe
+# k8s/platform/charts/homelab-base/templates/networkpolicies.yaml). Ein
+# LAN-Client an einem NodePort ist dagegen "world", und dagegen greift ipBlock
+# - auf talos-cp1 nachgemessen, siehe vm/talos-simple/README.md.
+#
+# Eine IP-Beschränkung wäre hier also möglich. Sie bleibt trotzdem weg: whoami
+# ist der Testdienst, an dem sich zeigen soll, dass der Weg von außen
+# funktioniert - eine zweite Bedingung, die beim Debuggen mitgedacht werden
+# muss, kostet hier mehr, als sie schützt. Es gibt keine schützenswerten Daten,
+# und die eigentliche Grenze ist "nur aus dem LAN erreichbar", nicht "nur von
+# bestimmten LAN-Clients".
+#
+# Sobald ein zweiter Node dazukommt, ist die Messung neu zu machen: Wird
+# Verkehr über einen anderen Node maskiert, kann die Quelle zu "remote-node"
+# werden - dann greift ipBlock tatsächlich nicht mehr.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

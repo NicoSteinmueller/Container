@@ -1,0 +1,135 @@
+#
+# Cilium für den Talos-Node - wird von main.tf über `helm template` gerendert
+# und als Inline-Manifest in die Machine-Config gelegt.
+#
+# Warum Inline-Manifest und nicht `helm install` nach dem Bootstrap: Ohne CNI
+# bleibt der Node NotReady, und dann kann `terraform apply` nicht auf einen
+# gesunden Cluster warten - es käme ein halb fertiger Cluster als Erfolg
+# zurück. Als Teil der Machine-Config gehört das CNI zur Maschine, nicht zur
+# Anwendungsschicht.
+#
+
+#
+# Talos-spezifisch, siehe
+# https://www.talos.dev/latest/kubernetes-guides/network/deploying-cilium/
+#
+# Talos mountet cgroup v2 selbst und lässt Cilium nicht mit einem
+# privilegierten Init-Container daran arbeiten - deshalb kein autoMount,
+# sondern der Pfad des Hosts, und ein explizit aufgezählter Capability-Satz
+# statt "privileged".
+#
+cgroup:
+  autoMount:
+    enabled: false
+  hostRoot: /sys/fs/cgroup
+
+securityContext:
+  capabilities:
+    ciliumAgent:
+      - CHOWN
+      - KILL
+      - NET_ADMIN
+      - NET_RAW
+      - IPC_LOCK
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    cleanCiliumState:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
+
+#
+# kube-proxy-Replacement. Talos startet den Cluster deshalb ohne kube-proxy
+# (cluster.proxy.disabled in patches/cluster.yaml.tftpl) - beides gehört
+# zusammen, sonst behandeln zwei Datapfade dieselben Services.
+#
+# Nebeneffekt, auf den später ein Ingress-Controller baut: Ohne kube-proxy
+# übernimmt Cilium auch hostPort, und zwar mit Beachtung von hostIP.
+#
+kubeProxyReplacement: true
+
+#
+# KubePrism: der clusterinterne Endpoint der Kubernetes-API auf localhost
+# (machine.features.kubePrism in patches/node.yaml.tftpl). Bewusst statt der
+# Node-IP - so hängt Cilium nicht an einer Adresse, die sich mit dem Netz
+# ändert, und der Weg zur API verlässt den Node nicht.
+#
+k8sServiceHost: localhost
+k8sServicePort: 7445
+
+#
+# Adressen für Pods kommen aus dem podSubnet der Machine-Config, verteilt über
+# die PodCIDR des Nodes.
+#
+ipam:
+  mode: kubernetes
+
+# Ein Node, ein Operator. Der Default (2 Replicas mit Anti-Affinity) ließe
+# einen Pod dauerhaft Pending.
+operator:
+  replicas: 1
+  rollOutPods: true
+
+rollOutCiliumPods: true
+
+#
+# L7-Policies und Sichtbarkeit.
+#
+# Hubble-Relay und -UI bleiben ab Werk aus: Das RAM-Budget ist knapp, und
+# `hubble observe` funktioniert auch ohne Relay direkt im Agent-Pod:
+#   kubectl -n kube-system exec ds/cilium -- hubble observe --follow
+#
+# l7Proxy bringt seit 1.16 ein eigenes DaemonSet `cilium-envoy` mit - ein Pod
+# mehr auf dem Node, dafür überlebt der Proxy einen Neustart des Agents.
+#
+l7Proxy: true
+
+hubble:
+  enabled: true
+  relay:
+    enabled: ${hubble_relay_enabled}
+  ui:
+    enabled: ${hubble_ui_enabled}
+
+  #
+  # Zertifikate für Hubble dürfen nicht beim Rendern entstehen.
+  #
+  # Ab Werk erzeugt das Chart eine eigene CA samt Server-Zertifikaten - und
+  # zwar bei *jedem* `helm template`. Weil das Chart hier als Inline-Manifest
+  # in die Machine-Config gerendert wird, ändert sich damit die Machine-Config
+  # bei jedem Lauf: `terraform plan` meldet ewig eine Änderung, und jedes
+  # `terraform apply` schiebt dem Cluster eine neue CA unter und startet Cilium
+  # neu. Ein Plan, der nie leer wird, ist außerdem kein brauchbarer
+  # Drift-Nachweis mehr - man sieht echte Abweichungen nicht.
+  #
+  # Solange Relay und UI aus sind, spricht niemand über das Netz mit der
+  # Hubble-API; sie ist nur im Agent-Pod erreichbar. Dann braucht es dort auch
+  # kein TLS.
+  #
+  # Wird Relay eingeschaltet, geht TLS mit an - dann aber über `cronJob`: Die
+  # Zertifikate entstehen im Cluster zur Laufzeit statt hier beim Rendern, die
+  # Machine-Config bleibt stabil.
+  #
+  tls:
+    enabled: ${hubble_relay_enabled}
+    auto:
+      enabled: ${hubble_relay_enabled}
+      method: cronJob
+
+#
+# Kein LoadBalancer-IPAM und keine L2-Announcements: Der Node hat ein Bein mit
+# fester Adresse, Dienste von außen erreicht man später über hostPort. Ein
+# Service-Typ LoadBalancer wäre eine zweite Zuordnungsebene, die im Fehlerfall
+# erklärt werden müsste.
+#
+
+# Ressourcen: Reservierung statt Limit. Ein gedrosseltes CNI ist ein schwer zu
+# diagnostizierender Fehler im gesamten Cluster.
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi

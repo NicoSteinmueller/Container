@@ -10,7 +10,14 @@
   Missverständnis ist: Cilium wertet ipBlock-Regeln nicht gegen die
   reservierten Identitäten "host" und "remote-node" aus. Ein Pod kann den
   Node selbst also weiterhin erreichen, obwohl 192.168.178.0/24 unten
-  ausgenommen ist. Was ihn dort erwartet, entscheidet die
+  ausgenommen ist.
+
+  Diese Einschränkung gilt für "host"/"remote-node" und nicht allgemein für
+  ipBlock. Sie ist im Repo schon einmal zu weit übertragen worden - auf
+  eingehenden Verkehr aus dem LAN über einen NodePort. Der trägt die Identität
+  "world", und gegen die greifen ipBlock-Regeln sehr wohl; nachgemessen in
+  vm/talos-simple/README.md. Wer hier also eine Regel liest, prüfe zuerst,
+  welche Identität die Gegenseite überhaupt hat. Was ihn dort erwartet, entscheidet die
   Talos-Ingress-Firewall (vm/talos/patches/ingress-firewall.yaml.tftpl):
   Aus dem Pod-Netz sind nur Kubelet, KubePrism und die Kubernetes-API
   erreichbar, nicht die Talos-API und nicht die exponierten DMZ-Ports.

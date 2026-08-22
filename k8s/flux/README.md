@@ -161,6 +161,40 @@ Token, zeigt dafür weder Secrets noch ConfigMaps - jeder im Heimnetz sieht den
 Reconciliation-Zustand. Reicht das nicht, `service_type = "ClusterIP"` und
 `kubectl -n flux-system port-forward svc/flux-operator 9080:9080`.
 
+**Zum NodePort gehören zwei Objekte, nicht eines.** Neben den Service braucht
+es `kubernetes_network_policy.flux_web_nodeport` - beide hängen an derselben
+`count`-Bedingung. Grund ist eine NetworkPolicy, die das Chart selbst
+mitbringt:
+
+```
+flux-operator-web   ingress: from: [namespaceSelector: {}]   port 9080
+```
+
+Das öffnet 9080 nur clusterinternen Identitäten. Ein Browser im Heimnetz hat
+keine - für Cilium ist er `world`, und der Zugriff wird verworfen:
+
+```
+192.168.x.x:32850 (world) <> flux-system/flux-operator-…:9080 (ID:9624)
+  Policy denied DROPPED (TCP Flags: SYN)
+```
+
+Sichtbar wurde das erst mit Cilium. Bis dahin lief der Cluster mit Flannel, und
+Flannel setzt NetworkPolicies gar nicht durch - die Regel des Charts war die
+ganze Zeit da und wirkungslos.
+
+Das Fehlerbild ist ein **Timeout**, kein `Connection refused` - Service und
+Endpoint sehen dabei völlig gesund aus:
+
+```bash
+kubectl -n flux-system get svc,endpoints flux-operator-nodeport   # unauffällig
+kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop
+```
+
+Die eigene Regel kommt additiv dazu, NetworkPolicies verknüpfen sich mit ODER;
+die des Charts bleibt unangetastet. Welche Netze sie zulässt, steht in
+`web_source_cidrs` - Default sind die privaten Bereiche nach RFC 1918, in den
+tfvars gehört der Wert auf das eigene Heimnetz eingeengt.
+
 **Kein PodSecurity `restricted` auf `flux-system`.** Kustomize- und
 helm-controller müssen anwenden dürfen, was im beobachteten Pfad steht - das ist
 GitOps, keine übersehene Härtung. Die Kontrolle liegt darin, wer auf

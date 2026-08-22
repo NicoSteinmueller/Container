@@ -462,6 +462,7 @@ Danach in `vm/edge/terraform.tfvars` den Egress zumachen: Counter lesen
 | `data.talos_cluster_health` läuft in den Timeout, `talosctl` antwortet aber | Control Plane startet nicht. `talosctl -n … containers -k` zeigt `CONTAINER_EXITED`, die Begründung steht in `talosctl -n … logs -k kube-system/kube-apiserver-<node>:kube-apiserver` |
 | Static Pod neu gerendert, aber kein neuer Startversuch | Kubelet hängt: `talosctl -n … service kubelet restart` |
 | Talos bleibt NotReady | `kubectl -n kube-system get pods -l k8s-app=cilium`, `talosctl -n … dmesg` |
+| Dienst über NodePort im Timeout, Service und Endpoint sehen gesund aus | Fast immer eine NetworkPolicy, oft eine vom Chart mitgebrachte — mit Cilium werden sie erstmals durchgesetzt, unter Flannel waren sie wirkungslos. `kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop`; Quelle `(world)` heißt: Regel ohne `ipBlock` erfasst LAN-Clients nicht |
 | Node nicht mehr erreichbar | `admin_sources` falsch → serielle Konsole, siehe vm/talos/README.md |
 | Edge erreicht den Cluster nicht | `vm/edge/verify/egress-test.sh`, dann `talosctl -n … get nftableschains` |
 | ACME schlägt fehl | Zeit (NTP), CNAME-Delegation, Staging-Verzeichnis verwenden |

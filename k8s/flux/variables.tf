@@ -46,7 +46,7 @@ variable "git_branch" {
   description = "Branch, den Flux synchronisiert."
   type        = string
   # TODO auf "main" umstellen, sobald das Repo umgestellt ist.
-  default     = "kubernetes-try"
+  default = "kubernetes-try"
 }
 
 variable "sync_path" {
@@ -117,6 +117,29 @@ variable "service_type" {
   validation {
     condition     = contains(["ClusterIP", "NodePort"], var.service_type)
     error_message = "service_type muss ClusterIP oder NodePort sein."
+  }
+}
+
+variable "web_source_cidrs" {
+  description = <<-EOT
+    Quellnetze, die bei service_type = "NodePort" auf die Status-Seite dürfen.
+
+    Nötig, weil das flux-operator-Chart eine eigene NetworkPolicy mitbringt,
+    die Port 9080 nur clusterinternen Identitäten öffnet. Ein Browser im
+    Heimnetz ist für Cilium `world` und würde verworfen - siehe main.tf.
+
+    Default sind die privaten Bereiche nach RFC 1918: Das konkrete Heimnetz
+    steht nicht in diesem Repo, sondern in den tfvars, und dort gehört der
+    Wert auch eingeengt. "0.0.0.0/0" wäre hier kein Sicherheitsgewinn und kein
+    -verlust, solange der Node nur im LAN hängt - aber ein Router, der den Port
+    weiterleitet, wäre dann ein Fehler ohne zweite Bremse.
+  EOT
+  type        = list(string)
+  default     = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+
+  validation {
+    condition     = length(var.web_source_cidrs) > 0
+    error_message = "Mindestens ein Quellnetz - eine leere Liste verwirft jeden Zugriff und die Seite wäre über den NodePort tot."
   }
 }
 
