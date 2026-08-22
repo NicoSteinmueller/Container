@@ -147,10 +147,11 @@
     },
     {
       // Cilium. Wird als Inline-Manifest in die Machine-Config gerendert -
-      // ein Update ist ein `terraform apply` auf vm/talos, kein helm upgrade.
+      // ein Update ist ein `terraform apply` auf vm/talos-simple, kein
+      // helm upgrade.
       customType: 'regex',
       managerFilePatterns: [
-        '/(^|/)vm\\/talos\\/variables\\.tf$/',
+        '/(^|/)vm\\/talos-simple\\/variables\\.tf$/',
       ],
       matchStrings: [
         'variable "cilium_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',

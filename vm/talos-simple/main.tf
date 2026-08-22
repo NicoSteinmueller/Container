@@ -22,6 +22,16 @@ terraform {
       source  = "siderolabs/talos"
       version = "0.11.0"
     }
+    #
+    # Nur für `data "helm_template"`: Cilium wird lokal gerendert und als
+    # Inline-Manifest in die Machine-Config gelegt. Von hier aus wird kein
+    # Cluster angefasst - die eigentlichen Helm-Releases stehen in
+    # k8s/platform.
+    #
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.17"
+    }
     local = {
       source  = "hashicorp/local"
       version = "~> 2.5"
@@ -34,6 +44,8 @@ provider "libvirt" {
 }
 
 provider "talos" {}
+
+provider "helm" {}
 
 locals {
   node_name        = "${var.cluster_name}-cp1"
@@ -85,6 +97,11 @@ locals {
     var.lan_macvtap_dev == null && var.lan_bridge != null ? { bridge = { bridge = var.lan_bridge } } : {},
     var.lan_macvtap_dev == null && var.lan_bridge == null ? { network = { network = var.lan_libvirt_network } } : {},
   )
+
+  cilium_values = templatefile("${path.module}/values/cilium.yaml.tftpl", {
+    hubble_relay_enabled = var.hubble_relay_enabled
+    hubble_ui_enabled    = var.hubble_ui_enabled
+  })
 }
 
 # =====================================================================
@@ -125,6 +142,38 @@ data "talos_image_factory_urls" "this" {
   schematic_id  = talos_image_factory_schematic.this.id
   platform      = "metal"
   architecture  = "amd64"
+}
+
+# =====================================================================
+# Cilium
+# =====================================================================
+
+#
+# Rendert das Chart lokal. Kein Cluster-Zugriff, kein kubeconfig - das Ergebnis
+# ist eine YAML-Zeichenkette, die unten als Inline-Manifest in die
+# Machine-Config geht.
+#
+# Damit ist das CNI Teil der Maschine und nicht ein zweiter Schritt nach dem
+# Bootstrap: Talos legt die Manifeste beim Start der Control Plane an, der Node
+# wird Ready, und `data.talos_cluster_health` kann tatsächlich auf einen
+# gesunden Cluster warten statt auf ein Zeitfenster.
+#
+# Preis: Die Machine-Config wächst um das gerenderte YAML (rund 60 KB), und ein
+# Cilium-Update ist eine Config-Änderung mit `terraform apply` statt eines
+# `helm upgrade`. Beides ist gewollt - der Clusterzustand soll aus dem Repo
+# kommen.
+#
+data "helm_template" "cilium" {
+  name       = "cilium"
+  namespace  = "kube-system"
+  repository = "https://helm.cilium.io"
+  chart      = "cilium"
+  version    = var.cilium_version
+
+  kube_version = var.kubernetes_version
+  include_crds = true
+
+  values = [local.cilium_values]
 }
 
 # =====================================================================
@@ -395,6 +444,19 @@ data "talos_machine_configuration" "controlplane" {
     templatefile("${path.module}/patches/cluster.yaml.tftpl", {
       pod_subnet     = var.pod_subnet
       service_subnet = var.service_subnet
+    }),
+
+    # Cilium. Muss der letzte Patch sein - nicht technisch, sondern damit die
+    # lesbaren Patches oben nicht hinter dem gerenderten Chart verschwinden.
+    yamlencode({
+      cluster = {
+        inlineManifests = [
+          {
+            name     = "cilium"
+            contents = data.helm_template.cilium.manifest
+          }
+        ]
+      }
     }),
   ]
 }

@@ -11,6 +11,22 @@ cluster:
     serviceSubnets:
       - ${service_subnet}
 
+    #
+    # Kein Flannel: Cilium kommt als Inline-Manifest in die Machine-Config
+    # (siehe main.tf). Bis Talos die Manifeste ausgerollt hat, bleibt der Node
+    # NotReady - genau darauf wartet der Health-Check am Ende des Applys.
+    #
+    cni:
+      name: none
+
+  #
+  # Kein kube-proxy. Cilium übernimmt Services im eBPF-Datapath
+  # (kubeProxyReplacement in values/cilium.yaml.tftpl) - beides gehört
+  # zusammen, sonst behandeln zwei Datapfade dieselben Services.
+  #
+  proxy:
+    disabled: true
+
   #
   # Discovery komplett aus. Beide Registries scheiden aus:
   #

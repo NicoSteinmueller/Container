@@ -12,14 +12,15 @@ Konkrete Werte — Host, Adressen, Interface, Pool — stehen in
 | Adresse | `<node-ip>`, statisch — zugleich Kubernetes-API-Endpoint |
 | Netz | macvtap auf `lan_macvtap_dev` |
 | Image | Image Factory, Talos + `qemu-guest-agent` |
-| CNI | Talos-Default (Flannel) |
+| CNI | Cilium, als Inline-Manifest in der Machine-Config — kein kube-proxy |
 
 Versionen und Größen sind in [variables.tf](variables.tf) gepinnt, damit ein
 Neuaufbau dieselbe Version ergibt wie der laufende Cluster.
 
 ## Voraussetzungen
 
-- `tofu` und `talosctl` lokal, SSH als `root` auf den Host
+- `tofu`, `talosctl` und `helm` lokal, SSH als `root` auf den Host
+  (`helm` nur zum Rendern des Cilium-Charts, es wird kein Cluster angefasst)
 - VM-Manager aktiv, Storage-Pool geklärt:
 
   ```bash
@@ -44,12 +45,14 @@ tf apply
 blockiert so lange. 10–20 Minuten, überwiegend ISO-Download und zwei Reboots:
 
 1. Image Factory liefert ISO- und Installer-URL zur Schematic-ID
-2. libvirt lädt die ISO in den Pool, legt Disk und VM an
-3. VM bootet in den **Maintenance-Mode**, per `ip=`-Kernel-Parameter bereits
+2. `helm template` rendert Cilium lokal — ohne Cluster-Zugriff
+3. libvirt lädt die ISO in den Pool, legt Disk und VM an
+4. VM bootet in den **Maintenance-Mode**, per `ip=`-Kernel-Parameter bereits
    unter `lan_ip`
-4. Machine-Config rein → Talos installiert auf `install_disk`, rebootet
-5. `talos_machine_bootstrap` initialisiert etcd
-6. Health-Check wartet auf einen gesunden Cluster
+5. Machine-Config rein → Talos installiert auf `install_disk`, rebootet
+6. `talos_machine_bootstrap` initialisiert etcd, Talos rollt das
+   Cilium-Inline-Manifest aus
+7. Health-Check wartet auf einen gesunden Cluster
 
 `kubeconfig` und `talosconfig` landen im Verzeichnis, beide in `.gitignore`.
 
@@ -64,6 +67,119 @@ talosctl health
 kubectl get nodes -o wide
 ```
 
+## Cilium
+
+Das Chart wird beim `apply` lokal mit `helm template` gerendert und als
+`cluster.inlineManifests` in die Machine-Config gelegt — Werte in
+[values/cilium.yaml.tftpl](values/cilium.yaml.tftpl).
+
+Der Grund ist die Reihenfolge: Ohne CNI bleibt der Node `NotReady`, und ein
+`helm install` nach dem Bootstrap käme zu spät, um `talos_cluster_health`
+etwas prüfen zu lassen — `apply` meldete einen halb fertigen Cluster als
+Erfolg. Als Teil der Machine-Config gehört das CNI zur Maschine.
+
+Was daran hängt:
+
+- **kein kube-proxy** — Cilium macht Services im eBPF-Datapath
+  (`kubeProxyReplacement`), passend dazu `cluster.proxy.disabled` in
+  [patches/cluster.yaml.tftpl](patches/cluster.yaml.tftpl). Beides gehört
+  zusammen.
+- **API über KubePrism** (`localhost:7445`) statt über die Node-Adresse — der
+  Weg verlässt den Node nicht und überlebt einen Adresswechsel.
+- **Hubble** läuft im Agent, Relay und UI sind aus (`hubble_relay_enabled`,
+  `hubble_ui_enabled`). Ohne Relay bleibt auch Hubble-TLS aus; das ist
+  Absicht, denn die Zertifikate entstünden sonst bei *jedem* `helm template`
+  neu und die Machine-Config wäre nie driftfrei.
+- Die Machine-Config wächst dadurch um rund 60 KB gerendertes YAML.
+
+### NetworkPolicies gelten ab jetzt wirklich
+
+Die unscheinbarste Folge des Wechsels, und die, die am ehesten überrascht:
+**Talos' Flannel setzt NetworkPolicies gar nicht durch.** Es gibt keinen
+Enforcer, `kubectl get netpol` zeigt Objekte an, und niemand fragt sie ab. Mit
+Cilium werden sie zum ersten Mal ausgewertet.
+
+Damit wird beim Umstieg jede Policy scharf, die bis dahin Dekoration war —
+auch die, die man nie selbst geschrieben hat. Fremde Charts bringen
+regelmäßig welche mit. Der erste Fall hier war die Flux-Status-Seite: Das
+flux-operator-Chart legt eine `flux-operator-web` an, die Port 9080 nur
+`from: namespaceSelector: {}` öffnet, also ausschließlich clusterinternen
+Identitäten. Ein Browser im Heimnetz ist keine — der NodePort lief ins Leere
+(siehe [k8s/flux/README.md](../../k8s/flux/README.md)).
+
+Das Fehlerbild ist dabei irreführend: Ein Policy-Drop erzeugt **Timeout**, kein
+`Connection refused`. Es sieht aus wie ein kaputtes Routing oder ein falscher
+Port, obwohl Service und Endpoint stimmen. Die Unterscheidung liefert Hubble in
+einer Zeile:
+
+```bash
+kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop
+```
+
+```
+192.168.x.x:32850 (world) <> flux-system/flux-operator-…:9080 (ID:9624)
+  Policy denied DROPPED (TCP Flags: SYN)
+```
+
+`(world)` ist der Kern: Verkehr von außerhalb des Clusters trägt keine
+Namespace- oder Pod-Identität. Regeln mit `namespaceSelector`, `podSelector`
+oder `ipBlock` unterscheiden sich genau darin, ob sie ihn erfassen können.
+
+Vor dem Umstieg lohnt deshalb eine Bestandsaufnahme dessen, was ab sofort gilt:
+
+```bash
+kubectl get netpol -A
+```
+
+### ipBlock und NodePort — gemessen, nicht angenommen
+
+Für Verkehr, der von einem LAN-Client über einen NodePort hereinkommt, greifen
+`ipBlock`-Regeln. Auf diesem Cluster nachgemessen: eine Policy mit
+`ipBlock: <lan-cidr>` auf Port 9080 macht die Flux-Seite erreichbar (HTTP 200),
+ohne sie bleibt es beim Drop. Hubble zeigt dabei die echte Client-Adresse — auf
+einem Single-Node mit lokalem Backend wird nicht auf die Node-Adresse
+maskiert.
+
+Als Messung notiert, weil im Repo lange die gegenteilige Annahme stand — in
+`k8s/whoami` als Begründung dafür, den NodePort ohne Quellen-Einschränkung zu
+öffnen. Sie stammt aus einem anderen Fall: Cilium wertet `ipBlock` **nicht**
+gegen die reservierten Identitäten `host` und `remote-node` aus — das betrifft
+Pods, die den Node selbst ansprechen (Egress), und es stimmt dort. Auf
+eingehenden LAN-Verkehr lässt es sich nicht übertragen, denn dessen Identität
+ist `world`. Details in
+[k8s/platform/charts/homelab-base/templates/networkpolicies.yaml](../../k8s/platform/charts/homelab-base/templates/networkpolicies.yaml).
+
+Der Vorbehalt bleibt: Sobald ein zweiter Node dazukommt und Verkehr über ihn
+maskiert wird, kann die Quelle zu `remote-node` werden — und dann greift die
+Regel nicht mehr. Für den Ein-Node-Cluster gilt das Gemessene.
+
+### Umstellung eines Clusters, der schon mit Flannel läuft
+
+Ein `apply` allein reicht dafür nicht. Talos rendert Flannel und kube-proxy
+nach der Umstellung zwar nicht mehr, räumt die vorhandenen Objekte aber nicht
+weg — und Cilium mit `kubeProxyReplacement` neben einem laufenden kube-proxy
+ergibt zwei Datapfade für dieselben Services.
+
+Bei einem leeren Single-Node-Cluster ist der Neuaufbau der ehrlichere Weg:
+
+```bash
+../../tools/tf destroy -var wait_for_health=false
+../../tools/tf apply
+```
+
+Soll der Cluster stehen bleiben, gehören die Altlasten nach dem `apply` von
+Hand weg, bevor Cilium gesund wird:
+
+```bash
+kubectl -n kube-system delete ds kube-proxy kube-flannel
+kubectl -n kube-system delete cm kube-proxy
+kubectl -n kube-system rollout restart ds cilium
+```
+
+Danach die Pods neu starten, die noch eine von Flannel vergebene Adresse
+tragen — Cilium vergibt aus derselben `pod_subnet`, die alten Einträge kennt
+es aber nicht.
+
 ## Diagnose ohne SSH
 
 Es gibt keine Shell auf dem Node.
@@ -73,6 +189,22 @@ talosctl dmesg                      # Kernel- und Boot-Logs
 talosctl logs kubelet               # Logs einzelner Talos-Dienste
 talosctl services                   # Status aller Talos-Dienste
 talosctl health --wait-timeout 10m
+```
+
+CNI-seitig:
+
+```bash
+kubectl -n kube-system get pods -l k8s-app=cilium
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --brief
+kubectl -n kube-system exec ds/cilium -- hubble observe --follow
+```
+
+Bleibt der Node `NotReady`, ist fast immer das Inline-Manifest die Spur — es
+kommt aus der Machine-Config, nicht aus einem Helm-Release:
+
+```bash
+talosctl get manifests
+talosctl logs controller-runtime | grep -i manifest
 ```
 
 Ist die API nicht erreichbar, bleibt die serielle Konsole — dorthin schreibt
@@ -98,6 +230,11 @@ talosctl upgrade --preserve --image "$(../../tools/tf output -raw installer_imag
 talosctl upgrade-k8s --to <kubernetes_version>
 ```
 
+Cilium wird nicht mit `helm upgrade` aktualisiert, sondern über
+`cilium_version` in [variables.tf](variables.tf) und ein `tf apply` — das
+schreibt die Machine-Config neu, Talos rollt das Manifest nach. Renovate
+schlägt die Chart-Version vor.
+
 `--preserve` ist bei einem Single-Node-Cluster Pflicht. Das `installer_image`
 enthält die richtige Schematic-ID — mit einem nackten
 `ghcr.io/siderolabs/installer` gehen die System-Extensions verloren. Danach
@@ -108,8 +245,6 @@ nachziehen.
 
  Für später vorgesehen:
 
-- **Cilium** — hier läuft Flannel, damit ist der Node ohne zweiten Schritt
-  `Ready`.
 - **DMZ-Bein zur Edge-VM**, Ingress-Firewall, `admin_sources`. Der Node hängt
   offen im LAN; von außen erreichbar ist er nur, wenn der Router weiterleitet.
 - **Plattform-Stack** (cert-manager, Traefik, Kyverno, CrowdSec, Headlamp).

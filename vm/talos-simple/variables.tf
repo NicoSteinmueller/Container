@@ -23,6 +23,44 @@ variable "kubernetes_version" {
   default     = "1.36.3"
 }
 
+variable "cilium_version" {
+  description = <<-EOT
+    Cilium-Chart-Version. Cilium wird als Inline-Manifest in die Machine-Config
+    gerendert (siehe main.tf) - der Node ist damit direkt nach dem Bootstrap
+    Ready, ohne zweiten Schritt von außen.
+
+    Ein Update ist deshalb ein `tf apply` auf dieses Modul und kein
+    `helm upgrade`.
+  EOT
+  type        = string
+  default     = "1.20.1"
+}
+
+variable "hubble_relay_enabled" {
+  description = <<-EOT
+    Hubble-Relay ausrollen. Standardmäßig aus, weil das RAM-Budget knapp ist
+    (siehe vm_memory_mib). Flows lassen sich auch ohne Relay ansehen:
+
+      kubectl -n kube-system exec ds/cilium -- hubble observe --follow
+
+    Mit dem Relay geht auch TLS für Hubble an - die Zertifikate entstehen dann
+    über einen CronJob im Cluster, siehe values/cilium.yaml.tftpl.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "hubble_ui_enabled" {
+  description = "Hubble-UI ausrollen. Braucht Relay und nochmals RAM; für einen einzelnen Node selten den Platz wert."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.hubble_ui_enabled || var.hubble_relay_enabled
+    error_message = "Die Hubble-UI spricht über den Relay - ohne hubble_relay_enabled bleibt sie ohne Daten."
+  }
+}
+
 variable "system_extensions" {
   description = <<-EOT
     Offizielle Talos-System-Extensions für ISO und Installer-Image. Die daraus
@@ -221,8 +259,10 @@ variable "service_subnet" {
 #
 variable "vm_memory_mib" {
   description = <<-EOT
-    RAM der VM in MiB. 4096 trägt einen leeren Cluster mit Flannel und CoreDNS
-    bequem. Vor jeder Erhöhung auf dem Hypervisor gegenprüfen:
+    RAM der VM in MiB. 4096 trägt einen leeren Cluster mit Cilium und CoreDNS;
+    Cilium kostet gegenüber Flannel rund ein halbes GB, Hubble-Relay und -UI
+    kämen obendrauf (siehe hubble_relay_enabled). Vor jeder Erhöhung auf dem
+    Hypervisor gegenprüfen:
 
       ssh root@<host> free -m
 

@@ -202,6 +202,64 @@ resource "kubernetes_service" "flux_web_nodeport" {
   depends_on = [helm_release.flux_operator]
 }
 
+#
+# Ohne diese Regel bleibt die Status-Seite über den NodePort stumm - Timeout,
+# kein Connection refused.
+#
+# Das Chart legt selbst eine NetworkPolicy `flux-operator-web` an, die Port
+# 9080 nur `from: namespaceSelector: {}` zulässt, also ausschließlich
+# clusterinterne Identitäten. Ein Browser im Heimnetz hat keine; für Cilium ist
+# er `world` und wird verworfen:
+#
+#   192.168.x.x:... (world) <> flux-system/flux-operator-...:9080 (ID:...)
+#     Policy denied DROPPED (TCP Flags: SYN)
+#
+# NetworkPolicies verknüpfen sich mit ODER, diese hier kommt also additiv
+# dazu; die Regel des Charts bleibt unangetastet.
+#
+resource "kubernetes_network_policy" "flux_web_nodeport" {
+  count = var.service_type == "NodePort" ? 1 : 0
+
+  metadata {
+    name      = "flux-operator-web-nodeport"
+    namespace = kubernetes_namespace.flux_system.metadata[0].name
+  }
+
+  spec {
+    #
+    # Dieselben Labels wie die Service oben - beide zielen auf den
+    # Operator-Pod, der die Seite ausliefert.
+    #
+    pod_selector {
+      match_labels = {
+        "app.kubernetes.io/name"     = "flux-operator"
+        "app.kubernetes.io/instance" = "flux-operator"
+      }
+    }
+
+    policy_types = ["Ingress"]
+
+    ingress {
+      dynamic "from" {
+        for_each = var.web_source_cidrs
+
+        content {
+          ip_block {
+            cidr = from.value
+          }
+        }
+      }
+
+      ports {
+        port     = 9080
+        protocol = "TCP"
+      }
+    }
+  }
+
+  depends_on = [helm_release.flux_operator]
+}
+
 # =====================================================================
 # FluxInstance - die eigentlichen Controller und der Git-Sync
 # =====================================================================
