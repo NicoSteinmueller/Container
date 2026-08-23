@@ -1,5 +1,5 @@
 #
-# Flux (GitOps) für den Cluster aus vm/talos-simple - Push auf var.git_branch
+# Flux (GitOps) für den Cluster aus vm/talos - Push auf var.git_branch
 # rollt aus.
 #
 terraform {
@@ -27,7 +27,7 @@ terraform {
 }
 
 #
-# Beide Provider über die kubeconfig aus vm/talos-simple - ein Pfad, kein Wert
+# Beide Provider über die kubeconfig aus vm/talos - ein Pfad, kein Wert
 # aus einer anderen Ressource.
 #
 provider "helm" {

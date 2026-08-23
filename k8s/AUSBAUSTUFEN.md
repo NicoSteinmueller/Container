@@ -89,8 +89,9 @@ hat.
 Die Database Secrets Engine erzeugt pro Anwendung ein Passwort mit TTL und
 rotiert beide Seiten — statisch abgelegte DB-Passwörter verschwinden ganz. Das
 ist der eine Gewinn, den SOPS strukturell nicht liefern kann. Alles andere, was
-OpenBao mitbringt, ist schon da: Versionierung durch Git, PKI durch step-ca,
-Zugriffskontrolle durch Gitea.
+OpenBao mitbringt, ist schon da oder vorgesehen: Versionierung durch Git,
+Zugriffskontrolle durch Gitea, PKI durch step-ca — letzteres kommt mit dem
+Plattform-Stack zurück, es läuft derzeit nicht.
 
 **Wenn, dann außerhalb des Clusters, neben Gitea.** Ein Vault *im* Cluster, der
 die Secrets *des* Clusters hält, ist zirkulär: Node startet neu → Vault ist

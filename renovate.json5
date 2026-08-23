@@ -147,11 +147,11 @@
     },
     {
       // Cilium. Wird als Inline-Manifest in die Machine-Config gerendert -
-      // ein Update ist ein `terraform apply` auf vm/talos-simple, kein
+      // ein Update ist ein `terraform apply` auf vm/talos, kein
       // helm upgrade.
       customType: 'regex',
       managerFilePatterns: [
-        '/(^|/)vm\\/talos-simple\\/variables\\.tf$/',
+        '/(^|/)vm\\/talos\\/variables\\.tf$/',
       ],
       matchStrings: [
         'variable "cilium_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
@@ -159,122 +159,6 @@
       datasourceTemplate: 'helm',
       depNameTemplate: 'cilium',
       registryUrlTemplate: 'https://helm.cilium.io',
-    },
-    {
-      // Die Helm-Charts der Cluster-Ausstattung (k8s/platform/variables.tf).
-      // Ein Manager je Chart, weil jede Datasource eine eigene Registry hat.
-      customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
-      ],
-      matchStrings: [
-        'variable "cert_manager_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>v[0-9.]+)"',
-      ],
-      datasourceTemplate: 'helm',
-      depNameTemplate: 'cert-manager',
-      registryUrlTemplate: 'https://charts.jetstack.io',
-    },
-    {
-      customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
-      ],
-      matchStrings: [
-        'variable "step_ca_chart_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
-      ],
-      datasourceTemplate: 'helm',
-      depNameTemplate: 'step-certificates',
-      registryUrlTemplate: 'https://smallstep.github.io/helm-charts',
-    },
-    {
-      customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
-      ],
-      matchStrings: [
-        'variable "traefik_chart_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
-      ],
-      datasourceTemplate: 'helm',
-      depNameTemplate: 'traefik',
-      registryUrlTemplate: 'https://traefik.github.io/charts',
-    },
-    {
-      customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
-      ],
-      matchStrings: [
-        'variable "crowdsec_chart_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
-      ],
-      datasourceTemplate: 'helm',
-      depNameTemplate: 'crowdsec',
-      registryUrlTemplate: 'https://crowdsecurity.github.io/helm-charts',
-    },
-    {
-      customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
-      ],
-      matchStrings: [
-        'variable "kyverno_chart_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
-      ],
-      datasourceTemplate: 'helm',
-      depNameTemplate: 'kyverno',
-      registryUrlTemplate: 'https://kyverno.github.io/kyverno',
-    },
-    {
-      // Headlamp - das Cluster-Dashboard hinter ingress-internal.
-      customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
-      ],
-      matchStrings: [
-        'variable "headlamp_chart_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
-      ],
-      datasourceTemplate: 'helm',
-      depNameTemplate: 'headlamp',
-      registryUrlTemplate: 'https://kubernetes-sigs.github.io/headlamp/',
-    },
-    {
-      customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
-      ],
-      matchStrings: [
-        'variable "metrics_server_chart_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
-      ],
-      datasourceTemplate: 'helm',
-      depNameTemplate: 'metrics-server',
-      registryUrlTemplate: 'https://kubernetes-sigs.github.io/metrics-server/',
-    },
-    {
-      // kubelet-csr-approver. Gehört zu kubelet_server_certs in vm/talos:
-      // Ohne ihn bleiben die Zertifikatsanträge des Kubelets ungenehmigt und
-      // `kubectl logs`/`exec` brechen weg - ein Update hier ist deshalb kein
-      // beiläufiges.
-      customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
-      ],
-      matchStrings: [
-        'variable "csr_approver_chart_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
-      ],
-      datasourceTemplate: 'helm',
-      depNameTemplate: 'kubelet-csr-approver',
-      registryUrlTemplate: 'https://postfinance.github.io/kubelet-csr-approver',
-    },
-    {
-      // step-cli im Init- und Renew-Container von ingress-public. Dasselbe
-      // Werkzeug wie auf der Edge-VM - die beiden Versionen sollten nicht
-      // auseinanderlaufen.
-      customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)k8s\\/platform\\/variables\\.tf$/',
-      ],
-      matchStrings: [
-        'variable "step_cli_image"[\\s\\S]*?default\\s*=\\s*"(?<depName>[^:"]+):(?<currentValue>[0-9.]+)"',
-      ],
-      datasourceTemplate: 'docker',
     },
     // Das Debian-Cloud-Image der Edge-VM (vm/edge/variables.tf) bleibt bewusst
     // ohne Manager: Renovate hat keine Datasource für die Snapshot-Stände auf
@@ -420,21 +304,18 @@
       automerge: false,
       prCreation: 'immediate',
       prBodyNotes: [
-        '### ☸️ Update des Talos-Nodes\n\n⚠️ **Ein Merge allein ändert nichts** – und ein `terraform apply` mit neuer `talos_version` baut die VM nicht neu, sondern muss über `talosctl upgrade` laufen:\n\n```bash\ncd vm/talos\nterraform apply                      # rendert Config und Installer-Image neu\ntalosctl -n <lan_ip> upgrade --image $(terraform output -raw installer_image)\ntalosctl -n <lan_ip> upgrade-k8s --to <version>   # nur bei kubernetes_version\n```\n\nWichtig: mit **derselben Schematic-ID** arbeiten, sonst verschwinden die System-Extensions.\n\nDanach fällig:\n- `vm/talos/verify/assert-cluster.sh`\n- `k8s/platform/verify/assert-platform.sh`',
+        '### ☸️ Update des Talos-Nodes\n\n⚠️ **Ein Merge allein ändert nichts** – und ein `apply` mit neuer `talos_version` baut die VM nicht neu, sondern muss über `talosctl upgrade` laufen. Der Aufruf geht über den Wrapper, weil Werte und State in Gitea liegen:\n\n```bash\ncd vm/talos\ntalosctl etcd snapshot db.snapshot     # vorher, Single-Node\n../../tools/tf apply                   # rendert Config und Installer-Image neu\ntalosctl -n <lan_ip> upgrade --preserve --image $(../../tools/tf output -raw installer_image)\ntalosctl -n <lan_ip> upgrade-k8s --to <version>   # nur bei kubernetes_version\n```\n\nWichtig: mit **derselben Schematic-ID** arbeiten, sonst verschwinden die System-Extensions. `--preserve` ist auf einem Single-Node Pflicht.\n\nDanach prüfen:\n\n```bash\ntalosctl health\nkubectl get nodes -o wide\nkubectl -n kube-system exec ds/cilium -- cilium-dbg status --brief\n```',
       ],
     },
     {
-      description: 'Cluster-Ausstattung: Charts mit Review, danach Abnahme fahren',
+      description: 'Cluster-Ausstattung: HelmReleases mit Review, Flux rollt selbst aus',
       matchManagers: [
-        'custom.regex',
-      ],
-      matchFileNames: [
-        'k8s/platform/variables.tf',
+        'flux',
       ],
       automerge: false,
       prCreation: 'immediate',
       prBodyNotes: [
-        '### 🧩 Update der Cluster-Ausstattung\n\nNach dem Merge:\n\n```bash\ncd k8s/platform && terraform apply\nverify/assert-platform.sh\n```\n\n⚠️ Bei Traefik und Kyverno lohnt der Blick in die Breaking Changes: An beiden hängt eine Sicherheitszusage – die mTLS-Pflicht auf `ingress-public` und die Regel auf `ingressClassName: public`.',
+        '### 🧩 Update eines HelmRelease\n\n⚠️ Anders als bei den Terraform-Modulen genügt hier der Merge: Flux zieht die neue Chart-Version von selbst nach, ein `apply` gibt es nicht. Der Review ist deshalb die einzige Stelle, an der ein Breaking Change auffallen kann.\n\nNach dem Merge:\n\n```bash\nkubectl -n flux-system get helmrelease\nkubectl -n flux-system get kustomization\n```\n\nHängt eines auf `False`, steht der Grund in `kubectl -n flux-system describe helmrelease <name>`.',
       ],
     },
     {

@@ -13,7 +13,7 @@
 # die eigene Netz- und Zugangskonfiguration. Der Aufbau dort spiegelt die
 # Modulpfade:
 #
-#   ~/Repos/Homelab/homelab-values/vm/talos-simple/terraform.tfvars
+#   ~/Repos/Homelab/homelab-values/vm/talos/terraform.tfvars
 #
 # Damit ergibt sich der Pfad aus dem Verzeichnis, in dem `tf` läuft - es
 # braucht keine Tabelle, die man beim Anlegen eines Moduls pflegen muss.

@@ -1,6 +1,6 @@
 #
 # Vorlage. Die echten Werte liegen in
-# $HOMELAB_VALUES/vm/talos-simple/terraform.tfvars.
+# $HOMELAB_VALUES/vm/talos/terraform.tfvars.
 #
 
 # --- libvirt -----------------------------------------------------------

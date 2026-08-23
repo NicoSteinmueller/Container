@@ -4,8 +4,8 @@
 # Werte-Repo als -var-file herein (siehe gitea/README.md).
 #
 
-# Cluster aus vm/talos-simple
-# kubeconfig_path = "../../vm/talos-simple/kubeconfig"
+# Cluster aus vm/talos
+# kubeconfig_path = "../../vm/talos/kubeconfig"
 
 #
 # Git-Quelle, die Flux beobachtet

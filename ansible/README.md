@@ -3,8 +3,8 @@
 Playbooks zur Einrichtung von Ubuntu/Debian-Hosts. Alle Befehle werden aus
 diesem Verzeichnis heraus ausgefuehrt.
 
-Fuer die VM-Provisionierung selbst siehe [../vm/](../vm/) (Terraform) und
-[../vm-ansible/](../vm-ansible/) (libvirt-VMs anlegen).
+Fuer die VM-Provisionierung selbst siehe [../vm/](../vm/) - die libvirt-VMs
+entstehen dort per Terraform, nicht ueber Ansible.
 
 ## Ansible bereitstellen
 
@@ -37,8 +37,10 @@ ansible-playbook minikube-install.yml
 ```
 
 Die Versionen von Minikube und kubectl sind im Playbook gepinnt. Die
-kubectl-Version ist mit [../vm/talos-test/](../vm/talos-test/) abgestimmt, damit
-Dev und Test dieselbe Kubernetes-Version fahren.
+kubectl-Version ist mit `kubernetes_version` in
+[../vm/talos/variables.tf](../vm/talos/variables.tf) abgestimmt, damit Dev und
+Cluster dieselbe Kubernetes-Version fahren - beide stehen derzeit auf 1.36.3.
+Beim Anheben einer der beiden Zahlen gehoert die andere mitgeprueft.
 
 Neu nach Kubernetes migrierte Dienste in der Variable `k8s_local_hosts`
 ergaenzen - der `/etc/hosts`-Eintrag wird bei jedem Lauf aktualisiert.
