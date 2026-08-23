@@ -45,10 +45,9 @@ spec:
 # Die alte Begründung lautete, Cilium werte ipBlock-Regeln bei NodePort-Traffic
 # nicht aus. Das war aus einem anderen Fall übertragen: Die Einschränkung
 # betrifft die reservierten Identitäten "host" und "remote-node", also Pods,
-# die den Node selbst ansprechen (siehe
-# k8s/platform/charts/homelab-base/templates/networkpolicies.yaml). Ein
+# die den Node selbst ansprechen. Ein
 # LAN-Client an einem NodePort ist dagegen "world", und dagegen greift ipBlock
-# - auf talos-cp1 nachgemessen, siehe vm/talos-simple/README.md.
+# - auf talos-cp1 nachgemessen, siehe vm/talos/README.md.
 #
 # Eine IP-Beschränkung wäre hier also möglich. Sie bleibt trotzdem weg: whoami
 # ist der Testdienst, an dem sich zeigen soll, dass der Weg von außen

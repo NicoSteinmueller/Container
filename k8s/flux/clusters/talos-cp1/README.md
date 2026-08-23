@@ -11,9 +11,9 @@ NetworkPolicy, Namespace, Ingress). `sourceRef` zeigt auf die
 
 `valuesFiles` wählt die Umgebung; `values-prod.yaml` setzt `service.type:
 NodePort` auf `30083`. Eine Ingress-Variante liegt dort auskommentiert bereit
-(`ingressClassName: internal` - dieser Cluster kennt nur die Traefik-Klassen
-`public`/`internal` aus `k8s/platform`, kein NGINX). Werte pro Umgebung:
-`k8s/whoami/README.md`.
+(`ingressClassName: internal`) - sie ist vorerst wirkungslos, denn dieser
+Cluster hat derzeit keinen Ingress-Controller und damit keine IngressClass.
+Werte pro Umgebung: `k8s/whoami/README.md`.
 
 ```bash
 kubectl -n flux-system get helmrelease whoami
@@ -47,10 +47,11 @@ Startet neu, was ein geändertes Secret benutzt — sonst arbeitet ein Pod nach
 einer Rotation bis zu seinem nächsten Start mit dem alten Wert weiter. Fremder
 Chart, deshalb eine eigene `HelmRepository`.
 
-Reloader fasst nur an, was `reloader.stakater.com/auto` trägt; die Annotation
-setzt Kyverno cluster-weit
-([kyverno-reloader.yaml](../../../platform/charts/homelab-policies/templates/kyverno-reloader.yaml))
-mit den Plattform-Namespaces als Ausnahme.
+Reloader fasst nur an, was `reloader.stakater.com/auto` trägt. Diese Annotation
+setzte Kyverno cluster-weit — und Kyverno ist mit dem Plattform-Stack entfernt
+worden. **Damit startet Reloader derzeit nichts neu:** Er läuft und beobachtet,
+aber kein Workload trägt die Annotation. Die zwei Wege daraus stehen im Kopf von
+[reloader.yaml](reloader.yaml).
 
 ```bash
 kubectl -n reloader get pods

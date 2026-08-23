@@ -19,9 +19,19 @@
 # mit Rollback, wenn er nicht hochkommt.
 #
 # Reloader fasst dabei nur an, was die Annotation reloader.stakater.com/auto
-# trägt (autoReloadAll: false unten). Setzen muss sie niemand von Hand:
-# Kyverno hängt sie cluster-weit an
-# (k8s/platform/charts/homelab-policies/templates/kyverno-reloader.yaml).
+# trägt (autoReloadAll: false unten).
+#
+# ACHTUNG - hier klafft derzeit eine Lücke: Diese Annotation setzte Kyverno
+# cluster-weit, und Kyverno ist mit dem Plattform-Stack entfernt worden. Es
+# trägt sie also gerade kein einziger Workload, und damit startet Reloader
+# nach einer Rotation nichts neu. Er läuft, er beobachtet, er tut nichts.
+#
+# Bis Kyverno als Flux-Manifest zurück ist, gibt es zwei Wege: die Annotation
+# je Workload von Hand ins Pod-Template schreiben, oder unten autoReloadAll
+# auf true stellen und damit jeden Workload als annotiert behandeln. Das
+# zweite war zu Zeiten des Plattform-Stacks die schlechtere Wahl (siehe die
+# Begründung dort unten); mit den vier Releases, die dieser Cluster heute
+# trägt, ist es vertretbar.
 #
 # Was Reloader *nicht* tut: das Passwort auf der Gegenseite ändern. Ein
 # rotiertes Postgres-Passwort im Secret startet Nextcloud neu, und Nextcloud
@@ -97,13 +107,17 @@ spec:
       #
       # Das ist der Schalter für "nur auf Zuruf": Bei false fasst Reloader
       # ausschließlich Workloads mit der Annotation reloader.stakater.com/auto
-      # an. Bei true gälte jeder Workload als annotiert - dann wären auch die
-      # Plattform-Komponenten aus k8s/platform dabei, die ihre Zertifikate im
-      # eigenen Takt drehen und von einem Neustart nur gestört würden.
+      # an. Bei true gälte jeder Workload als annotiert.
       #
-      # Die Annotation setzt Kyverno, mit genau diesen Ausnahmen
-      # (charts/homelab-policies/templates/kyverno-reloader.yaml). Damit ist
-      # die Liste der Ausnahmen an einer Stelle statt an zweien.
+      # Der Grund für false war der Plattform-Stack: Komponenten wie step-ca
+      # und Traefik drehen ihre Zertifikate im eigenen Takt und würden von
+      # einem Neustart nur gestört. Die Annotation setzte deshalb Kyverno, mit
+      # genau diesen Namespaces als Ausnahme - die Liste stand damit an einer
+      # Stelle statt an zweien.
+      #
+      # Beides ist derzeit nicht da. Der Wert bleibt trotzdem auf false, weil
+      # ihn umzustellen eine Entscheidung über das Verhalten ist und keine
+      # Aufräumarbeit - was das heute bedeutet, steht im Kopf dieser Datei.
       #
       autoReloadAll: false
 

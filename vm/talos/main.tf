@@ -6,9 +6,9 @@ terraform {
   # State in der Gitea-Package-Registry
   #
   backend "http" {
-    address        = "https://git.local.nico-steinmueller.de/api/packages/nico/terraform/state/vm-talos-simple"
-    lock_address   = "https://git.local.nico-steinmueller.de/api/packages/nico/terraform/state/vm-talos-simple/lock"
-    unlock_address = "https://git.local.nico-steinmueller.de/api/packages/nico/terraform/state/vm-talos-simple/lock"
+    address        = "https://git.local.nico-steinmueller.de/api/packages/nico/terraform/state/vm-talos"
+    lock_address   = "https://git.local.nico-steinmueller.de/api/packages/nico/terraform/state/vm-talos/lock"
+    unlock_address = "https://git.local.nico-steinmueller.de/api/packages/nico/terraform/state/vm-talos/lock"
     lock_method    = "POST"
     unlock_method  = "DELETE"
   }
@@ -25,8 +25,8 @@ terraform {
     #
     # Nur für `data "helm_template"`: Cilium wird lokal gerendert und als
     # Inline-Manifest in die Machine-Config gelegt. Von hier aus wird kein
-    # Cluster angefasst - die eigentlichen Helm-Releases stehen in
-    # k8s/platform.
+    # Cluster angefasst - die eigentlichen Helm-Releases stehen als
+    # HelmRelease in k8s/flux.
     #
     helm = {
       source  = "hashicorp/helm"

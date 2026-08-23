@@ -1,7 +1,7 @@
 variable "kubeconfig_path" {
-  description = "kubeconfig des Zielclusters. Voreingestellt die Datei aus vm/talos-simple - Cluster-Admin, dort in .gitignore."
+  description = "kubeconfig des Zielclusters. Voreingestellt die Datei aus vm/talos - Cluster-Admin, dort in .gitignore."
   type        = string
-  default     = "../../vm/talos-simple/kubeconfig"
+  default     = "../../vm/talos/kubeconfig"
 }
 
 variable "namespace" {

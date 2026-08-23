@@ -5,10 +5,21 @@ Reihenfolge einhalten — die Portfreigabe kommt **zuletzt**, nicht zuerst.
 
 Ausführlich steht alles in [../vm/edge/README.md](../vm/edge/README.md),
 [../vm/talos/README.md](../vm/talos/README.md) und
-[platform/README.md](platform/README.md); das hier ist der Ablauf.
+[flux/README.md](flux/README.md); das hier ist der Ablauf.
 
 Was bewusst *nicht* Teil der Inbetriebnahme ist, sondern später kommt, steht in
 [AUSBAUSTUFEN.md](AUSBAUSTUFEN.md).
+
+> **Stand: dieses Dokument beschreibt mehr, als es derzeit gibt.**
+>
+> Die Schritte 0 bis 3 lassen sich heute abarbeiten: Unraid-Host, Edge-VM,
+> Talos-Node, Flux. Ab Schritt 4 setzt der Ablauf den Plattform-Stack voraus —
+> Ingress, interne CA, Kyverno, CrowdSec im Cluster. Der lag im Modul
+> `k8s/platform`, ist entfernt worden und soll als Flux-Manifest wiederkommen.
+>
+> Die betroffenen Schritte bleiben trotzdem hier stehen. Sie beschreiben, was
+> der Wiederaufbau zu leisten hat, und die Begründungen darin sind mit dem Code
+> nicht ungültig geworden. Was genau fehlt, steht am Ende von Schritt 3.
 
 ## 0. Voraussetzungen auf dem Unraid-Host
 
@@ -37,7 +48,7 @@ iowait und 6 % User-CPU — Load 15,7, ohne dass irgendetwas gerechnet hätte.
 
 Real verfügbar sind eher 2–2,5 GB. Ein Versuch mit 3 GB scheiterte dann aber an
 der anderen Seite der Rechnung: Der Plattform-Stack ist nicht „fast nichts".
-Gemessen im laufenden Cluster, ohne jede Nutzlast, sind es **1900 MiB
+Gemessen im damals laufenden Cluster, ohne jede Nutzlast, sind es **1900 MiB
 Memory-Requests** — auf einem Node, dem Talos von 3072 MiB VM nur 2880 MiB
 meldet, und der davon selbst rund 600 MiB für kubelet und containerd braucht.
 Talos' `runtime.OOMController` schoss daraufhin reihenweise Cgroups ab.
@@ -143,9 +154,11 @@ muss man aber kennen:
   Netzwerktyp `bond0`), hat er eine eigene LAN-Adresse und ist erreichbar —
   genau die gehört in `dns_servers`, nicht die Adresse des Unraid-Hosts.
 - **NFS-Exporte vom selben Host sind über dieses Bein nicht erreichbar.**
-  Für den jetzigen Stand (PVCs über local-path) egal; sobald die Nutzerdaten
-  auf das Array wandern, ist es der Punkt, an dem entweder Bridging
-  eingeschaltet oder ein zweites Bein ergänzt werden muss.
+  Solange die PVCs auf der VM-Disk liegen (local-path), ist das egal; sobald
+  die Nutzerdaten auf das Array wandern, ist es der Punkt, an dem entweder
+  Bridging eingeschaltet oder ein zweites Bein ergänzt werden muss. Zu
+  entscheiden ist das, *bevor* die StorageClass zurückkommt — danach hängen
+  Daten daran.
 
 **SSH-Key nach Unraid.** Terraform spricht über `qemu+ssh://root@…` mit
 libvirt. Unraid bootet vom USB-Stick, `/root` ist ein RAM-Dateisystem — ein
@@ -278,21 +291,51 @@ Sonst hilft die serielle Konsole:
 
 ## 3. Cluster ausstatten
 
-```bash
-cd ../../k8s/platform
-cp terraform.tfvars.example terraform.tfvars    # dieselben Adressen eintragen
-terraform init && terraform apply
-```
-
-Beim allerersten Lauf kann der Bootstrap-Job der CA noch nicht durch sein —
-dann schlicht ein zweites Mal `terraform apply`.
+Was im Cluster läuft, kommt aus zwei Quellen: Flux selbst per tofu, alles
+Weitere als Manifest aus Git. Werte und State liegen in Gitea, deshalb der
+Wrapper statt eines nackten `tofu`.
 
 ```bash
-verify/assert-platform.sh
-terraform output bootstrap_schritte
+cd ../../k8s/flux
+git -C "$HOMELAB_VALUES" pull
+../../tools/tf init
+../../tools/tf apply
 ```
+
+Danach die drei Bootstrap-Geheimnisse eintragen — drei `kubectl patch`, die
+Befehle und ihre Begründung stehen in [flux/README.md](flux/README.md),
+Abschnitt Secrets. Ohne sie erreicht Flux das Repo `homelab-secrets` nicht.
+
+```bash
+kubectl -n flux-system get fluxinstance,gitrepository,kustomization,helmrelease
+```
+
+Alles auf `Ready`, dann laufen whoami, Headlamp, metrics-server und Reloader.
+
+### Was an dieser Stelle fehlt
+
+Bis vor Kurzem stand hier das Modul `k8s/platform`: Namespaces,
+NetworkPolicies, IngressClasses, local-path-provisioner, cert-manager, step-ca,
+Traefik als `public`/`internal`, Kyverno, CrowdSec und der kubelet-csr-approver.
+Es ist entfernt worden und soll als Flux-Manifest wiederkommen.
+
+Vier Folgen, die den Rest dieses Dokuments betreffen:
+
+- **Keine StorageClass.** Jeder PVC bleibt `Pending`. Kein zustandsbehafteter
+  Dienst kann starten — das ist die Sperre für Schritt 7.
+- **Kein Ingress-Controller, keine interne CA.** Erreichbar ist der Cluster nur
+  über NodePorts im LAN, per HTTP. Damit hat die Edge-VM keine Gegenstelle.
+- **Kein Kyverno.** Kein Workload trägt die Reloader-Annotation (siehe
+  [flux/README.md](flux/README.md), Abschnitt Rotation), und die Regel auf
+  `ingressClassName: public` gibt es nicht.
+- **Kein CSR-Genehmiger.** `kubelet_server_certs` in `vm/talos` muss aus
+  bleiben, sonst bricht der Apply dort ab.
 
 ## 4. Die drei Bootstrap-Schritte
+
+> **Setzt den Plattform-Stack voraus, siehe Ende von Schritt 3.** Alles hier — step-ca im
+> Cluster, die Skripte unter `k8s/platform/scripts/` — ist mit dem Modul
+> entfernt worden. Der Ablauf steht als Vorgabe für den Wiederaufbau.
 
 Zugangsdaten kommen bewusst nicht aus Terraform. Der Reihe nach:
 
@@ -327,6 +370,11 @@ und `terraform apply`. Der **Firewall**-Bouncer bleibt noch aus.
 
 ## 5. Erst jetzt: DNS und Fritzbox
 
+> **Setzt den Plattform-Stack voraus, siehe Ende von Schritt 3.** Die Edge-VM allein steht zwar,
+> aber hinter ihr wartet kein `ingress-public` — eine Portfreigabe führt
+> derzeit ins Leere. Punkt 5 der Liste (interne Namen im Heimnetz) ist davon
+> unabhängig und gilt schon heute.
+
 1. `immich.domain.de` und `cloud.domain.de` per DynDNS auf die eigene IP —
    über den DNS-Anbieter, nicht über MyFRITZ!.
 2. ACME-DNS-Instanz aufsetzen, ihre Adresse als `acme_dns_api_base` in
@@ -352,8 +400,10 @@ Log **nicht** auftauchen, und ein fremder Hostname muss im TLS-Handshake enden.
 
 ## 6. Dashboard und Metriken
 
-Das Dashboard steht mit Schritt 3 schon. Aufrufen unter
-`https://dashboard.domain.de` — und dort nach einem Token gefragt werden:
+Das Dashboard steht mit Schritt 3 schon — derzeit allerdings über NodePort
+`30080` und per HTTP, nicht unter `https://dashboard.domain.de`: Der Hostname
+setzt einen Ingress-Controller voraus, den es gerade nicht gibt. Aufrufen also
+unter `http://<node-ip>:30080` — und dort nach einem Token gefragt werden:
 
 ```bash
 # Der Alltagsfall: lesen. Kommt an keine Secrets.
@@ -367,44 +417,55 @@ Die Anmeldung ist hier die Kontrolle, nicht die Netzgrenze: Headlamp spricht
 mit genau der Identität mit der API, zu der das eingefügte Token gehört. Wer
 die Adresse ohne Token aufruft, sieht nichts.
 
-**Die Auslastungsanzeigen kommen erst jetzt**, und dafür muss der Node einmal
-neu starten. Der Grund ist eine Abhängigkeit über beide Module hinweg:
-`metrics-server` braucht ein prüfbares Serverzertifikat vom Kubelet, das gibt
-es erst mit `kubelet_server_certs` in `vm/talos` — und das wiederum braucht
-den Genehmiger für die Zertifikatsanträge, der aus `k8s/platform` kommt.
-
-Deshalb in dieser Reihenfolge, und nicht anders herum: Wird die Talos-Zeile
-gesetzt, bevor der Genehmiger läuft, bricht `terraform apply` dort ab mit
-*„kubelet server certificate rotation is enabled, but CSR is not approved"* —
-und `kubectl logs` und `kubectl exec` funktionieren bis dahin nicht mehr.
+**Die Auslastungsanzeigen laufen ebenfalls schon** — der metrics-server kommt
+als HelmRelease aus Schritt 3:
 
 ```bash
-# Der Genehmiger ist mit Schritt 3 schon da:
-kubectl -n kube-system get deploy kubelet-csr-approver
-
-cd vm/talos
-vim terraform.tfvars                    # kubelet_server_certs = true
-terraform apply
-talosctl -n 192.168.178.222 reboot
-
-kubectl get csr                         # nichts auf "Pending"
-
-cd ../../k8s/platform
-vim terraform.tfvars                    # metrics_server_enabled = true
-terraform apply
-
 kubectl top node
-verify/assert-platform.sh
+kubectl top pod -A
 ```
 
-Der verbreitete Ausweg `--kubelet-insecure-tls` steht bewusst nicht in den
-Werten: Er wäre eine ungeprüfte Verbindung zu genau der Komponente, die
-Auskunft über jeden Pod auf dem Node gibt.
+**Dass das ohne weiteres Zutun geht, ist eine bewusste Abkürzung.** Der
+metrics-server läuft mit `--kubelet-insecure-tls`, spricht das Kubelet also
+über eine verschlüsselte, aber ungeprüfte Verbindung an — und zwar genau die
+Komponente, die Auskunft über jeden Pod auf dem Node gibt. Die Begründung, und
+warum sie im LAN vertretbar ist, steht in
+[flux/clusters/talos-cp1/metrics-server.yaml](flux/clusters/talos-cp1/metrics-server.yaml).
+
+Der saubere Weg braucht drei Teile, von denen einer fehlt: ein prüfbares
+Serverzertifikat vom Kubelet (`kubelet_server_certs` in `vm/talos`), einen
+Genehmiger für die Zertifikatsanträge im Cluster (kubelet-csr-approver, kam
+aus `k8s/platform`) und einen Neustart des Nodes dazwischen.
+
+**Die Reihenfolge ist dabei keine Feinheit, sondern eine Falle.** Wird die
+Talos-Zeile gesetzt, *bevor* der Genehmiger läuft, bricht der Apply dort ab mit
+*„kubelet server certificate rotation is enabled, but CSR is not approved"* —
+und `kubectl logs` und `kubectl exec` funktionieren bis dahin nicht mehr.
+Solange der Genehmiger fehlt, bleibt `kubelet_server_certs` deshalb aus.
+
+Wenn er wieder da ist:
+
+```bash
+kubectl -n kube-system get deploy kubelet-csr-approver   # muss laufen
+
+cd vm/talos
+vim "$HOMELAB_VALUES/vm/talos/terraform.tfvars"   # kubelet_server_certs = true
+../../tools/tf apply
+talosctl -n <node-ip> reboot
+
+kubectl get csr                                   # nichts auf "Pending"
+```
+
+Danach `--kubelet-insecure-tls` aus den Werten des metrics-server nehmen.
 
 ## 7. Anwendungen
 
-Namespaces, NetworkPolicies und IngressClasses stehen schon. Ein Ingress
-braucht nur noch die richtige Klasse:
+> **Gesperrt, solange keine StorageClass da ist.** Ohne sie bleibt jeder PVC
+> `Pending`, und kein Dienst mit Daten kommt hoch — siehe Ende von Schritt 3.
+> Der Abschnitt zum RAM weiter unten gilt unabhängig davon.
+
+Sobald Namespaces, NetworkPolicies und IngressClasses wieder stehen, braucht
+ein Ingress nur noch die richtige Klasse:
 
 ```yaml
 spec:
@@ -440,6 +501,9 @@ Bis dahin ist er der Rückweg.
 
 ## 8. Scharfschalten (nach 1-2 Wochen)
 
+> **Setzt den Plattform-Stack voraus, siehe Ende von Schritt 3.** CrowdSec läuft heute weder im
+> Cluster noch als Gegenstelle der Edge.
+
 ```bash
 kubectl -n crowdsec exec deploy/crowdsec-lapi -- cscli alerts list
 ssh edge@192.168.178.221 sudo edge-crowdsec-connect --arm-firewall-bouncer
@@ -466,20 +530,30 @@ Danach in `vm/edge/terraform.tfvars` den Egress zumachen: Counter lesen
 | Node nicht mehr erreichbar | `admin_sources` falsch → serielle Konsole, siehe vm/talos/README.md |
 | Edge erreicht den Cluster nicht | `vm/edge/verify/egress-test.sh`, dann `talosctl -n … get nftableschains` |
 | ACME schlägt fehl | Zeit (NTP), CNAME-Delegation, Staging-Verzeichnis verwenden |
-| Ingress antwortet nicht | `kubectl -n traefik-public logs deploy/traefik-public`; fehlt das Secret `ingress-public-tls`, dann `kubectl -n step-ca logs job/ingress-cert-bootstrap` |
-| Alles tot nach Policy-Änderung | `kubectl -n traefik-public delete networkpolicy allow-from-edge` |
+| `HelmRelease` oder `Kustomization` bleibt auf `False` | `kubectl -n flux-system describe helmrelease <name>`; bei `homelab-secrets` fast immer die drei Bootstrap-Secrets, siehe [flux/README.md](flux/README.md) |
+| Secret im Cluster enthält wörtlich `ENC[AES256_GCM,…]` | Der `decryption`-Block der Kustomization greift nicht — der age-Schlüssel in `sops-age` passt nicht zu `.sops.yaml` |
+| PVC bleibt `Pending` | Es gibt keine StorageClass, siehe Ende von Schritt 3. `kubectl get storageclass` ist leer |
+| Ingress antwortet nicht *(setzt Plattform-Stack voraus)* | `kubectl -n traefik-public logs deploy/traefik-public`; fehlt das Secret `ingress-public-tls`, dann `kubectl -n step-ca logs job/ingress-cert-bootstrap` |
+| Alles tot nach Policy-Änderung *(dito)* | `kubectl -n traefik-public delete networkpolicy allow-from-edge` |
 | `kubectl logs`/`exec` brechen weg, Node ist aber Ready | Kubelet-CSR ungenehmigt. `kubectl get csr`, dann `kubectl -n kube-system logs -l app.kubernetes.io/name=kubelet-csr-approver`. Notbremse: `kubelet_server_certs = false` in `vm/talos`, apply, reboot |
-| `terraform apply` in `vm/talos` bricht ab mit „kubelet server certificate rotation is enabled, but CSR is not approved" | `kubelet_server_certs` wurde vor `k8s/platform` gesetzt — siehe Schritt 6, Reihenfolge |
-| `kubectl top node` sagt „Metrics API not available" | `kubectl -n kube-system logs deploy/metrics-server`; bei `x509: certificate signed by unknown authority` fehlt Schritt 6 (Reboot nach `kubelet_server_certs`) |
-| Dashboard lädt nicht, Pod läuft | Namespace fehlt in der Beobachtungsliste von `ingress-internal`. `kubectl -n traefik-internal logs deploy/traefik-internal`, dann `local.internal_namespaces` in `k8s/platform/main.tf` |
+| `apply` in `vm/talos` bricht ab mit „kubelet server certificate rotation is enabled, but CSR is not approved" | `kubelet_server_certs` wurde gesetzt, ohne dass ein CSR-Genehmiger im Cluster läuft — den gibt es derzeit nicht, siehe Schritt 6 |
+| `kubectl top node` sagt „Metrics API not available" | `kubectl -n kube-system logs deploy/metrics-server` |
+| Dashboard nicht erreichbar, Pod läuft | NodePort `30080` statt Hostname, und HTTP statt HTTPS — ein Ingress-Controller ist nicht installiert |
 | Dashboard zeigt überall „Forbidden" | Token abgelaufen oder von der falschen Identität. Neu: `kubectl -n headlamp create token headlamp --duration=8h` |
 
 ## Was danach noch fehlt
 
-Kein Backup, keine NFS-Exporte vom Array, kein Monitoring — siehe „Was noch
-offen ist" in [platform/README.md](platform/README.md) und „Nächste Schritte"
-im [Sicherheitskonzept](homelab-sicherheitskonzept.html).
+Zuerst der Plattform-Stack selbst — Storage, Ingress, interne CA, Kyverno —
+diesmal als Flux-Manifest statt als Terraform-Modul. Ohne ihn bleibt der
+Cluster bei dem stehen, was Schritt 3 aufstellt.
 
-Und: Die drei `terraform.tfstate`-Dateien enthalten die Cluster-PKI. Sie
-liegen nur auf der Arbeitsstation und gehören verschlüsselt gesichert — wer
-sie hat, hat den Cluster.
+Danach unverändert offen: kein Backup, keine NFS-Exporte vom Array, kein
+Monitoring — „Nächste Schritte" im
+[Sicherheitskonzept](homelab-sicherheitskonzept.html).
+
+Und zum State: Er enthält die Cluster-PKI — wer ihn hat, hat den Cluster. Er
+liegt verschlüsselt in der Gitea-Package-Registry (`tools/tf` setzt
+`TF_ENCRYPTION`, `enforced` ohne Ausnahme). Die Passphrase steht in
+`~/.config/homelab/tofu.env` und **nur dort**: Sie gehört so gesichert, dass
+sie einen Verlust der Arbeitsstation überlebt, sonst ist der State
+unbrauchbar.

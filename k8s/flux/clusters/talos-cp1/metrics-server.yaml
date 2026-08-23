@@ -44,7 +44,7 @@ spec:
     #
     # --kubelet-insecure-tls, anders als in k8s/platform: Der Weg dort
     # (echtes Kubelet-Zertifikat per CSR-Approver) setzt serverTLSBootstrap
-    # voraus, das vm/talos-simple bewusst weglässt - sonst scheitert der
+    # voraus, das vm/talos bewusst weglässt - sonst scheitert der
     # Abruf an "x509: certificate signed by unknown authority".
     #
     # Die Verbindung bleibt verschlüsselt, aber ungeprüft: Wer im Node-Netz

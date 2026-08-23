@@ -4,7 +4,7 @@ Ein Talos-Node mit Kubernetes, feste Adresse im LAN, erreichbar von der
 Arbeitsstation.
 
 Konkrete Werte — Host, Adressen, Interface, Pool — stehen in
-`$HOMELAB_VALUES/vm/talos-simple/terraform.tfvars`; hier nur Platzhalter
+`$HOMELAB_VALUES/vm/talos/terraform.tfvars`; hier nur Platzhalter
 
 | | |
 |---|---|
@@ -35,7 +35,7 @@ Neuaufbau dieselbe Version ergibt wie der laufende Cluster.
 State **und** Werte liegen in Gitea
 
 ```bash
-cd vm/talos-simple
+cd vm/talos
 git -C "$HOMELAB_VALUES" pull
 tf init
 tf apply
@@ -59,7 +59,7 @@ blockiert so lange. 10–20 Minuten, überwiegend ISO-Download und zwei Reboots:
 ## Zugang
 
 ```bash
-cd vm/talos-simple
+cd vm/talos
 export TALOSCONFIG=$PWD/talosconfig
 export KUBECONFIG=$PWD/kubeconfig
 
@@ -146,8 +146,7 @@ Als Messung notiert, weil im Repo lange die gegenteilige Annahme stand — in
 gegen die reservierten Identitäten `host` und `remote-node` aus — das betrifft
 Pods, die den Node selbst ansprechen (Egress), und es stimmt dort. Auf
 eingehenden LAN-Verkehr lässt es sich nicht übertragen, denn dessen Identität
-ist `world`. Details in
-[k8s/platform/charts/homelab-base/templates/networkpolicies.yaml](../../k8s/platform/charts/homelab-base/templates/networkpolicies.yaml).
+ist `world`.
 
 Der Vorbehalt bleibt: Sobald ein zweiter Node dazukommt und Verkehr über ihn
 maskiert wird, kann die Quelle zu `remote-node` werden — und dann greift die

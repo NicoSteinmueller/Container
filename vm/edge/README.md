@@ -238,10 +238,15 @@ stiller.
 
 ## Die Cluster-Seite
 
-Dieses Modul ist die Außengrenze. Die Gegenstelle steht in
-[../talos](../talos) (Node und Talos-Config) und
-[../../k8s/platform](../../k8s/platform) (alles, was im Cluster läuft). Was
-dort die Zusagen dieses Moduls beantwortet:
+Dieses Modul ist die Außengrenze. Die Gegenstelle besteht aus zwei Hälften:
+dem Node aus [../talos](../talos) — und allem, was im Cluster läuft. Die
+zweite Hälfte lag im Modul `k8s/platform` und ist entfernt worden.
+
+**Dieses Modul hat derzeit also keine Gegenstelle.** Ohne sie ist die Edge
+eine Außengrenze vor einem Cluster, der nach außen nichts anzubieten hat. Die
+Tabelle bleibt trotzdem stehen: Sie ist das Pflichtenheft für den
+Wiederaufbau, nicht die Beschreibung eines laufenden Zustands. Was dort die
+Zusagen dieses Moduls beantworten muss:
 
 | Hier | Dort |
 |---|---|
@@ -252,10 +257,12 @@ dort die Zusagen dieses Moduls beantwortet:
 | Agent auf der Edge | eigene Machine-Credentials, kürzere Sperrdauer für Edge-Alarme, Whitelist der Verwaltungs-IP als LAPI-Profil |
 | — | Kyverno-Regel auf `ingressClassName: public`, App-Parser als DaemonSet dort, wo die Logs entstehen |
 
-Die Reihenfolge über alle drei Module steht in
-[../../k8s/platform/README.md](../../k8s/platform/README.md); die drei
+Die Reihenfolge über die Module stand in `k8s/platform/README.md` und ist mit
+dem Modul verschwunden; was davon heute noch trägt, steht in
+[../../k8s/INBETRIEBNAHME.md](../../k8s/INBETRIEBNAHME.md). Die
 Bootstrap-Schritte oben (`edge-mtls-bootstrap`, `edge-crowdsec-connect`)
-bekommen ihre Werte aus `k8s/platform/scripts/`.
+bekamen ihre Werte aus `k8s/platform/scripts/` — auch diese Skripte sind weg
+und gehören zum Wiederaufbau dazu.
 
 ## Was die Kette nicht leistet
 
