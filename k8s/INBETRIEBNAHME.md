@@ -325,9 +325,10 @@ Vier Folgen, die den Rest dieses Dokuments betreffen:
   Dienst kann starten — das ist die Sperre für Schritt 7.
 - **Kein Ingress-Controller, keine interne CA.** Erreichbar ist der Cluster nur
   über NodePorts im LAN, per HTTP. Damit hat die Edge-VM keine Gegenstelle.
-- **Kein Kyverno.** Kein Workload trägt die Reloader-Annotation (siehe
-  [flux/README.md](flux/README.md), Abschnitt Rotation), und die Regel auf
-  `ingressClassName: public` gibt es nicht.
+- **Kein Kyverno.** Die Regel auf `ingressClassName: public` gibt es damit
+  nicht. Die Reloader-Annotation, die Kyverno ebenfalls setzte, wird nicht
+  mehr gebraucht — Reloader regelt das seit dem Wegfall selbst (siehe
+  [flux/README.md](flux/README.md), Abschnitt Rotation).
 - **Kein CSR-Genehmiger.** `kubelet_server_certs` in `vm/talos` muss aus
   bleiben, sonst bricht der Apply dort ab.
 

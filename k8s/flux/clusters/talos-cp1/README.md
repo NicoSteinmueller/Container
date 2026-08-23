@@ -47,10 +47,12 @@ Startet neu, was ein geändertes Secret benutzt — sonst arbeitet ein Pod nach
 einer Rotation bis zu seinem nächsten Start mit dem alten Wert weiter. Fremder
 Chart, deshalb eine eigene `HelmRepository`.
 
-Reloader fasst nur an, was `reloader.stakater.com/auto` trägt. Diese Annotation
-setzte Kyverno cluster-weit — und Kyverno ist mit dem Plattform-Stack entfernt
-worden. **Damit startet Reloader derzeit nichts neu:** Er läuft und beobachtet,
-aber kein Workload trägt die Annotation. Die zwei Wege daraus stehen im Kopf von
+Wen er anfasst, regelt er selbst: `autoReloadAll: true` mit
+`ignoreNamespaces` als Ausnahmeliste — alles gilt als annotiert, außer
+`kube-system`, `flux-system` und `reloader`. Vorher setzte Kyverno die
+Annotation `reloader.stakater.com/auto` cluster-weit; mit dem Plattform-Stack
+fiel Kyverno weg, und Reloader lief eine Zeit lang wirkungslos. Dieselbe Regel,
+ein Controller weniger — Begründung je Namespace steht in
 [reloader.yaml](reloader.yaml).
 
 ```bash
