@@ -133,21 +133,17 @@ schon einen besitzt — im Verlustfall ist genau er der Unterschied zwischen
 ### Rotation
 
 Wert in `homelab-secrets` ändern, committen, pushen. Flux schreibt das Secret
-neu — und hier endet es derzeit. Neu starten sollte danach Reloader
-([`clusters/talos-cp1/reloader.yaml`](clusters/talos-cp1/reloader.yaml)), er
-fasst aber nur an, was `reloader.stakater.com/auto` trägt. Gesetzt hat diese
-Annotation Kyverno cluster-weit, und Kyverno ist mit dem Plattform-Stack
-entfernt worden.
+neu, und Reloader startet neu, was es benutzt
+([`clusters/talos-cp1/reloader.yaml`](clusters/talos-cp1/reloader.yaml)). Dafür
+ist in keinem Chart etwas einzutragen: Reloader läuft mit `autoReloadAll` und
+nimmt jeden Workload, außer denen in `ignoreNamespaces` (`kube-system`,
+`flux-system`, `reloader`).
 
-**Bis dahin ist der Neustart Handarbeit.** Für einen einzelnen Workload:
-
-```bash
-kubectl -n <ns> rollout restart deploy/<name>
-```
-
-Dauerhaft gelöst wird das entweder durch Kyverno als Flux-Manifest oder durch
-`autoReloadAll: true` — die Abwägung steht im Kopf von
-[`clusters/talos-cp1/reloader.yaml`](clusters/talos-cp1/reloader.yaml).
+Diese Regel gehörte früher Kyverno, das die Annotation
+`reloader.stakater.com/auto` cluster-weit setzte. Mit dem Plattform-Stack fiel
+Kyverno weg — und weil damit niemand mehr die Annotation setzte, lief Reloader
+eine Zeit lang wirkungslos: Er beobachtete alles und startete nichts. Die Regel
+steht jetzt in Reloader selbst und hängt an keinem zweiten Controller mehr.
 
 Was dabei **nicht** passiert: die Gegenseite ändern. Ein rotiertes
 Postgres-Passwort startet Nextcloud neu, und Nextcloud kommt dann nicht mehr an

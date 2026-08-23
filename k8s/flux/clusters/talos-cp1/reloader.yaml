@@ -18,20 +18,21 @@
 # Rolling Update - mit den Probes und der Update-Strategie des Dienstes, und
 # mit Rollback, wenn er nicht hochkommt.
 #
-# Reloader fasst dabei nur an, was die Annotation reloader.stakater.com/auto
-# trägt (autoReloadAll: false unten).
+# Wen er dabei anfasst, ist eine Einstellung - und die hat hier ihren Besitzer
+# gewechselt. Reloader fasst von Haus aus nur Workloads mit der Annotation
+# reloader.stakater.com/auto an; gesetzt hat sie früher Kyverno cluster-weit,
+# mit den Plattform-Namespaces als Ausnahme. Kyverno ist mit dem
+# Plattform-Stack entfernt worden, und damit trug die Annotation kein Workload
+# mehr: Reloader lief, beobachtete und tat nichts.
 #
-# ACHTUNG - hier klafft derzeit eine Lücke: Diese Annotation setzte Kyverno
-# cluster-weit, und Kyverno ist mit dem Plattform-Stack entfernt worden. Es
-# trägt sie also gerade kein einziger Workload, und damit startet Reloader
-# nach einer Rotation nichts neu. Er läuft, er beobachtet, er tut nichts.
+# Jetzt macht Reloader das selbst - autoReloadAll mit ignoreNamespaces unten.
+# Das ist dieselbe Regel wie vorher, nur ohne den Umweg: alles gilt als
+# annotiert, bis auf eine benannte Liste. Der Unterschied ist, dass die Regel
+# nicht mehr von einem zweiten Controller abhängt, den man dafür betreiben,
+# aktualisieren und beim Wiederaufbau in der richtigen Reihenfolge hochziehen
+# müsste.
 #
-# Bis Kyverno als Flux-Manifest zurück ist, gibt es zwei Wege: die Annotation
-# je Workload von Hand ins Pod-Template schreiben, oder unten autoReloadAll
-# auf true stellen und damit jeden Workload als annotiert behandeln. Das
-# zweite war zu Zeiten des Plattform-Stacks die schlechtere Wahl (siehe die
-# Begründung dort unten); mit den vier Releases, die dieser Cluster heute
-# trägt, ist es vertretbar.
+# Wenn Kyverno zurückkommt, ist das kein Grund, das hier zurückzudrehen.
 #
 # Was Reloader *nicht* tut: das Passwort auf der Gegenseite ändern. Ein
 # rotiertes Postgres-Passwort im Secret startet Nextcloud neu, und Nextcloud
@@ -105,21 +106,40 @@ spec:
       watchGlobally: true
 
       #
-      # Das ist der Schalter für "nur auf Zuruf": Bei false fasst Reloader
-      # ausschließlich Workloads mit der Annotation reloader.stakater.com/auto
-      # an. Bei true gälte jeder Workload als annotiert.
+      # Jeder Workload gilt als annotiert. Das ist die Voreinstellung, die zu
+      # einem Cluster passt, dessen Dienste ihre Geheimnisse aus einem
+      # gemeinsamen Repo beziehen: Ein neuer Dienst ist von sich aus dabei,
+      # ohne dass jemand daran denken muss.
       #
-      # Der Grund für false war der Plattform-Stack: Komponenten wie step-ca
-      # und Traefik drehen ihre Zertifikate im eigenen Takt und würden von
-      # einem Neustart nur gestört. Die Annotation setzte deshalb Kyverno, mit
-      # genau diesen Namespaces als Ausnahme - die Liste stand damit an einer
-      # Stelle statt an zweien.
+      # Die Richtung des Vergessens ist der Grund. Andersherum - Annotation je
+      # Workload - läuft ein vergessener Dienst nach einer Rotation still mit
+      # dem alten Passwort weiter, und niemand merkt es, denn er läuft ja. So
+      # herum bedeutet ein vergessener Eintrag unten einen Neustart, der nicht
+      # hätte sein sollen. Der fällt auf.
       #
-      # Beides ist derzeit nicht da. Der Wert bleibt trotzdem auf false, weil
-      # ihn umzustellen eine Entscheidung über das Verhalten ist und keine
-      # Aufräumarbeit - was das heute bedeutet, steht im Kopf dieser Datei.
+      autoReloadAll: true
+
       #
-      autoReloadAll: false
+      # Die Ausnahmen dazu - die Liste, die vorher in der Kyverno-Regel stand.
+      #
+      # kube-system: Dort liegt Cilium, und dessen Konfiguration kommt als
+      #   Inline-Manifest aus der Machine-Config von Talos (siehe
+      #   vm/talos/README.md). Ein Neustart des Agents auf Zuruf eines anderen
+      #   Controllers wäre ein zweiter Schreiber auf demselben Datapath - und
+      #   trifft ausgerechnet die Komponente, über die jeder Pod im Cluster
+      #   spricht.
+      # flux-system: Die Controller halten die Geheimnisse, aus denen die
+      #   anderen Secrets überhaupt entstehen (sops-age, die Git-Zugänge).
+      #   kustomize-controller schreibt ein Secret, Reloader startet daraufhin
+      #   kustomize-controller neu - das ist eine Rückkopplung, kein Nutzen.
+      # reloader: Er würde sich selbst neu starten.
+      #
+      # Was hier fehlt und dazugehört, sobald es wieder existiert: die
+      # Namespaces des Plattform-Stacks (step-ca, cert-manager, traefik-*).
+      # Die drehen ihre Zertifikate im eigenen Takt und werden von einem
+      # Neustart nur gestört.
+      #
+      ignoreNamespaces: "kube-system,flux-system,reloader"
 
       #
       # Wie die Änderung ins Pod-Template kommt, nicht *ob*. Die Voreinstellung
