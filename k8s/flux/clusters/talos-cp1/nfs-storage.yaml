@@ -1,0 +1,258 @@
+#
+# NFS zum Unraid-Host - der Weg, auf dem der Cluster an die Dateien kommt, die
+# heute den Containern auf dem Host gehoeren.
+#
+# Wer mountet, ist dabei nicht der Pod, sondern das kubelet auf dem Node. Die
+# Exporte auf dem Host stehen deshalb auf der Node-Adresse und nicht auf dem
+# Pod-CIDR - Cilium maskiert Pod-Egress ohnehin auf die Node-Adresse.
+#
+# Voraussetzung auf dem Host, ohne die hier nichts gruen wird (Handgriffe in
+# der Unraid-GUI, siehe README.md):
+#
+#   Settings -> NFS -> Enable NFS = Yes      (verlangt ein gestopptes Array)
+#   Shares -> <share> -> NFS Security Settings -> Export = Yes, Rule wie dort
+#
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: csi-driver-nfs
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: csi-driver-nfs
+  labels:
+    #
+    # "privileged", und das ist hier keine Bequemlichkeit: Der Node-Plugin-Pod
+    # ruft mount(8) im Namespace des Hosts auf und reicht die entstandenen
+    # Mounts per bidirektionaler Mount-Propagation an das kubelet weiter. Beides
+    # - hostPath auf /var/lib/kubelet und Bidirectional - lehnt "baseline"
+    # bereits ab.
+    #
+    # Das ist der Preis fuer jeden CSI-Treiber, der echte Kernel-Mounts macht.
+    # Eingegrenzt wird er ueber den Namespace: hier steht nur dieser Treiber.
+    #
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: privileged
+    pod-security.kubernetes.io/audit: privileged
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: csi-driver-nfs
+  namespace: flux-system
+spec:
+  interval: 10m
+  releaseName: csi-driver-nfs
+  targetNamespace: csi-driver-nfs
+  storageNamespace: csi-driver-nfs
+  chart:
+    spec:
+      chart: csi-driver-nfs
+      version: "4.13.4"
+      sourceRef:
+        kind: HelmRepository
+        name: csi-driver-nfs
+        namespace: flux-system
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    # Dieser Treiber deckt beide Faelle ab, die dieser Cluster
+    # braucht - dynamische PVCs *und* statische PVs auf bestehende Shares -
+    # und wird gepflegt.
+    #
+    controller:
+      replicas: 1
+
+      #
+      # Der csi-snapshotter-Sidecar bleibt draussen. Er setzt die CRDs
+      # VolumeSnapshot/-Content/-Class voraus, die dieser Chart nur mit
+      # externalSnapshotter.enabled mitbringt - sonst laeuft er gegen
+      # Ressourcen, die es nicht gibt, und protokolliert das im Takt seines
+      # Resync.
+      #
+      # Auch mit CRDs waere wenig gewonnen: Der Treiber "schnappschusst" NFS
+      # per tar in eine zweite Datei auf demselben Share. Das ist eine Kopie,
+      # keine Momentaufnahme - fuer Sicherungen ist Kopia der Weg (siehe das
+      # PV unraid-kopia-backup unten). Ein Sidecar weniger zaehlt ausserdem
+      # in einem Node mit 4 GB.
+      #
+      enableSnapshotter: false
+
+      resources:
+        csiProvisioner:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
+        livenessProbe:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            memory: 64Mi
+        nfs:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
+
+    node:
+      resources:
+        livenessProbe:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            memory: 64Mi
+        nfs:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
+
+    #
+    # Der Chart bringt eine eigene StorageClass mit, wenn man ihn laesst. Sie
+    # bleibt aus: Der Server gehoert nicht in Chart-Werte, sondern sichtbar in
+    # die StorageClass unten - dort steht auch, was beim Loeschen passiert.
+    #
+    storageClass:
+      create: false
+---
+#
+# Dynamischer Speicher auf NFS - fuer Bestaende, nicht fuer Datenbanken.
+#
+# Ausdruecklich *nicht* die Default-Klasse: Die ist local-path (siehe
+# local-path.yaml), weil ein Chart, der einen PVC ohne storageClassName anlegt,
+# in aller Regel etwas mit fsync und Locking vorhat. Wer diese Klasse will,
+# schreibt sie hin - `storageClassName: nfs-unraid`.
+#
+# Was diese Klasse dafuer kann: ReadWriteMany. Mehrere Pods - auch auf
+# verschiedenen Nodes - koennen dasselbe Volume schreibend mounten. Lokaler
+# Speicher kann das nicht.
+#
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-unraid
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: 192.168.178.3
+
+  #
+  # Ein eigener Share, nicht ein Unterverzeichnis in "data": Was der Cluster
+  # sich selbst anlegt, soll nicht zwischen den Nutzerdaten liegen. Der Share
+  # muss auf dem Host existieren und exportiert sein - siehe README.md.
+  #
+  share: /mnt/user/k8s
+
+  #
+  # Was beim Loeschen eines PVC mit dem Unterverzeichnis passiert. "archive"
+  # benennt es in archived-<namespace>-<name> um, statt es wegzuwerfen.
+  #
+  # Der Preis ist Plattenplatz, den niemand aufraeumt, und den bezahlt dieser
+  # Cluster gern: Ein versehentlich geloeschter PVC ist ein Handgriff, ein
+  # versehentlich geloeschter Datenbestand ein Abend.
+  #
+  onDelete: archive
+
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+
+#
+# NFS hat kein Konzept von "diesem Node zugeordnet" - der Share ist von ueberall
+# gleich erreichbar. Immediate ist damit richtig und spart eine Runde Warten.
+#
+volumeBindingMode: Immediate
+
+mountOptions:
+  #
+  # v4.1 festgenagelt statt ausgehandelt. NFSv3 braeuchte rpcbind auf Port 111
+  # und einen eigenen Lock-Daemon; v4 fuehrt alles ueber 2049 und macht Locking
+  # im Protokoll. Gegenprobe auf dem Node:
+  #   kubectl -n csi-driver-nfs exec ds/csi-nfs-node -c nfs -- mount | grep nfs4
+  #
+  - nfsvers=4.1
+
+  #
+  # hard, nicht soft: Bei einer Unterbrechung wiederholt der Client, statt der
+  # Anwendung einen EIO zu liefern. "soft" verwandelt eine kurze Netzstoerung in
+  # stillen Datenverlust - fuer Datenbanken und Immich-Uploads gleichermassen
+  # der schlechtere Ausgang.
+  #
+  - hard
+  - noatime
+---
+#
+# "data" - der Share, in dem heute die Daten der Container auf dem Host liegen
+# (immich, nextcloud, paperless, music, ...). Als statisches PV eingebunden und
+# nicht ueber die StorageClass oben, weil der Inhalt schon da ist: Der Cluster
+# soll ihn benutzen, nicht anlegen.
+#
+# Deshalb auch Retain: Ein `kubectl delete pvc` darf hier unter keinen
+# Umstaenden in Richtung Daten wirken.
+#
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: unraid-data
+spec:
+  capacity:
+    #
+    # NFS erzwingt kein Kontingent - der Wert ist eine Angabe fuer den
+    # Scheduler, keine Grenze. Er entspricht ungefaehr dem freien Platz des
+    # Arrays zum Zeitpunkt der Einrichtung (8 TB von 24 TB).
+    #
+    storage: 8Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions:
+    - nfsvers=4.1
+    - hard
+    - noatime
+  csi:
+    driver: nfs.csi.k8s.io
+    #
+    # Muss cluster-weit eindeutig sein; der Treiber benutzt ihn als Schluessel.
+    #
+    volumeHandle: unraid-data
+    volumeAttributes:
+      server: 192.168.178.3
+      share: /mnt/user/k8s-data
+---
+#
+# Der passende Claim. Ein PV ist cluster-weit, ein PVC gehoert einem Namespace -
+# soll ein zweiter Namespace an denselben Share, braucht er ein eigenes PV mit
+# eigenem volumeHandle (ein PV bindet an genau einen PVC).
+#
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: unraid-data
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteMany
+  # Leer, nicht weggelassen: Ohne diese Zeile schoebe der Default-Setzer
+  # "nfs-unraid" ein und der Claim suchte ein dynamisches Volume statt des PV.
+  storageClassName: ""
+  volumeName: unraid-data
+  resources:
+    requests:
+      storage: 8Ti
