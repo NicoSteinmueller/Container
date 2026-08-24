@@ -271,7 +271,7 @@ resource "libvirt_volume" "system" {
 #     ein leeres an; der Inhalt ist weg. Deshalb grosszuegig waehlen, qcow2 ist
 #     duenn alloziert (siehe vm_data_disk_gib).
 #   - `tofu destroy` nimmt diese Disk mit. Sie ist kein Backup-Ziel und ersetzt
-#     keines: Sicherungen gehen nach unraid-kopia-backup ueber NFS.
+#     keines - ein Sicherungsweg aus dem Cluster heraus steht noch aus.
 #
 resource "libvirt_volume" "data" {
   name     = "${local.node_name}-data.qcow2"

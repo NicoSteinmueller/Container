@@ -19,8 +19,9 @@
 #     Kein Crash-Loop, den jemand sieht, sondern Stille.
 #
 # Was das nicht ersetzt: ein Backup. Diese Disk verschwindet mit der VM und mit
-# `tofu destroy`. Sicherungen gehen nach unraid-kopia-backup (siehe
-# nfs-storage.yaml) - bei Datenbanken als Dump, nicht als Dateikopie.
+# `tofu destroy`. Ein Sicherungsweg aus dem Cluster heraus steht noch aus - wenn
+# er kommt, nach Kopia auf dem Unraid-Host, bei Datenbanken als Dump und nicht
+# als Dateikopie.
 #
 ---
 #

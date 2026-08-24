@@ -132,8 +132,9 @@ Ein-Node-Cluster fällt eine falsche Einstellung nicht auf, beim zweiten Node
 sofort.
 
 **Kein Backup.** Diese Disk verschwindet mit der VM und mit `tofu destroy`.
-Sicherungen gehen nach `unraid-kopia-backup`, bei Datenbanken als Dump und
-nicht als Dateikopie.
+Ein Sicherungsweg aus dem Cluster heraus steht noch aus; wenn er kommt, gehört
+er nach Kopia auf dem Unraid-Host — bei Datenbanken als Dump und nicht als
+Dateikopie.
 
 ### `nfs-storage.yaml`
 
@@ -145,11 +146,8 @@ Zwei Wege, bewusst nebeneinander:
 - **dynamisch** über `nfs-unraid` (Default-Klasse). Der Treiber legt je PVC ein
   Unterverzeichnis unter `/mnt/user/k8s` an. Für alles, was der Cluster sich
   selbst anlegt.
-- **statisch** über die PVs `unraid-data`, `unraid-bilder` und
-  `unraid-kopia-backup`. Für Bestände, die schon da sind — der Cluster soll sie
-  benutzen, nicht anlegen. Deshalb dort `Retain`. `unraid-bilder` ist lesend,
-  und zwar doppelt: `accessModes: ReadOnlyMany` für den Scheduler, `ro` in den
-  `mountOptions` für den Kernel — die erste Zeile allein sperrt nichts.
+- **statisch** über das PV `unraid-data`. Für Bestände, die schon da sind —
+  der Cluster soll sie benutzen, nicht anlegen. Deshalb dort `Retain`.
 
 ### Voraussetzung auf dem Unraid-Host
 
@@ -166,8 +164,7 @@ Nicht im Repo abgebildet und von Hand zu setzen — NFS ist dort ab Werk aus
    192.168.178.230(sec=sys,rw,no_root_squash)
    ```
 
-   für `k8s`, `data` und `kopia-nas-backup`. Für `Bilder` stattdessen `ro`
-   statt `rw` — der Cluster liest dort nur.
+   für `k8s` und `data`.
 
 Die Regel steht auf der **Node-Adresse**, nicht auf dem Pod-CIDR: Gemountet
 wird nicht vom Pod, sondern vom kubelet auf dem Node — und Cilium maskiert
