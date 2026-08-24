@@ -9,10 +9,12 @@ Konkrete Werte — Host, Adressen, Interface, Pool — stehen in
 | | |
 |---|---|
 | VM | `<cluster_name>-cp1`, q35 mit UEFI, Dimensionierung aus den tfvars |
+| Disks | `vda` System (Talos), `vdb` Daten — lokaler Cluster-Speicher |
 | Adresse | `<node-ip>`, statisch — zugleich Kubernetes-API-Endpoint |
 | Netz | macvtap auf `lan_macvtap_dev` |
 | Image | Image Factory, Talos + `qemu-guest-agent` |
 | CNI | Cilium, als Inline-Manifest in der Machine-Config — kein kube-proxy |
+| Speicher | `local-path` auf `vdb` als Default, NFS zum Unraid-Host daneben |
 
 Versionen und Größen sind in [variables.tf](variables.tf) gepinnt, damit ein
 Neuaufbau dieselbe Version ergibt wie der laufende Cluster.
@@ -55,6 +57,53 @@ blockiert so lange. 10–20 Minuten, überwiegend ISO-Download und zwei Reboots:
 7. Health-Check wartet auf einen gesunden Cluster
 
 `kubeconfig` und `talosconfig` landen im Verzeichnis, beide in `.gitignore`.
+
+## Die zweite Disk
+
+`vdb` ist der lokale Speicher des Clusters — dort liegen Datenbanken und alles
+andere, das `fsync` und Locking braucht. Talos legt darauf ein User-Volume an
+und mountet es nach `/var/mnt/local-path`; daraus macht
+[local-path-provisioner](../../k8s/flux/clusters/talos-cp1/local-path.yaml) die
+Default-StorageClass.
+
+Getrennt von der System-Disk, und zwar **nicht** wegen Geschwindigkeit — beide
+qcow2-Dateien liegen auf derselben SSD des Hypervisors. Es geht um die
+Kopplung: Auf der `EPHEMERAL`-Partition lägen Datenbanken sonst neben dem
+containerd-Image-Cache und den Logs. Läuft sie voll, setzt das kubelet
+`DiskPressure`, evictet Pods und räumt Images ab — und trifft die Datenbank mit.
+Zwei Disks machen daraus zwei unabhängige Ausfälle.
+
+Der Mountpfad ist nicht frei wählbar: Talos mountet User-Volumes immer unter
+`/var/mnt/<name>` und leitet das Partitionslabel als `u-<name>` daraus ab. Der
+Name steht in `local.local_path_volume` in [main.tf](main.tf) und muss mit
+`nodePathMap` im Flux-Manifest zusammenpassen.
+
+```bash
+talosctl get disks                  # vda und vdb
+talosctl get volumestatus           # u-local-path
+talosctl get volumemountstatus      # /var/mnt/local-path
+```
+
+Zwei Dinge, die beim ersten Mal überraschen:
+
+- **Ein `apply` allein reicht nicht.** libvirt hängt eine neue Disk nicht an
+  eine laufende Maschine an. Nach dem `apply` gehört die VM einmal neu
+  gestartet, sonst findet der `diskSelector` nichts:
+
+  ```bash
+  ../../tools/tf apply
+  talosctl -n <node-ip> shutdown
+  virsh -c "qemu+ssh://root@<host>/system" start <cluster_name>-cp1
+  ```
+
+- **`vm_data_disk_gib` nachträglich zu ändern, ersetzt das Volume.** Terraform
+  zerstört es und legt ein leeres an; der Inhalt ist weg. Deshalb großzügig
+  wählen — qcow2 ist dünn alloziert, der Platz wird erst belegt, wenn er
+  gebraucht wird.
+
+Und der Vorbehalt, der dazugehört: Diese Disk ist **kein Backup und ersetzt
+keins**. `tofu destroy` nimmt sie mit. Sicherungen gehen über NFS nach
+`unraid-kopia-backup`, bei Datenbanken als Dump und nicht als Dateikopie.
 
 ## Zugang
 
@@ -260,8 +309,46 @@ Eigenart, die kein Fehler ist:
 
 - Arbeitsstation und übriges LAN erreichen die VM — ✓
 - Docker-Container in einem macvlan-Netz auf demselben Parent — ✓
-- **der Host selbst erreicht die VM nicht**, und umgekehrt ebenso wenig
+- der Hypervisor selbst erreicht die VM **nur dann**, wenn er sich ein eigenes
+  macvlan-Bein am selben Parent gibt — sonst nicht, und umgekehrt ebenso wenig
 
-`ping <node-ip>` aus einer SSH-Sitzung auf Host läuft also ins Leere, obwohl
-alles in Ordnung ist. NFS-Exporte desselben Hosts sind über dieses Bein nicht
-erreichbar.
+Der Grund ist derselbe, aus dem die dritte Zeile funktioniert: macvtap-
+Geschwister im `bridge`-Modus am selben Parent dürfen untereinander sprechen.
+Der Hypervisor spricht über das physische Interface und ist damit kein
+Geschwister, sondern der Elternteil — und der ist ausgeschlossen. Ein eigenes
+macvlan-Bein macht ihn zum Geschwister und hebt die Trennung auf.
+
+### Auf diesem Host ist das bereits der Fall
+
+Unraid legt bei eingeschaltetem *Host access to custom networks* genau so ein
+Bein an. Nachgemessen, statt aus der Regel oben gefolgert:
+
+```bash
+ssh root@<host> ip -d link show vhost0
+```
+
+```
+vhost0@bond0: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
+    macvtap mode bridge ...
+```
+
+Dasselbe `macvtap mode bridge` am selben Parent `bond0`, das auch das Bein der
+VM zeigt. Beide Richtungen laufen entsprechend:
+
+```bash
+ssh root@<host> ping -c2 <node-ip>          # aus dem Hypervisor in die VM
+kubectl run t --rm -i --restart=Never --image=busybox:1.36 \
+  -- ping -c2 <host-ip>                      # aus einem Pod zum Hypervisor
+```
+
+Damit sind NFS-Exporte des Hypervisors aus dem Cluster erreichbar — der
+Speicher in
+[k8s/flux/clusters/talos-cp1/nfs-storage.yaml](../../k8s/flux/clusters/talos-cp1/nfs-storage.yaml)
+steht auf genau diesem Befund.
+
+Er ist allerdings geliehen: Er hängt an einer Unraid-Einstellung, die nichts
+mit diesem Repo zu tun hat und die niemand hier bemerkt, wenn sie jemand
+zurücknimmt. Das Fehlerbild wäre dann kein Fehler, sondern das Hängen aller
+NFS-Mounts (`hard`, siehe die StorageClass dort). Wer die Abhängigkeit nicht
+will, gibt der VM ein zweites Bein an einem libvirt-Netz und exportiert
+dorthin.

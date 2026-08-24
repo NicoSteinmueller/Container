@@ -285,6 +285,29 @@ variable "vm_disk_gib" {
   default     = 100
 }
 
+variable "vm_data_disk_gib" {
+  description = <<-EOT
+    Groesse der zweiten Disk in GiB - der lokale Speicher des Clusters, auf dem
+    Datenbanken und alles andere liegen, das fsync und Locking braucht. Talos
+    reicht sie als User-Volume unter /var/mnt/local-path durch, local-path-
+    provisioner macht daraus die Default-StorageClass (siehe
+    k8s/flux/clusters/talos-cp1/local-path.yaml).
+
+    Getrennt von der System-Disk, und zwar nicht wegen Geschwindigkeit -
+    physisch ist es dieselbe SSD des Hypervisors. Der Grund ist die Kopplung:
+    Auf /var teilen sich Datenbanken sonst die Partition mit dem
+    containerd-Image-Cache und den Logs. Laeuft sie voll, setzt das kubelet
+    DiskPressure, wirft Pods raus und raeumt Images weg - und die Datenbank
+    ist genau dann betroffen, wenn der Cluster ohnehin Aerger hat.
+
+    Grosszuegig waehlen: qcow2 ist duenn alloziert, der Platz wird also nicht
+    belegt, bevor er gebraucht wird. Die Kapazitaet nachtraeglich zu aendern,
+    ersetzt dagegen das Volume - und damit den Inhalt.
+  EOT
+  type        = number
+  default     = 100
+}
+
 variable "install_disk" {
   description = "Ziel-Device für die Talos-Installation innerhalb der VM."
   type        = string

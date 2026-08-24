@@ -1,0 +1,40 @@
+#
+# Der lokale Speicher des Clusters - die zweite Disk aus main.tf.
+#
+# Talos legt das Volume selbst an und mountet es unter /var/mnt/${volume_name};
+# der Pfad ergibt sich aus dem Namen und laesst sich nicht frei waehlen. Das
+# Partitionslabel wird zu u-${volume_name}. Von dort holt es sich
+# local-path-provisioner (k8s/flux/clusters/talos-cp1/local-path.yaml).
+#
+# Ein eigenes Volume auf eigener Disk entkoppelt den Speicher der
+# Datenbanken davon - laeuft EPHEMERAL voll, ist das ein Problem des Clusters
+# und keins der Daten.
+#
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: ${volume_name}
+
+#
+# Die ganze Disk, keine Partition darauf.
+#
+volumeType: disk
+
+provisioning:
+  #
+  # CEL, ausgewertet gegen jede gefundene Disk. Beide Haelften sind noetig:
+  #
+  #   disk.transport == "virtio"  - trifft vda *und* vdb, schliesst aber das
+  #                                 SATA-CD-Laufwerk mit der Talos-ISO aus
+  #   !system_disk                - nimmt vda wieder heraus
+  #
+  # Ueber Modell oder Seriennummer ginge es nicht: virtio-Disks melden beides
+  # nicht. Gegenprobe, was Talos tatsaechlich sieht:
+  #   talosctl -n <node-ip> get disks
+  #
+  # Die Groesse steht stattdessen in vm_data_disk_gib, also am Volume selbst.
+  diskSelector:
+    match: disk.transport == "virtio" && !system_disk
+
+filesystem:
+  # Dasselbe Dateisystem, das Talos auch fuer EPHEMERAL nimmt.
+  type: xfs

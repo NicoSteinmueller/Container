@@ -98,6 +98,13 @@ locals {
     var.lan_macvtap_dev == null && var.lan_bridge == null ? { network = { network = var.lan_libvirt_network } } : {},
   )
 
+  #
+  # Name des User-Volumes. Er bestimmt den Mountpfad in Talos
+  # (/var/mnt/<name>) und muss deshalb mit nodePath in
+  # k8s/flux/clusters/talos-cp1/local-path.yaml uebereinstimmen.
+  #
+  local_path_volume = "local-path"
+
   cilium_values = templatefile("${path.module}/values/cilium.yaml.tftpl", {
     hubble_relay_enabled = var.hubble_relay_enabled
     hubble_ui_enabled    = var.hubble_ui_enabled
@@ -246,6 +253,38 @@ resource "libvirt_volume" "system" {
   }
 }
 
+#
+# Zweite Disk: der lokale Speicher des Clusters. Talos legt darauf ein
+# User-Volume an und mountet es nach /var/mnt/local-path (siehe den Patch
+# weiter unten), local-path-provisioner macht daraus die Default-StorageClass.
+#
+# Getrennt von der System-Disk aus einem Grund, der nichts mit Geschwindigkeit
+# zu tun hat - physisch ist es dieselbe SSD des Hypervisors. Es geht um die
+# Kopplung: Auf der EPHEMERAL-Partition laegen Datenbanken sonst neben dem
+# containerd-Image-Cache und den Logs. Laeuft sie voll, setzt das kubelet
+# DiskPressure, evictet Pods und raeumt Images ab - und trifft dabei die
+# Datenbank mit. Zwei Disks machen daraus zwei unabhaengige Ausfaelle.
+#
+# ACHTUNG, zweierlei:
+#
+#   - `capacity` zu aendern ersetzt das Volume. Terraform zerstoert es und legt
+#     ein leeres an; der Inhalt ist weg. Deshalb grosszuegig waehlen, qcow2 ist
+#     duenn alloziert (siehe vm_data_disk_gib).
+#   - `tofu destroy` nimmt diese Disk mit. Sie ist kein Backup-Ziel und ersetzt
+#     keines: Sicherungen gehen nach unraid-kopia-backup ueber NFS.
+#
+resource "libvirt_volume" "data" {
+  name     = "${local.node_name}-data.qcow2"
+  pool     = local.pool_name
+  capacity = var.vm_data_disk_gib * 1024 * 1024 * 1024
+
+  target = {
+    format = {
+      type = "qcow2"
+    }
+  }
+}
+
 # =====================================================================
 # VM
 # =====================================================================
@@ -310,6 +349,24 @@ resource "libvirt_domain" "cp1" {
         # `none` gibt den Cache dem Gast allein (O_DIRECT)
         # `native` nutzt Linux-AIO und setzt O_DIRECT voraus
         #
+        driver = {
+          type  = "qcow2"
+          cache = "none"
+          io    = "native"
+        }
+      },
+      {
+        source = {
+          volume = {
+            pool   = libvirt_volume.data.pool
+            volume = libvirt_volume.data.name
+          }
+        }
+        target = {
+          dev = "vdb"
+          bus = "virtio"
+        }
+        # Gleiche Begruendung wie bei vda: der Gast soll den Cache allein haben.
         driver = {
           type  = "qcow2"
           cache = "none"
@@ -440,6 +497,14 @@ data "talos_machine_configuration" "controlplane" {
     # Muss nach node.yaml.tftpl kommen: räumt das von Talos erzeugte
     # HostnameConfig-Dokument weg, das mit dem dortigen Hostnamen kollidiert.
     file("${path.module}/patches/hostname.yaml"),
+
+    #
+    # Die zweite Disk als User-Volume. Eigenes Dokument, kein Merge in
+    # v1alpha1.Config - deshalb ein eigener Patch.
+    #
+    templatefile("${path.module}/patches/uservolume.yaml.tftpl", {
+      volume_name = local.local_path_volume
+    }),
 
     templatefile("${path.module}/patches/cluster.yaml.tftpl", {
       pod_subnet     = var.pod_subnet
