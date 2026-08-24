@@ -102,8 +102,9 @@ Zwei Dinge, die beim ersten Mal überraschen:
   gebraucht wird.
 
 Und der Vorbehalt, der dazugehört: Diese Disk ist **kein Backup und ersetzt
-keins**. `tofu destroy` nimmt sie mit. Sicherungen gehen über NFS nach
-`unraid-kopia-backup`, bei Datenbanken als Dump und nicht als Dateikopie.
+keins**. `tofu destroy` nimmt sie mit. Ein Sicherungsweg aus dem Cluster heraus
+steht noch aus; wenn er kommt, gehört er nach Kopia auf dem Unraid-Host — bei
+Datenbanken als Dump und nicht als Dateikopie.
 
 ## Zugang
 

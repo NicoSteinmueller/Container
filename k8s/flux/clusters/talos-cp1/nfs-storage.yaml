@@ -84,9 +84,8 @@ spec:
       #
       # Auch mit CRDs waere wenig gewonnen: Der Treiber "schnappschusst" NFS
       # per tar in eine zweite Datei auf demselben Share. Das ist eine Kopie,
-      # keine Momentaufnahme - fuer Sicherungen ist Kopia der Weg (siehe das
-      # PV unraid-kopia-backup unten). Ein Sidecar weniger zaehlt ausserdem
-      # in einem Node mit 4 GB.
+      # keine Momentaufnahme - fuer Sicherungen ist Kopia der Weg. Ein
+      # Sidecar weniger zaehlt ausserdem in einem Node mit 4 GB.
       #
       enableSnapshotter: false
 
