@@ -3,6 +3,11 @@ kind: Namespace
 metadata:
   name: {{ .Values.namespace }}
   labels:
+    # Zone: welcher Ingress-Controller diesen Namespace bedienen darf.
+    # Ausgewertet wird das Label noch von niemandem - der Wächter dazu war
+    # Kyverno, und der kam mit dem Plattform-Stack weg. Bis er zurück ist,
+    # ist es eine Markierung, keine Kontrolle.
+    homelab.io/zone: {{ .Values.zone }}
     # Pod Security Admission: verweigert jedes Deployment/Pod-Update, das nicht
     # den "restricted" Anforderungen entspricht (non-root, keine Privilege
     # Escalation, ALL Capabilities gedroppt, RuntimeDefault-Seccomp, ...).

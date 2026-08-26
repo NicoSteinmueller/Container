@@ -11,8 +11,8 @@ Als Helm-Chart (`chart/`) statt Kustomize – der Grund ist derselbe wie beim Do
 | `Chart.yaml` | Metadaten (Name, Version). |
 | `values.yaml` | Sichere Voreinstellung: kein Ingress, `networkPolicy.ingressControllerNamespace` leer – niemand darf whoami ansprechen, solange keine Umgebung das gezielt öffnet. |
 | `values-minikube.yaml` | Lokales Testsetup: NGINX-Ingress, Host `whoami.k8s.local`, kein TLS. |
-| `values-prod.yaml` | Produktiv-Cluster (talos-cp1). **Aktuell:** `service.type: NodePort` auf Port `30083` – direkt im LAN erreichbar, ohne Ingress/Hostname/TLS. Die Traefik-Ingress-Variante (`ingressClassName: internal`, Host `whoami.nico-steinmueller.de`) steht auskommentiert für den nächsten Schritt bereit. |
-| `templates/namespace.yaml` | Eigener Namespace `whoami`, Label `pod-security.kubernetes.io/enforce: restricted`. |
+| `values-prod.yaml` | Produktiv-Cluster (talos-cp1). `service.type: ClusterIP` plus Ingress über `ingressClassName: internal`, Host `whoami.k8s.nico-steinmueller.de`. TLS noch aus: Traefik liefert bis zur internen CA sein selbstsigniertes Zertifikat aus. |
+| `templates/namespace.yaml` | Eigener Namespace `whoami`, Labels `pod-security.kubernetes.io/enforce: restricted` und `homelab.io/zone` (aus `zone`, siehe Template-Kommentar). |
 | `templates/deployment.yaml` | Workload: Image `traefik/whoami:v1.12.0`, per Digest gepinnt, Security-Context (read-only Filesystem, non-root 1000:1000, alle Capabilities gedroppt, Seccomp `RuntimeDefault`), Liveness-/Readiness-Probes. |
 | `templates/service.yaml` | DNS-Name `whoami.whoami.svc.cluster.local`. `service.type`/`service.nodePort` steuern `ClusterIP` (Default) vs. `NodePort`. |
 | `templates/networkpolicy.yaml` | Default-Deny + Egress nur zu CoreDNS. Ingress erlaubt entweder nur vom `networkPolicy.ingressControllerNamespace` (Ingress-Betrieb) oder – bei `service.type: NodePort` – ohne Quellen-Einschränkung auf Port 80. Eine `ipBlock`-Beschränkung wäre technisch möglich (die frühere Begründung, Cilium werte ipBlock bei NodePort-Traffic nicht aus, war aus dem Egress-Fall übertragen und ist widerlegt – siehe Template-Kommentar); sie bleibt bei diesem Testdienst bewusst weg. |
@@ -32,7 +32,7 @@ helm upgrade --install whoami k8s/whoami/chart \
   -f k8s/whoami/chart/values-minikube.yaml
 ```
 
-**Im Produktiv-Cluster (talos-cp1):** über Flux, nicht von Hand – siehe `k8s/flux/clusters/talos-cp1/whoami.yaml` und `k8s/flux/clusters/talos-cp1/README.md`. Push auf `master` reicht. Erreichbar danach unter `http://<node-ip>:30083` aus dem LAN.
+**Im Produktiv-Cluster (talos-cp1):** über Flux, nicht von Hand – siehe `k8s/flux/clusters/talos-cp1/whoami.yaml` und `k8s/flux/clusters/talos-cp1/README.md`. Push auf den Sync-Branch reicht. Erreichbar danach unter `https://whoami.k8s.nico-steinmueller.de` aus dem LAN – der Name muss dort auf die LAN-Adresse des Nodes zeigen, und der Namespace `whoami` muss in der Namespace-Liste von ingress-internal stehen.
 
 ## Sicherheits-Mapping gegenüber Docker Compose
 

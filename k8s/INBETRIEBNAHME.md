@@ -13,9 +13,11 @@ Was bewusst *nicht* Teil der Inbetriebnahme ist, sondern später kommt, steht in
 > **Stand: dieses Dokument beschreibt mehr, als es derzeit gibt.**
 >
 > Die Schritte 0 bis 3 lassen sich heute abarbeiten: Unraid-Host, Edge-VM,
-> Talos-Node, Flux. Ab Schritt 4 setzt der Ablauf den Plattform-Stack voraus —
-> Ingress, interne CA, Kyverno, CrowdSec im Cluster. Der lag im Modul
-> `k8s/platform`, ist entfernt worden und soll als Flux-Manifest wiederkommen.
+> Talos-Node, Flux. Storage und der **interne** Ingress sind seither
+> zurückgekommen, als Flux-Manifest statt als Terraform-Modul. Ab Schritt 4
+> setzt der Ablauf den Rest des Plattform-Stacks voraus — interne CA,
+> ingress-public, Kyverno, CrowdSec im Cluster. Der lag im Modul
+> `k8s/platform`, ist entfernt worden und soll ebenso wiederkommen.
 >
 > Die betroffenen Schritte bleiben trotzdem hier stehen. Sie beschreiben, was
 > der Wiederaufbau zu leisten hat, und die Begründungen darin sind mit dem Code
@@ -317,17 +319,27 @@ Alles auf `Ready`, dann laufen whoami, Headlamp, metrics-server und Reloader.
 Bis vor Kurzem stand hier das Modul `k8s/platform`: Namespaces,
 NetworkPolicies, IngressClasses, local-path-provisioner, cert-manager, step-ca,
 Traefik als `public`/`internal`, Kyverno, CrowdSec und der kubelet-csr-approver.
-Es ist entfernt worden und soll als Flux-Manifest wiederkommen.
+Es ist entfernt worden und kommt stückweise als Flux-Manifest zurück.
 
-Vier Folgen, die den Rest dieses Dokuments betreffen:
+**Zurück sind:** Storage (`local-path.yaml`, `nfs-storage.yaml`) und der
+interne Ingress mit Namespaces, NetworkPolicies und der IngressClass
+`internal` (`ingress-internal.yaml`). Damit sind zwei der früheren Sperren weg:
+PVCs binden, und Dienste hängen unter Hostnamen statt an NodePorts.
 
-- **Keine StorageClass.** Jeder PVC bleibt `Pending`. Kein zustandsbehafteter
-  Dienst kann starten — das ist die Sperre für Schritt 7.
-- **Kein Ingress-Controller, keine interne CA.** Erreichbar ist der Cluster nur
-  über NodePorts im LAN, per HTTP. Damit hat die Edge-VM keine Gegenstelle.
+**Noch offen, und was daran hängt:**
+
+- **Keine interne CA.** Traefik liefert sein selbstsigniertes Zertifikat aus,
+  der Browser warnt. Wichtiger: Ohne step-ca gibt es das Client-Zertifikat
+  nicht, mit dem sich die Edge-VM ausweist — Schritt 4 hängt daran.
+- **Kein `ingress-public`.** Die Edge-VM hat damit weiterhin keine
+  Gegenstelle; eine Portfreigabe führte ins Leere. Beim Bau dieses zweiten
+  Controllers muss `ingress-internal` auf `hostNetwork` zurück, samt Sysctl auf
+  dem Node — die Begründung steht in
+  [flux/clusters/talos-cp1/ingress-internal.yaml](flux/clusters/talos-cp1/ingress-internal.yaml).
 - **Kein Kyverno.** Die Regel auf `ingressClassName: public` gibt es damit
-  nicht. Die Reloader-Annotation, die Kyverno ebenfalls setzte, wird nicht
-  mehr gebraucht — Reloader regelt das seit dem Wegfall selbst (siehe
+  nicht. Solange die Klasse `public` gar nicht existiert, fehlt ihr auch der
+  Anwendungsfall. Die Reloader-Annotation, die Kyverno ebenfalls setzte, wird
+  nicht mehr gebraucht — Reloader regelt das seit dem Wegfall selbst (siehe
   [flux/README.md](flux/README.md), Abschnitt Rotation).
 - **Kein CSR-Genehmiger.** `kubelet_server_certs` in `vm/talos` muss aus
   bleiben, sonst bricht der Apply dort ab.
@@ -389,8 +401,11 @@ und `terraform apply`. Der **Firewall**-Bouncer bleibt noch aus.
 4. **IPv6 getrennt prüfen** — „Host komplett freigeben" öffnet mehr als
    gedacht. UPnP aus, MyFRITZ!-Fernzugriff aus.
 5. Interne Namen **nur im Heimnetz** auflösen (AdGuard oder Fritzbox), nicht
-   per DynDNS: `dashboard.domain.de` → `192.168.178.222`. Sie zeigen auf die
-   LAN-Adresse des Nodes und haben im öffentlichen DNS nichts verloren.
+   per DynDNS: `dashboard.<interne-domain>` und `whoami.<interne-domain>` auf
+   die LAN-Adresse des Nodes. Im öffentlichen DNS haben sie nichts verloren.
+   Gibt es dort schon einen Wildcard-Eintrag auf den Unraid-Host, müssen diese
+   Namen explizit gesetzt werden — sonst landen sie beim Traefik im
+   Docker-Netz des Hosts.
 
 ```bash
 vm/edge/verify/proxy-test.sh cloud.domain.de
@@ -401,10 +416,11 @@ Log **nicht** auftauchen, und ein fremder Hostname muss im TLS-Handshake enden.
 
 ## 6. Dashboard und Metriken
 
-Das Dashboard steht mit Schritt 3 schon — derzeit allerdings über NodePort
-`30080` und per HTTP, nicht unter `https://dashboard.domain.de`: Der Hostname
-setzt einen Ingress-Controller voraus, den es gerade nicht gibt. Aufrufen also
-unter `http://<node-ip>:30080` — und dort nach einem Token gefragt werden:
+Das Dashboard steht mit Schritt 3 schon und hängt seit `ingress-internal.yaml`
+unter seinem Hostnamen, nicht mehr am NodePort `30080`. Das Zertifikat ist
+vorerst das selbstsignierte von Traefik — der Browser warnt, bis die interne CA
+steht. Aufrufen unter `https://dashboard.<interne-domain>` — und dort nach einem
+Token gefragt werden:
 
 ```bash
 # Der Alltagsfall: lesen. Kommt an keine Secrets.
@@ -465,17 +481,27 @@ Danach `--kubelet-insecure-tls` aus den Werten des metrics-server nehmen.
 > `Pending`, und kein Dienst mit Daten kommt hoch — siehe Ende von Schritt 3.
 > Der Abschnitt zum RAM weiter unten gilt unabhängig davon.
 
-Sobald Namespaces, NetworkPolicies und IngressClasses wieder stehen, braucht
-ein Ingress nur noch die richtige Klasse:
+Namespaces, NetworkPolicies und die Klasse `internal` stehen wieder; ein
+Ingress braucht nur noch die richtige Klasse:
 
 ```yaml
 spec:
-  ingressClassName: public     # nextcloud, immich  -> aus dem Internet
-  # ingressClassName: internal # paperless          -> nur aus dem LAN
+  ingressClassName: internal   # paperless          -> nur aus dem LAN
+  # ingressClassName: public   # nextcloud, immich  -> aus dem Internet
 ```
 
-`public` in einem internen Namespace lehnt Kyverno ab — das ist Absicht und
-getestet.
+`public` ist dabei noch keine Option: Die Klasse existiert nicht, solange
+`ingress-public` fehlt. Und zwei Handgriffe kommen je Dienst dazu, die es
+früher nicht gab — beide wegen `rbac.namespaced` am Controller:
+
+- der neue Namespace muss in `providers.kubernetesIngress.namespaces` **und**
+  `providers.kubernetesCRD.namespaces` in
+  [flux/clusters/talos-cp1/ingress-internal.yaml](flux/clusters/talos-cp1/ingress-internal.yaml),
+- und er braucht eine NetworkPolicy, die `traefik-internal` hereinlässt —
+  sonst greift sein eigenes Default-Deny.
+
+`public` in einem internen Namespace lehnte früher Kyverno ab; die Regel kommt
+mit ihm zurück.
 
 **Pro migriertem Dienst, in dieser Reihenfolge:**
 
@@ -534,19 +560,23 @@ Danach in `vm/edge/terraform.tfvars` den Egress zumachen: Counter lesen
 | `HelmRelease` oder `Kustomization` bleibt auf `False` | `kubectl -n flux-system describe helmrelease <name>`; bei `homelab-secrets` fast immer die drei Bootstrap-Secrets, siehe [flux/README.md](flux/README.md) |
 | Secret im Cluster enthält wörtlich `ENC[AES256_GCM,…]` | Der `decryption`-Block der Kustomization greift nicht — der age-Schlüssel in `sops-age` passt nicht zu `.sops.yaml` |
 | PVC bleibt `Pending` | Es gibt keine StorageClass, siehe Ende von Schritt 3. `kubectl get storageclass` ist leer |
-| Ingress antwortet nicht *(setzt Plattform-Stack voraus)* | `kubectl -n traefik-public logs deploy/traefik-public`; fehlt das Secret `ingress-public-tls`, dann `kubectl -n step-ca logs job/ingress-cert-bootstrap` |
-| Alles tot nach Policy-Änderung *(dito)* | `kubectl -n traefik-public delete networkpolicy allow-from-edge` |
+| Ingress antwortet nicht | `kubectl -n traefik-internal logs deploy/traefik-internal`. Kommt dort nichts an, ist es fast immer die NetworkPolicy: `kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop`. Notbremse: `kubectl -n traefik-internal delete networkpolicy allow-from-lan` |
+| Ingress wird gar nicht bedient, Objekt sieht richtig aus | Sein Namespace steht nicht in `providers.kubernetesIngress.namespaces` — mit `rbac.namespaced` sieht der Controller nur die gelisteten |
+| Traefik in CrashLoop mit `bind: permission denied` | Es läuft mit `hostNetwork` statt `hostPort` — dann braucht der Node den Sysctl `net.ipv4.ip_unprivileged_port_start=0`. Siehe Kopf von `ingress-internal.yaml` |
+| Browser warnt vor dem Zertifikat | Erwartet: Traefik liefert sein selbstsigniertes aus, solange cert-manager und step-ca fehlen |
+| Alles tot nach Policy-Änderung *(ingress-public, sobald es steht)* | `kubectl -n traefik-public delete networkpolicy allow-from-edge` |
 | `kubectl logs`/`exec` brechen weg, Node ist aber Ready | Kubelet-CSR ungenehmigt. `kubectl get csr`, dann `kubectl -n kube-system logs -l app.kubernetes.io/name=kubelet-csr-approver`. Notbremse: `kubelet_server_certs = false` in `vm/talos`, apply, reboot |
 | `apply` in `vm/talos` bricht ab mit „kubelet server certificate rotation is enabled, but CSR is not approved" | `kubelet_server_certs` wurde gesetzt, ohne dass ein CSR-Genehmiger im Cluster läuft — den gibt es derzeit nicht, siehe Schritt 6 |
 | `kubectl top node` sagt „Metrics API not available" | `kubectl -n kube-system logs deploy/metrics-server` |
-| Dashboard nicht erreichbar, Pod läuft | NodePort `30080` statt Hostname, und HTTP statt HTTPS — ein Ingress-Controller ist nicht installiert |
+| Dashboard nicht erreichbar, Pod läuft | Löst der Hostname auf die LAN-Adresse des Nodes auf? Ein Wildcard-Eintrag auf den Unraid-Host zieht sonst vor. Der NodePort `30080` ist weg |
 | Dashboard zeigt überall „Forbidden" | Token abgelaufen oder von der falschen Identität. Neu: `kubectl -n headlamp create token headlamp --duration=8h` |
 
 ## Was danach noch fehlt
 
-Zuerst der Plattform-Stack selbst — Storage, Ingress, interne CA, Kyverno —
-diesmal als Flux-Manifest statt als Terraform-Modul. Ohne ihn bleibt der
-Cluster bei dem stehen, was Schritt 3 aufstellt.
+Vom Plattform-Stack fehlen noch die interne CA (cert-manager, step-ca),
+`ingress-public` als Gegenstelle der Edge-VM, Kyverno und CrowdSec — diesmal
+als Flux-Manifest statt als Terraform-Modul. Storage und der interne Ingress
+sind zurück.
 
 Danach unverändert offen: kein Backup, keine NFS-Exporte vom Array, kein
 Monitoring — „Nächste Schritte" im

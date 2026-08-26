@@ -1,0 +1,359 @@
+#
+# ingress-internal - der erste Ingress-Controller dieses Clusters.
+#
+# Erreichbar ausschliesslich aus dem Heimnetz. Was aus dem Internet kommen
+# soll, braucht einen zweiten Controller hinter der Edge-VM (ingress-public);
+# der steht noch aus, und deshalb legt diese Datei auch nur die IngressClass
+# `internal` an, nicht das Klassenpaar. Eine Klasse ohne Controller waere eine
+# Falle: Ein Ingress mit `ingressClassName: public` wuerde angenommen und nie
+# bedient.
+#
+# Die Vertrauensgrenze ist hier das Heimnetz. Kein Client-Zertifikat, keine
+# WAF, kein CrowdSec-Bouncer - wer im LAN steht, hat ohnehin mehr Wege als
+# diesen.
+#
+# Was noch fehlt und bewusst nicht hier steht:
+#
+#   - cert-manager und step-ca. Bis dahin liefert Traefik sein eingebautes,
+#     selbstsigniertes Zertifikat aus. Der Browser warnt; verschluesselt ist
+#     die Verbindung trotzdem, und das ist mehr als der NodePort per HTTP
+#     vorher. Wenn die interne CA steht, wechselt hier nur das Zertifikat.
+#   - Kyverno. Die Regel "ingressClassName: public nur in Namespaces mit
+#     homelab.io/zone=public" gibt es damit nicht. Solange die Klasse `public`
+#     gar nicht existiert, fehlt ihr auch der Anwendungsfall.
+#
+---
+#
+# PodSecurity `privileged`, und das ist hier kein Schlendrian: Der Controller
+# belegt hostPort 80 und 443 auf dem Node, und PodSecurity zaehlt hostPorts
+# bereits ab `baseline` als Verstoss. Ein Ingress-Controller ohne die
+# Standard-Ports waere aber keiner.
+#
+# `warn` und `audit` bleiben deshalb auf `baseline` stehen: Jede andere
+# Abweichung - privilegierte Container, Host-Namespaces, hostPath - taucht
+# weiterhin als Warnung auf. Nur der hostPort ist die Ausnahme, und der
+# Namespace enthaelt nichts als diesen Controller.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: traefik-internal
+  labels:
+    homelab.io/zone: internal
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/audit: baseline
+
+---
+#
+# Die IngressClass.
+#
+# Sie wird hier angelegt und nicht vom Chart: Mit namespaced RBAC
+# (`rbac.namespaced` unten) darf der Controller keine clusterweiten Objekte
+# anlegen oder lesen. Der Klassenname steht deshalb statisch in seiner
+# Konfiguration (`providers.kubernetesIngress.ingressClass`), und Traefik
+# vergleicht ihn direkt mit `spec.ingressClassName` des Ingress - es schlaegt
+# dieses Objekt hier gar nicht nach.
+#
+# Gebraucht wird es trotzdem: `kubectl get ingressclass` soll zeigen, was es
+# gibt, und eine spaetere Kyverno-Regel prueft gegen diesen Namen.
+#
+# Bewusst ohne `is-default-class`-Annotation. Eine Default-Klasse waere genau
+# der Fall, den das Konzept verhindern will: ein Ingress ohne
+# `ingressClassName`, der irgendwo landet.
+#
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: internal
+  labels:
+    homelab.io/zone: internal
+  annotations:
+    homelab.io/beschreibung: >-
+      Nur aus dem Heimnetz erreichbar. Kein Weg aus dem Internet hierher.
+spec:
+  controller: traefik.io/ingress-controller
+
+---
+#
+# Eingehend nur aus dem LAN.
+#
+# Der Grund ist ein Nebeneffekt des Charts: Es aktiviert die Dashboard-API auf
+# dem Port `traefik` (8080). Der ist weder ueber hostPort noch ueber einen
+# Service erreichbar - aber jeder Pod im Cluster koennte die Pod-Adresse
+# ansprechen. Mit dieser Policy nicht mehr.
+#
+# Dass die ipBlock-Regel hier greift, ist nicht selbstverstaendlich und im
+# Repo schon einmal falsch verallgemeinert worden: Cilium wertet ipBlock nicht
+# gegen die reservierten Identitaeten `host` und `remote-node` aus. Ein
+# LAN-Client, dessen Paket ueber hostPort hereinkommt, traegt aber `world` -
+# und dagegen greift ipBlock sehr wohl (nachgemessen fuer NodePort, siehe
+# k8s/whoami/chart/templates/networkpolicy.yaml).
+#
+# Die Health-Probes des Kubelets fallen nicht darunter: Sie kommen als `host`,
+# und Cilium laesst den lokalen Host per Voreinstellung zu Pods durch.
+#
+# Sollte der Ingress nach dem Anwenden nicht mehr antworten, ist das die erste
+# Stelle zum Nachsehen:
+#
+#   kubectl -n traefik-internal delete networkpolicy allow-from-lan
+#
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: traefik-internal
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-lan
+  namespace: traefik-internal
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 192.168.178.0/24
+
+
+#
+# Kein Egress-Default-Deny in diesem Namespace, und das ist eine Entscheidung,
+# keine Luecke: Der Controller muss die Kubernetes-API erreichen, und die
+# liegt hinter einer ClusterIP, deren Backend die Node-Adresse ist - also die
+# Identitaet `host`, gegen die ipBlock-Regeln nicht greifen. Eine Egress-Policy
+# hier waere schwer zu schreiben und noch schwerer zu debuggen. Die Zusage
+# "kein Pod erreicht das LAN" gehoert ohnehin zu den Anwendungs-Namespaces;
+# dort kommt sie mit dem ersten migrierten Dienst.
+#
+
+---
+#
+# Fremder Chart, deshalb eine eigene HelmRepository - wie bei headlamp und
+# metrics-server.
+#
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: traefik
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://traefik.github.io/charts
+
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: traefik-internal
+  namespace: flux-system
+spec:
+  interval: 10m
+  releaseName: traefik-internal
+  targetNamespace: traefik-internal
+  storageNamespace: traefik-internal
+  chart:
+    spec:
+      chart: traefik
+      version: "41.3.0"
+      sourceRef:
+        kind: HelmRepository
+        name: traefik
+        namespace: flux-system
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    deployment:
+      kind: Deployment
+      replicas: 1
+
+    #
+    # Recreate statt RollingUpdate - sonst blockiert sich jedes Upgrade
+    # selbst.
+    #
+    # Der Scheduler behandelt hostPorts wie Node-Ports, und der Node hat nur
+    # einen Satz davon. Die Chart-Voreinstellung ist maxUnavailable: 0 /
+    # maxSurge: 1: Der neue Pod soll starten, BEVOR der alte geht - und bleibt
+    # dann Pending mit
+    #
+    #   0/1 nodes are available: 1 node(s) didn't have free ports for the
+    #   requested pod ports
+    #
+    # waehrend der alte auf den neuen wartet. Ein Deadlock, der erst beim
+    # naechsten Upgrade auffaellt und wie ein Scheduling-Problem aussieht.
+    #
+    # Der Preis ist eine kurze Luecke beim Rollout. Bei einem Ingress auf
+    # einem Ein-Node-Cluster ist die ohnehin unvermeidbar.
+    #
+    updateStrategy:
+      type: Recreate
+      rollingUpdate: null
+
+    podSecurityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+
+    #
+    # hostPort statt hostNetwork - und das ist der Unterschied zum frueheren
+    # Plattform-Stack, deshalb ausfuehrlich:
+    #
+    # Damals liefen zwei Controller auf einem Node mit zwei Beinen (LAN und
+    # DMZ). Beide brauchten 443, nebeneinander ging das nur ueber je eine
+    # eigene Node-Adresse - also `hostIP`. Das Chart schreibt `hostIP` aber an
+    # ZWEI Stellen: in den containerPort (gewollt) und in die
+    # Entrypoint-Adresse (templates/_podtemplate.tpl:223, in Chart 41.3.0
+    # unveraendert). Im Pod-Netz gibt es die Node-Adresse nicht, Traefik
+    # scheitert dann beim Start an
+    #
+    #   error opening listener: listen tcp 192.168.178.230:8443:
+    #     bind: cannot assign requested address
+    #
+    # Der Ausweg war hostNetwork - und der kostete den Sysctl
+    # net.ipv4.ip_unprivileged_port_start=0 auf dem Node, weil Traefik als UID
+    # 65532 sonst 80 und 443 nicht binden darf (capabilities.add:
+    # [NET_BIND_SERVICE] hilft nicht: ein Nicht-Root-Prozess behaelt
+    # Capabilities ueber execve nur per File-Capability, und das Image hat
+    # keine).
+    #
+    # Heute hat der Node ein Bein und dieser Cluster einen Controller. Damit
+    # faellt der Grund fuer `hostIP` weg - und ohne `hostIP` faellt der Grund
+    # fuer hostNetwork weg, und ohne hostNetwork faellt der Sysctl weg:
+    # Traefik bindet 8000/8443 im eigenen Pod-Netz, wo es kein Privileg
+    # braucht, und Cilium bildet Node:80/443 darauf ab. Das kann es, weil
+    # kube-proxy durch Cilium ersetzt ist (vm/talos/values/cilium.yaml.tftpl,
+    # "Dienste von aussen erreicht man spaeter ueber hostPort").
+    #
+    # Der Node hat derzeit nur die LAN-Adresse; ohne `hostIP` lauscht der
+    # hostPort auf allen Adressen des Nodes, was heute dasselbe ist. Sobald
+    # das DMZ-Bein und ingress-public zurueckkommen, ist es das nicht mehr -
+    # DANN ist die Stelle, an der `hostIP` und mit ihm hostNetwork und der
+    # Sysctl zurueckmuessen. Wer das hier liest, bevor er den zweiten
+    # Controller baut: Diese Datei ist die zu aendernde.
+    #
+    ports:
+      web:
+        port: 8000
+        hostPort: 80
+        expose:
+          default: false
+        # Nur zum Weiterleiten. Ein Passwortfeld auf einer unverschluesselten
+        # Verbindung im eigenen LAN ist immer noch ein Passwortfeld auf einer
+        # unverschluesselten Verbindung.
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
+              permanent: true
+
+      websecure:
+        port: 8443
+        hostPort: 443
+        expose:
+          default: false
+        http:
+          tls:
+            enabled: true
+        forwardedHeaders:
+          # Vor diesem Controller steht kein Proxy. Ein vom Client gesetzter
+          # X-Forwarded-For darf hier deshalb niemals geglaubt werden - er
+          # wuerde in den Logs der Anwendungen als echte Herkunft auftauchen.
+          trustedIPs: []
+          insecure: false
+
+    #
+    # Kein Service: Erreicht wird der Controller ueber den hostPort, und ein
+    # Service, den niemand anspricht, ist ein Objekt, das beim Lesen erklaert
+    # werden muss. Folge davon: `kubectl get ingress` zeigt keine ADDRESS -
+    # das Chart traegt sie nur aus einem eigenen Service nach.
+    #
+    service:
+      enabled: false
+
+    #
+    # Namespaced RBAC: Role und RoleBinding je Namespace statt einer
+    # ClusterRole. Der Controller sieht damit genau die Namespaces, die unten
+    # stehen - und Secrets nur dort. Bei einem Ingress-Controller ist das kein
+    # Feinschliff: Wer ihn uebernimmt, hat sonst Lesezugriff auf die Secrets
+    # des ganzen Clusters.
+    #
+    rbac:
+      enabled: true
+      namespaced: true
+
+    # Die Klasse steht als Objekt weiter oben - mit namespaced RBAC duerfte
+    # das Chart sie ohnehin nicht anlegen.
+    ingressClass:
+      enabled: false
+
+    providers:
+      kubernetesIngress:
+        enabled: true
+        ingressClass: internal
+        allowExternalNameServices: false
+        #
+        # Jeder neue Namespace muss hier eingetragen werden - das ist die
+        # Bremse, die namespaced RBAC einbaut, und sie ist gewollt: Ein
+        # Ingress in einem nicht gelisteten Namespace wird schlicht nicht
+        # bedient, statt still bedient zu werden.
+        #
+        namespaces:
+          - headlamp
+          - whoami
+
+      kubernetesCRD:
+        enabled: true
+        allowCrossNamespace: false
+        allowExternalNameServices: false
+        namespaces:
+          - headlamp
+          - whoami
+
+      kubernetesGateway:
+        enabled: false
+
+    #
+    # Das Dashboard bleibt aus. Es kennt keine Authentifizierung, und "nur im
+    # LAN erreichbar" ist keine.
+    #
+    ingressRoute:
+      dashboard:
+        enabled: false
+      healthcheck:
+        enabled: false
+
+    log:
+      level: INFO
+
+    accessLog:
+      enabled: true
+      format: json
+
+    resources:
+      requests:
+        cpu: 50m
+        memory: 96Mi
+      limits:
+        memory: 192Mi
