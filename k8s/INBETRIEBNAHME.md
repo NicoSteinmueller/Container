@@ -494,9 +494,11 @@ spec:
 `ingress-public` fehlt. Und zwei Handgriffe kommen je Dienst dazu, die es
 früher nicht gab — beide wegen `rbac.namespaced` am Controller:
 
-- der neue Namespace muss in `providers.kubernetesIngress.namespaces` **und**
-  `providers.kubernetesCRD.namespaces` in
-  [flux/clusters/talos-cp1/ingress-internal.yaml](flux/clusters/talos-cp1/ingress-internal.yaml),
+- der neue Namespace muss an drei Stellen in
+  [flux/clusters/talos-cp1/ingress-internal.yaml](flux/clusters/talos-cp1/ingress-internal.yaml)
+  stehen: `providers.kubernetesIngress.namespaces`,
+  `providers.kubernetesCRD.namespaces` und eine RoleBinding auf die ClusterRole
+  `traefik-internal-namespaced`,
 - und er braucht eine NetworkPolicy, die `traefik-internal` hereinlässt —
   sonst greift sein eigenes Default-Deny.
 
@@ -561,7 +563,8 @@ Danach in `vm/edge/terraform.tfvars` den Egress zumachen: Counter lesen
 | Secret im Cluster enthält wörtlich `ENC[AES256_GCM,…]` | Der `decryption`-Block der Kustomization greift nicht — der age-Schlüssel in `sops-age` passt nicht zu `.sops.yaml` |
 | PVC bleibt `Pending` | Es gibt keine StorageClass, siehe Ende von Schritt 3. `kubectl get storageclass` ist leer |
 | Ingress antwortet nicht | `kubectl -n traefik-internal logs deploy/traefik-internal`. Kommt dort nichts an, ist es fast immer die NetworkPolicy: `kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop`. Notbremse: `kubectl -n traefik-internal delete networkpolicy allow-from-lan` |
-| Ingress wird gar nicht bedient, Objekt sieht richtig aus | Sein Namespace steht nicht in `providers.kubernetesIngress.namespaces` — mit `rbac.namespaced` sieht der Controller nur die gelisteten |
+| Ingress wird gar nicht bedient, Objekt sieht richtig aus, Traefik antwortet mit 404 | Zwei Kandidaten: Sein Namespace fehlt in `providers.kubernetesIngress.namespaces` oder hat keine RoleBinding. Oder — falls jemand `rbac.namespaced: true` gesetzt hat — greift `spec.ingressClassName` gar nicht mehr, siehe Abschnitt „RBAC von Hand" in [flux/clusters/talos-cp1/README.md](flux/clusters/talos-cp1/README.md) |
+| `RoleBinding ... cannot change roleRef` beim Apply | Eine gleichnamige Bindung zeigt noch auf eine `Role` statt auf die `ClusterRole`. `roleRef` ist unveränderlich — alte löschen oder unter eigenem Namen anlegen |
 | Traefik in CrashLoop mit `bind: permission denied` | Es läuft mit `hostNetwork` statt `hostPort` — dann braucht der Node den Sysctl `net.ipv4.ip_unprivileged_port_start=0`. Siehe Kopf von `ingress-internal.yaml` |
 | Browser warnt vor dem Zertifikat | Erwartet: Traefik liefert sein selbstsigniertes aus, solange cert-manager und step-ca fehlen |
 | Alles tot nach Policy-Änderung *(ingress-public, sobald es steht)* | `kubectl -n traefik-public delete networkpolicy allow-from-edge` |

@@ -125,13 +125,56 @@ Adresse, also `hostIP`, also `hostNetwork`, also den Sysctl.
 |---|---|
 | Von außen nur aus dem LAN | NetworkPolicy `allow-from-lan` (`ipBlock` auf das Heimnetz) |
 | An die Anwendungen nur über den Controller | `default-deny-ingress` je Namespace plus eine Regel auf `traefik-internal` |
-| Nur in gelisteten Namespaces | `rbac.namespaced: true` — Role statt ClusterRole, je Namespace einzeln |
+| Secrets nur in drei Namespaces | eigene RBAC statt der des Charts, siehe unten |
 
 Der letzte Punkt ist die Bremse, die man beim nächsten Dienst spürt: Ein neuer
-Namespace muss in `providers.kubernetesIngress.namespaces` **und**
-`providers.kubernetesCRD.namespaces` eingetragen werden. Sonst wird sein
-Ingress schlicht nicht bedient — was besser ist als still bedient zu werden,
-aber beim ersten Mal wie ein Fehler aussieht.
+Namespace muss an **drei** Stellen stehen — in
+`providers.kubernetesIngress.namespaces`, in `providers.kubernetesCRD.namespaces`
+und als RoleBinding. Fehlt die Bindung, sieht Traefik den Namespace nicht;
+fehlt er in den Listen, schaut Traefik nicht hin.
+
+### RBAC von Hand, und warum
+
+`rbac.namespaced: true` wäre der naheliegende Weg — Role statt ClusterRole,
+Secrets nur in den gelisteten Namespaces. Der Chart koppelt daran aber ein
+zweites Verhalten, und das macht den Ingress unbrauchbar:
+
+```
+rbac.namespaced: true  ->  --providers.kubernetesingress.disableClusterScopeResources=true
+```
+
+Mit diesem Flag holt Traefik die Liste der IngressClasses gar nicht erst. Und
+weil `shouldProcessIngress` bei gesetztem `spec.ingressClassName`
+**ausschließlich** gegen diese Liste prüft, fällt jeder Ingress durch — ohne
+Logzeile, mit 404 am Controller. Übrig bliebe die seit Traefik v2 deprecated
+Annotation `kubernetes.io/ingress.class`, und die greift nur, wenn
+`ingressClassName` ganz fehlt.
+
+Deshalb `rbac.enabled: false`: Dann erzeugt der Chart keine RBAC — und setzt
+das Flag auch nicht, denn es hängt allein an `rbac.namespaced`. Die Rechte
+stehen stattdessen als eigene Objekte in der Datei, aufgeteilt nach dem,
+worauf es ankommt:
+
+| | Rechte |
+|---|---|
+| ClusterRole `traefik-internal-cluster` | `nodes`, `namespaces`, `ingressclasses` — keine Geheimnisse |
+| ClusterRole `traefik-internal-namespaced` | der Rest, **inkl. Secrets** — gebunden nur per RoleBinding je Namespace |
+
+Die zweite ClusterRole wird nirgends clusterweit gebunden. Eine RoleBinding
+darf eine ClusterRole referenzieren, und die Rechte gelten dann nur in ihrem
+Namespace — das spart dreimal dieselbe Regelliste. Die Sicherheitszusage von
+namespaced RBAC bleibt damit erhalten: Wer den Ingress übernimmt, bekommt
+nicht die Secrets des ganzen Clusters dazu.
+
+Der Preis, ehrlich benannt: Diese Regeln spiegeln, was sonst der Chart pflegt
+(`templates/rbac/role.yaml`, hier aus 41.3.0 übernommen). Ändert ein
+Traefik-Update die nötigen Rechte, muss das hier nachziehen — sichtbar, weil
+Traefik dann RBAC-Fehler protokolliert.
+
+Die RoleBindings heißen bewusst `traefik-internal-namespaced` und nicht wie
+der Chart `traefik-internal`: `roleRef` ist unveränderlich, und wo schon eine
+Bindung dieses Namens auf eine *Role* zeigt, scheitert jedes Apply mit
+`cannot change roleRef`.
 
 ### Kein TLS-Aussteller
 

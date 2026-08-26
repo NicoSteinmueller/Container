@@ -136,6 +136,240 @@ spec:
 
 ---
 #
+# RBAC von Hand statt aus dem Chart - und das ist die Stelle, an der dieser
+# Controller sich vom Chart-Normalfall unterscheidet. Der Grund ist eine
+# Kopplung im Chart, die man erst bemerkt, wenn ein Ingress lautlos nicht
+# bedient wird:
+#
+#   `rbac.namespaced: true` setzt zugleich das Flag
+#   --providers.kubernetesingress.disableClusterScopeResources=true.
+#
+# Und damit holt Traefik die Liste der IngressClasses gar nicht erst
+# (pkg/provider/kubernetes/ingress/kubernetes.go):
+#
+#   if !p.DisableIngressClassLookup && !p.DisableClusterScopeResources {
+#       ics, err := client.GetIngressClasses()
+#   ...
+#   if ingress.Spec.IngressClassName != nil {
+#       return slices.ContainsFunc(ingressClasses, ...)   // leere Liste
+#   }
+#
+# Ein Ingress mit `spec.ingressClassName` wird dann gegen eine leere Liste
+# geprueft und faellt durch - ohne Logzeile, mit 404 am Ingress. Uebrig
+# bliebe die seit Traefik v2 deprecated Annotation
+# `kubernetes.io/ingress.class`, und die greift nur, wenn `ingressClassName`
+# ganz fehlt.
+#
+# Der Ausweg: `rbac.enabled: false`. Dann erzeugt das Chart keine RBAC - und
+# emittiert das Flag auch nicht, denn es haengt allein an `rbac.namespaced`.
+# Die Rechte stehen dafuer hier, und zwar aufgeteilt nach dem, worauf es
+# ankommt:
+#
+#   cluster-scoped  nodes, namespaces, ingressclasses   - keine Geheimnisse
+#   namespaced      configmaps, services, endpointslices, pods, SECRETS,
+#                   ingresses, traefik.io-CRDs
+#
+# `secrets` steht in der zweiten Zeile. Genau darum ging es bei namespaced
+# RBAC, und genau das bleibt erhalten: Traefik liest Secrets nur in den drei
+# Namespaces unten, nicht clusterweit. Wer den Ingress uebernimmt, bekommt
+# nicht die Zugangsdaten des ganzen Clusters dazu.
+#
+# Der Preis, ehrlich benannt: Diese Regeln spiegeln, was sonst das Chart
+# pflegt. Aendert ein Traefik-Update die noetigen Rechte, muss das hier
+# nachziehen. Das ist aber der laute Fehlerfall - Traefik protokolliert
+# RBAC-Fehler - und nicht der stille von oben.
+#
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traefik-internal-cluster
+rules:
+  #
+  # `nodes` wird hier nicht gebraucht - NodePortLB ist aus. Es steht
+  # trotzdem drin: Ohne das disableClusterScopeResources-Flag richtet der
+  # Client die Informer fuer Cluster-Ressourcen ein, und ein fehlendes Recht
+  # dort erzeugt Warnschleifen statt einer klaren Fehlermeldung.
+  #
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+  #
+  # Die eine Zeile, um die es geht.
+  #
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingressclasses
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: traefik-internal-cluster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-internal-cluster
+subjects:
+  - kind: ServiceAccount
+    name: traefik-internal
+    namespace: traefik-internal
+
+---
+#
+# Eine ClusterRole, die nirgends clusterweit gebunden wird.
+#
+# Das ist kein Widerspruch, sondern das uebliche Mittel gegen dreimal
+# dasselbe YAML: Eine RoleBinding darf eine ClusterRole referenzieren, und
+# die Rechte gelten dann nur in ihrem Namespace. Ein Namespace mehr ist
+# damit eine RoleBinding mehr, keine kopierte Regelliste.
+#
+# Inhalt ist eins zu eins das, was `rbac.namespaced: true` erzeugt haette -
+# nachgelesen in templates/rbac/role.yaml des Charts 41.3.0.
+#
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traefik-internal-namespaced
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingresses/status
+    verbs:
+      - update
+  - apiGroups:
+      - traefik.io
+    resources:
+      - ingressroutes
+      - ingressroutetcps
+      - ingressrouteudps
+      - middlewares
+      - middlewaretcps
+      - tlsoptions
+      - tlsstores
+      - traefikservices
+      - serverstransports
+      - serverstransporttcps
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+#
+# Je Namespace eine Bindung. Diese Liste und die beiden Namespace-Listen in
+# den Werten unten muessen zusammenpassen: Steht ein Namespace nur dort,
+# sieht Traefik ihn nicht (RBAC fehlt); steht er nur hier, schaut Traefik
+# nicht hin. Beim naechsten migrierten Dienst sind es also drei Stellen.
+#
+# Der Name weicht bewusst von dem ab, den das Chart vergeben wuerde
+# (`traefik-internal`): `roleRef` einer RoleBinding ist unveraenderlich. Wo
+# schon eine Bindung dieses Namens auf eine *Role* zeigt - naemlich aus einer
+# frueheren Release mit `rbac.namespaced: true` -, scheitert jedes Apply mit
+#
+#   RoleBinding ... is invalid: roleRef: ... cannot change roleRef
+#
+# Unter eigenem Namen entsteht sie daneben; die alte raeumt Helm beim Upgrade
+# selbst weg, weil sie nicht mehr gerendert wird.
+#
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: traefik-internal-namespaced
+  namespace: traefik-internal
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-internal-namespaced
+subjects:
+  - kind: ServiceAccount
+    name: traefik-internal
+    namespace: traefik-internal
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: traefik-internal-namespaced
+  namespace: headlamp
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-internal-namespaced
+subjects:
+  - kind: ServiceAccount
+    name: traefik-internal
+    namespace: traefik-internal
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: traefik-internal-namespaced
+  namespace: whoami
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-internal-namespaced
+subjects:
+  - kind: ServiceAccount
+    name: traefik-internal
+    namespace: traefik-internal
+
+---
+#
 # Fremder Chart, deshalb eine eigene HelmRepository - wie bei headlamp und
 # metrics-server.
 #
@@ -293,18 +527,19 @@ spec:
       enabled: false
 
     #
-    # Namespaced RBAC: Role und RoleBinding je Namespace statt einer
-    # ClusterRole. Der Controller sieht damit genau die Namespaces, die unten
-    # stehen - und Secrets nur dort. Bei einem Ingress-Controller ist das kein
-    # Feinschliff: Wer ihn uebernimmt, hat sonst Lesezugriff auf die Secrets
-    # des ganzen Clusters.
+    # Keine RBAC aus dem Chart - sie steht als eigene Objekte weiter oben,
+    # samt Begruendung. Kurz: `rbac.namespaced: true` haette das Flag
+    # disableClusterScopeResources mitgesetzt, und damit funktioniert
+    # `spec.ingressClassName` nicht mehr.
+    #
+    # Den ServiceAccount legt das Chart weiterhin an - der haengt an
+    # `serviceAccount.name`, nicht an `rbac.enabled`.
     #
     rbac:
-      enabled: true
-      namespaced: true
+      enabled: false
 
-    # Die Klasse steht als Objekt weiter oben - mit namespaced RBAC duerfte
-    # das Chart sie ohnehin nicht anlegen.
+    # Die Klasse steht als Objekt weiter oben, damit sie nicht am Lebenszyklus
+    # der Release haengt.
     ingressClass:
       enabled: false
 

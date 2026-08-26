@@ -18,6 +18,23 @@ spec:
       sourceRef:
         kind: GitRepository
         name: flux-system
+      #
+      # Ohne diese Zeile bleibt jede Änderung am Chart oder an den
+      # valuesFiles wirkungslos, und zwar lautlos.
+      #
+      # Die Voreinstellung ist `ChartVersion`: source-controller packt das
+      # Chart nur neu, wenn sich `version` in Chart.yaml ändert. Bei einem
+      # fremden Chart aus einem Helm-Repository ist das richtig. Dieses hier
+      # liegt aber im selben Repo und wird an Ort und Stelle bearbeitet - der
+      # Commit ändert values-prod.yaml, Chart.yaml bleibt bei 0.1.0, und Flux
+      # meldet weiterhin brav `Ready=True` mit dem alten Artefakt.
+      #
+      # Genau das ist hier einmal passiert: Der Ingress war im Repo, Flux war
+      # grün, im Cluster stand nichts. Nachzusehen ist es an der HelmChart,
+      # nicht an der HelmRelease - `kubectl -n flux-system get helmchart`
+      # zeigt die Version des tatsächlich verwendeten Pakets.
+      #
+      reconcileStrategy: Revision
       valuesFiles:
         - k8s/whoami/chart/values.yaml
         - k8s/whoami/chart/values-prod.yaml
