@@ -328,9 +328,12 @@ PVCs binden, und Dienste hängen unter Hostnamen statt an NodePorts.
 
 **Noch offen, und was daran hängt:**
 
-- **Keine interne CA.** Traefik liefert sein selbstsigniertes Zertifikat aus,
-  der Browser warnt. Wichtiger: Ohne step-ca gibt es das Client-Zertifikat
-  nicht, mit dem sich die Edge-VM ausweist — Schritt 4 hängt daran.
+- **Kein Client-Zertifikat für die Edge-VM.** Die Server-Zertifikate kommen
+  von Let's Encrypt (Wildcard, DNS-01 über IONOS), damit ist der Browserpfad
+  erledigt. Let's Encrypt stellt aber nur `serverAuth` aus — die Zusage „hier
+  wird geprüft, DASS das Paket von der Edge kommt" braucht ein
+  Client-Zertifikat. Schritt 4 hängt daran, und die Antwort dort ist offen:
+  eine winzige CA nur für diese beiden Maschinen, oder WireGuard statt mTLS.
 - **Kein `ingress-public`.** Die Edge-VM hat damit weiterhin keine
   Gegenstelle; eine Portfreigabe führte ins Leere. Beim Bau dieses zweiten
   Controllers muss `ingress-internal` auf `hostNetwork` zurück, samt Sysctl auf
@@ -417,10 +420,9 @@ Log **nicht** auftauchen, und ein fremder Hostname muss im TLS-Handshake enden.
 ## 6. Dashboard und Metriken
 
 Das Dashboard steht mit Schritt 3 schon und hängt seit `ingress-internal.yaml`
-unter seinem Hostnamen, nicht mehr am NodePort `30080`. Das Zertifikat ist
-vorerst das selbstsignierte von Traefik — der Browser warnt, bis die interne CA
-steht. Aufrufen unter `https://dashboard.<interne-domain>` — und dort nach einem
-Token gefragt werden:
+unter seinem Hostnamen, nicht mehr am NodePort `30080`. Aufrufen unter
+`https://dashboard.<interne-domain>` — und dort nach einem Token gefragt
+werden:
 
 ```bash
 # Der Alltagsfall: lesen. Kommt an keine Secrets.
@@ -566,7 +568,8 @@ Danach in `vm/edge/terraform.tfvars` den Egress zumachen: Counter lesen
 | Ingress wird gar nicht bedient, Objekt sieht richtig aus, Traefik antwortet mit 404 | Zwei Kandidaten: Sein Namespace fehlt in `providers.kubernetesIngress.namespaces` oder hat keine RoleBinding. Oder — falls jemand `rbac.namespaced: true` gesetzt hat — greift `spec.ingressClassName` gar nicht mehr, siehe Abschnitt „RBAC von Hand" in [flux/clusters/talos-cp1/README.md](flux/clusters/talos-cp1/README.md) |
 | `RoleBinding ... cannot change roleRef` beim Apply | Eine gleichnamige Bindung zeigt noch auf eine `Role` statt auf die `ClusterRole`. `roleRef` ist unveränderlich — alte löschen oder unter eigenem Namen anlegen |
 | Traefik in CrashLoop mit `bind: permission denied` | Es läuft mit `hostNetwork` statt `hostPort` — dann braucht der Node den Sysctl `net.ipv4.ip_unprivileged_port_start=0`. Siehe Kopf von `ingress-internal.yaml` |
-| Browser warnt vor dem Zertifikat | Erwartet: Traefik liefert sein selbstsigniertes aus, solange cert-manager und step-ca fehlen |
+| Browser warnt vor dem Zertifikat | Steht `caServer` noch auf dem Staging-Verzeichnis? Dessen Wurzel kennt kein Browser. Sonst: `kubectl -n traefik-internal logs deploy/traefik-internal \| grep -i acme` |
+| ACME schlägt fehl mit DNS-Fehlern | IONOS-API-Key prüfen (`traefik-ionos` in homelab-secrets, Format `<prefix>.<secret>`). Vorsicht mit Wiederholungen: fünf Fehlversuche je Stunde, dann sperrt Let's Encrypt |
 | Alles tot nach Policy-Änderung *(ingress-public, sobald es steht)* | `kubectl -n traefik-public delete networkpolicy allow-from-edge` |
 | `kubectl logs`/`exec` brechen weg, Node ist aber Ready | Kubelet-CSR ungenehmigt. `kubectl get csr`, dann `kubectl -n kube-system logs -l app.kubernetes.io/name=kubelet-csr-approver`. Notbremse: `kubelet_server_certs = false` in `vm/talos`, apply, reboot |
 | `apply` in `vm/talos` bricht ab mit „kubelet server certificate rotation is enabled, but CSR is not approved" | `kubelet_server_certs` wurde gesetzt, ohne dass ein CSR-Genehmiger im Cluster läuft — den gibt es derzeit nicht, siehe Schritt 6 |
@@ -576,10 +579,10 @@ Danach in `vm/edge/terraform.tfvars` den Egress zumachen: Counter lesen
 
 ## Was danach noch fehlt
 
-Vom Plattform-Stack fehlen noch die interne CA (cert-manager, step-ca),
-`ingress-public` als Gegenstelle der Edge-VM, Kyverno und CrowdSec — diesmal
-als Flux-Manifest statt als Terraform-Modul. Storage und der interne Ingress
-sind zurück.
+Vom Plattform-Stack fehlen noch `ingress-public` als Gegenstelle der Edge-VM,
+Kyverno und CrowdSec — diesmal als Flux-Manifest statt als Terraform-Modul.
+Storage, der interne Ingress und dessen Zertifikate sind zurück; eine interne
+CA braucht es dafür nicht mehr, seit die Zertifikate von Let's Encrypt kommen.
 
 Danach unverändert offen: kein Backup, keine NFS-Exporte vom Array, kein
 Monitoring — „Nächste Schritte" im

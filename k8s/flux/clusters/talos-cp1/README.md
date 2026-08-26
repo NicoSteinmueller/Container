@@ -75,10 +75,8 @@ mit `--kubelet-insecure-tls` (siehe Kommentare dort).
 
 Headlamp hängt seit [ingress-internal.yaml](ingress-internal.yaml) an
 `https://dashboard.k8s.nico-steinmueller.de`, nicht mehr am NodePort `30080`.
-Das Zertifikat ist das selbstsignierte von Traefik - der Browser warnt, bis
-cert-manager und step-ca stehen. Verschlüsselt ist die Verbindung trotzdem, und
-darauf kommt es hier an: Das Token, das man beim Aufruf einfügt, ging über den
-NodePort im Klartext durchs LAN.
+Das Token, das man beim Aufruf einfügt, ging über den NodePort im Klartext
+durchs LAN; jetzt nicht mehr.
 
 Erreichbar ist das Dashboard nur über den Controller - die NetworkPolicy im
 Namespace lässt sonst niemanden an den Pod. Anmeldung per Token:
@@ -176,12 +174,53 @@ der Chart `traefik-internal`: `roleRef` ist unveränderlich, und wo schon eine
 Bindung dieses Namens auf eine *Role* zeigt, scheitert jedes Apply mit
 `cannot change roleRef`.
 
-### Kein TLS-Aussteller
+### Das Zertifikat
 
-Traefik liefert sein eingebautes, selbstsigniertes Zertifikat aus; der Browser
-warnt. Das ist ein bewusster Zwischenstand und kein Versehen: cert-manager und
-step-ca sind der nächste Schritt, und wenn sie stehen, wechselt hier nur das
-Zertifikat. Port 80 leitet dauerhaft auf 443 um.
+Ein **Wildcard von Let's Encrypt** für `*.k8s.nico-steinmueller.de`, per
+DNS-01 über IONOS — von Traefik selbst geholt, nicht von cert-manager. Port 80
+leitet dauerhaft auf 443 um.
+
+Drei Entscheidungen stecken darin:
+
+**Traefik statt cert-manager**, weil cert-manager keinen IONOS-Solver hat.
+Eingebaut sind nur Akamai, AzureDNS, CloudDNS, Cloudflare, DigitalOcean,
+Route53, RFC2136 und acmeDNS. Für IONOS bräuchte es einen Webhook eines
+Drittanbieters — ein zusätzlich zu wartender Controller, der den Zonen-Token
+bekäme. Traefik bringt lego mit, und lego kennt IONOS. Es ist derselbe Weg,
+den der Traefik-Container auf dem Unraid-Host schon geht.
+
+**Wildcard statt Zertifikat je Name**, wegen Certificate Transparency: Jedes
+von Let's Encrypt ausgestellte Zertifikat landet in öffentlichen Logs. Einzeln
+ausgestellt stünde dort jeder Dienstname — eine Landkarte des Heimnetzes für
+jeden, der die Domain kennt. Beim Wildcard steht dort nur, dass es eine
+`k8s.`-Zone gibt. Dazu ein Antrag statt einem pro Dienst.
+
+**Let's Encrypt statt eigener CA**, weil jedes Gerät ihr ab Werk vertraut. Eine
+eigene Wurzel müsste auf Rechner, Handy und Tablet einzeln installiert werden —
+und wer das nicht tut, hat die Warnung nur ausgetauscht.
+
+Das Zertifikat hängt am **Entrypoint**, nicht an den Ingress-Objekten. Ein
+neuer Dienst braucht damit keinen `tls:`-Block und kein eigenes Secret; er ist
+mit seinem Namen abgedeckt.
+
+> **Der Resolver steht auf Staging.** Die Rate Limits im Produktivverzeichnis
+> sind hart — fünf fehlgeschlagene Validierungen je Konto und Hostname pro
+> Stunde, und ein falscher API-Key verbraucht die in Minuten. Staging-Wurzeln
+> vertraut kein Browser, die Warnung bleibt also. Umstellen erst, wenn im Log
+> eine erfolgreiche Ausstellung steht:
+>
+> ```bash
+> kubectl -n traefik-internal logs deploy/traefik-internal | grep -i acme
+> ```
+>
+> Dann `caServer` auf `https://acme-v02.api.letsencrypt.org/directory`, das
+> alte `acme.json` im PVC löschen und den Pod neu starten.
+
+### Der API-Key
+
+Liegt SOPS-verschlüsselt als `traefik-ionos` in `homelab-secrets`, nicht hier —
+dieses Repo geht öffentlich nach GitHub. lego liest ihn ausschließlich aus der
+Umgebung, deshalb `env` und keine Datei.
 
 ### Voraussetzung im Heimnetz
 

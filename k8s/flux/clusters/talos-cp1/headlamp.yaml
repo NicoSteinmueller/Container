@@ -291,7 +291,8 @@ spec:
     # konfigurierten Aussteller ausliefert - der Browser warnt. Ein `tls:`
     # -Block steht hier deshalb noch nicht: Er verweist auf ein Secret, das
     # niemand füllt, und Traefik fiele auf genau dasselbe Zertifikat zurück,
-    # nur eine Erklärung später. Er kommt mit cert-manager und step-ca.
+    # nur eine Erklärung später — das Wildcard hängt am Entrypoint von
+    # ingress-internal und gilt für jeden Router dort.
     #
     ingress:
       enabled: true
