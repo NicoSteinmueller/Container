@@ -17,7 +17,7 @@ Der Unterschied liegt nicht in der Bedienung - beide stehen gleichberechtigt in
 
 | | **Eigenes Repository** | **Distributionspaket** | **Release-Binary** |
 |---|---|---|---|
-| Verwaltet | `opentofu` | `age` | `sops` |
+| Verwaltet | `opentofu` | `age` | `sops`, `talosctl` |
 | Rolle | eine je Tool, richtet Keyrings und apt-Repo ein | duenner Wrapper auf die gemeinsame Rolle `distro_package` | duenner Wrapper auf die gemeinsame Rolle `github_binary` |
 | Update-Kanal | wird von der Rolle nach `52-ansible-managed-tools` geschrieben | steht schon in `50unattended-upgrades` | der Versions-Pin in der Rolle, angehoben von Renovate |
 | Buchfuehrung | `tool_update_coverage` | `tool_update_sources` | `tool_update_pinned` |
@@ -55,6 +55,7 @@ managed_tools:
   opentofu: present          # installieren und aktuell halten
   age: present
   sops: present
+  talosctl: present
 ```
 
 `absent` entfernt Paket, Repository und Signing-Keys - und nimmt das Tool

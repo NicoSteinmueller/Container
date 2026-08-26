@@ -1,0 +1,15 @@
+---
+# Die eine Zeile, die Renovate anhebt. Der Kommentar darueber sagt ihm, welches
+# GitHub-Repo gemeint ist (Custom Manager in renovate.json5, der Eintrag fuer
+# ansible/tools/roles/*/defaults/main.yml).
+#
+# ACHTUNG, zweite Stelle: Dieser Pin muss zu `talos_version` in
+# vm/talos/variables.tf passen. talosctl spricht mit einer aelteren oder
+# neueren API zwar meistens noch, aber eben nur meistens - und die Faelle, in
+# denen es klemmt, sind die, in denen man das Werkzeug gerade braucht. Renovate
+# fasst beide an, hebt sie aber als getrennte Pull Requests an; die Talos-Seite
+# ist dabei die schwerere (`talosctl upgrade` mit Wartungsfenster, siehe
+# vm/talos/README.md), diese hier ist ein Download.
+#
+# renovate: datasource=github-releases depName=siderolabs/talos
+talosctl_version: v1.13.7

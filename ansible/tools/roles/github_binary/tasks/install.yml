@@ -32,6 +32,26 @@
     path: "{{ github_binary_path }}"
   register: github_binary_stat
 
+#
+# Liegt am Zielpfad ein Verzeichnis, bricht der Lauf hier ab - und das ist der
+# Sinn der Sache. `copy` wuerde die Binary sonst klaglos *hinein* legen
+# (/usr/local/bin/<tool>/<tool>), der Task meldete "changed", und im PATH
+# waere weiterhin nichts. Der Fehler faellt dann erst beim naechsten Aufruf
+# auf, und dort sieht er wie ein Fehler des Playbooks aus, obwohl die Ursache
+# ein Verzeichnis aus einem frueheren Installationsversuch von Hand ist.
+#
+- name: "Ensure {{ github_binary_path }} is not a directory"
+  ansible.builtin.assert:
+    that:
+      - not (github_binary_stat.stat.isdir | default(false))
+    fail_msg: >-
+      {{ github_binary_path }} ist ein Verzeichnis, keine Datei. Ansible wuerde
+      die Binary hineinkopieren, statt sie zu installieren - der Befehl
+      {{ github_binary_name }} bliebe unauffindbar. Stammt fast immer aus einem
+      frueheren Installationsversuch von Hand. Beheben mit
+      `sudo rm -rf {{ github_binary_path }}` und den Lauf wiederholen.
+    quiet: true
+
 - name: "Read installed version of {{ github_binary_name }}"
   ansible.builtin.command:
     cmd: "{{ github_binary_path }} {{ github_binary_version_args | join(' ') }}"
