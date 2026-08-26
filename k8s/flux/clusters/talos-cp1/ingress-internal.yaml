@@ -14,10 +14,12 @@
 #
 # Was noch fehlt und bewusst nicht hier steht:
 #
-#   - cert-manager und step-ca. Bis dahin liefert Traefik sein eingebautes,
-#     selbstsigniertes Zertifikat aus. Der Browser warnt; verschluesselt ist
-#     die Verbindung trotzdem, und das ist mehr als der NodePort per HTTP
-#     vorher. Wenn die interne CA steht, wechselt hier nur das Zertifikat.
+#   - Ein Client-Zertifikat fuer die Edge-VM. Let's Encrypt stellt nur
+#     Server-Zertifikate aus (serverAuth); die Zusage "hier wird geprueft,
+#     DASS das Paket von der Edge kommt" braucht aber genau ein
+#     Client-Zertifikat. Das kommt mit ingress-public und ist dort eine
+#     eigene Entscheidung - betroffen sind nur zwei Maschinen, die einander
+#     kennen, also braucht es dafuer keine Wurzel auf irgendeinem Endgeraet.
 #   - Kyverno. Die Regel "ingressClassName: public nur in Namespaces mit
 #     homelab.io/zone=public" gibt es damit nicht. Solange die Klasse `public`
 #     gar nicht existiert, fehlt ihr auch der Anwendungsfall.
@@ -439,6 +441,9 @@ spec:
       runAsUser: 65532
       runAsGroup: 65532
       runAsNonRoot: true
+      # Damit Traefik in das PVC unter /data schreiben darf. Ohne das gehoert
+      # das frisch angelegte Verzeichnis root, und acme.json entsteht nie.
+      fsGroup: 65532
       seccompProfile:
         type: RuntimeDefault
 
@@ -510,6 +515,22 @@ spec:
         http:
           tls:
             enabled: true
+            #
+            # Hier haengt das Wildcard am Entrypoint, nicht an den einzelnen
+            # Ingress-Objekten - und das ist der Unterschied, der die Arbeit
+            # spart: Ein neuer Dienst braucht keinen `tls:`-Block und kein
+            # eigenes Secret, er ist mit seinem Namen einfach abgedeckt.
+            #
+            # Traefik fordert dieses eine Zertifikat an und benutzt es als
+            # Vorgabe fuer jeden Router auf diesem Entrypoint. `main` muss
+            # dabei mit dabei stehen: Ein Wildcard deckt nur *eine* Ebene ab,
+            # `k8s.nico-steinmueller.de` selbst faellt nicht darunter.
+            #
+            certResolver: letsencrypt
+            domains:
+              - main: k8s.nico-steinmueller.de
+                sans:
+                  - "*.k8s.nico-steinmueller.de"
         forwardedHeaders:
           # Vor diesem Controller steht kein Proxy. Ein vom Client gesetzter
           # X-Forwarded-For darf hier deshalb niemals geglaubt werden - er
@@ -525,6 +546,89 @@ spec:
     #
     service:
       enabled: false
+
+    #
+    # Das Zertifikat: ein Wildcard von Let's Encrypt, per DNS-01 ueber IONOS.
+    #
+    # Warum Traefik das selbst macht und nicht cert-manager: cert-manager hat
+    # keinen IONOS-Solver. Eingebaut sind nur Akamai, AzureDNS, CloudDNS,
+    # Cloudflare, DigitalOcean, Route53, RFC2136 und acmeDNS - fuer IONOS
+    # braeuchte es einen Webhook eines Drittanbieters, der dann den
+    # Zonen-Token bekaeme. Traefik bringt lego mit, und lego kennt IONOS;
+    # damit faellt ein Controller mitsamt Webhook weg. Es ist ausserdem
+    # derselbe Weg, den der Traefik-Container auf dem Host schon geht.
+    #
+    # Warum ein Wildcard und nicht ein Zertifikat je Name: Jedes von Let's
+    # Encrypt ausgestellte Zertifikat landet in den oeffentlichen
+    # Certificate-Transparency-Logs. Bei Einzelzertifikaten stuende dort
+    # jeder Dienstname - eine Landkarte des Heimnetzes fuer jeden, der die
+    # Domain kennt. Beim Wildcard steht dort nur, dass es eine `k8s.`-Zone
+    # gibt, nicht was darin liegt. Dazu: ein Antrag statt einem pro Dienst,
+    # und keine eigene Wurzel, der irgendein Geraet erst vertrauen muesste.
+    #
+    # Der Preis steht im Secret traefik-ionos: Der API-Key kann die ganze
+    # Zone umschreiben. Der engere Weg ueber acme-dns kommt mit der Edge-VM.
+    #
+    certificatesResolvers:
+      letsencrypt:
+        acme:
+          email: nico.steinmueller@gmx.net
+          storage: /data/acme.json
+          #
+          # STAGING. Bewusst, und bewusst als erstes: Die Rate Limits im
+          # Produktivverzeichnis sind hart - fuenf fehlgeschlagene
+          # Validierungen je Konto und Hostname pro Stunde. Ein falscher
+          # API-Key verbraucht die in Minuten, und danach hilft nur warten.
+          #
+          # Staging-Zertifikate signiert eine Wurzel, der kein Browser
+          # vertraut: Die Warnung bleibt also, bis diese Zeile auf
+          # https://acme-v02.api.letsencrypt.org/directory steht. Umstellen
+          # erst, wenn `kubectl -n traefik-internal logs` eine erfolgreiche
+          # Ausstellung zeigt - dann acme.json loeschen und neu anfordern.
+          #
+          caServer: https://acme-staging-v02.api.letsencrypt.org/directory
+          keyType: EC256
+          dnsChallenge:
+            provider: ionos
+            #
+            # Oeffentliche Resolver fuer die Propagationspruefung. Der
+            # interne Resolver wuerde die eigene, noch nicht propagierte
+            # Antwort sehen und zu frueh gruen melden.
+            #
+            resolvers:
+              - 1.1.1.1:53
+              - 8.8.8.8:53
+            propagation:
+              delayBeforeChecks: 30s
+
+    #
+    # Der API-Key kommt aus homelab-secrets, nicht aus diesem Repo - dieses
+    # geht oeffentlich nach GitHub. lego liest ihn ausschliesslich aus der
+    # Umgebung, daher env und nicht eine Datei.
+    #
+    env:
+      - name: IONOS_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: traefik-ionos
+            key: IONOS_API_KEY
+
+    #
+    # acme.json braucht einen Ort, der einen Neustart ueberlebt - sonst holt
+    # Traefik bei jedem Pod-Start ein neues Zertifikat und laeuft in genau
+    # die Rate Limits von oben.
+    #
+    # local-path und damit ReadWriteOnce: Das passt zu `replicas: 1` und zu
+    # updateStrategy Recreate weiter oben. Mit RollingUpdate haetten sich
+    # hier zwei Pods um dasselbe Volume gestritten.
+    #
+    persistence:
+      enabled: true
+      name: data
+      accessMode: ReadWriteOnce
+      size: 128Mi
+      storageClass: local-path
+      path: /data
 
     #
     # Keine RBAC aus dem Chart - sie steht als eigene Objekte weiter oben,

@@ -5,11 +5,10 @@
 # Testdienst, an dem sich der Weg von außen zeigen soll - und der Weg ist
 # jetzt der über den Controller, nicht mehr der über Port 30083.
 #
-# Das Zertifikat ist vorerst das selbstsignierte, das Traefik ohne
-# konfigurierten Aussteller ausliefert; der Browser warnt. `tls.enabled`
-# bleibt deshalb aus: Es verwiese auf ein Secret, das niemand füllt, und
-# Traefik fiele auf dasselbe Zertifikat zurück. Beides kommt mit cert-manager
-# und step-ca.
+# `tls.enabled` bleibt aus, und das ist hier kein Mangel: Das Zertifikat
+# hängt am Entrypoint von ingress-internal — ein Wildcard von Let's Encrypt
+# für `*.k8s.nico-steinmueller.de`, das jeder Router dort bekommt. Ein
+# `tls:`-Block hier verwiese auf ein Secret, das niemand füllt.
 #
 # Der Hostname muss im Heimnetz auf die LAN-Adresse des Nodes zeigen (AdGuard
 # oder Fritzbox) und hat im öffentlichen DNS nichts verloren.
@@ -21,12 +20,7 @@ ingress:
   enabled: true
   className: internal
   host: whoami.k8s.nico-steinmueller.de
-  # TODO: aktivieren, sobald cert-manager und step-ca im Cluster stehen
-  # annotations:
-  #   cert-manager.io/cluster-issuer: step-ca
-  # tls:
-  #   enabled: true
-  #   secretName: whoami-tls
+  # Kein tls-Block nötig — siehe oben.
 
 networkPolicy:
   # Ohne diese Zeile greift nur das Default-Deny des Charts, und der
