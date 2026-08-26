@@ -13,3 +13,7 @@ managed_tools:
   # entschluesselt damit die Manifeste in homelab-secrets.
   age: present
   sops: present
+  # Fuer den Talos-Node unterhalb von Kubernetes: Disks, Volumes,
+  # Machine-Config, Reboot. Die Version muss zu `talos_version` in
+  # vm/talos/variables.tf passen - siehe roles/talosctl/defaults/main.yml.
+  talosctl: present

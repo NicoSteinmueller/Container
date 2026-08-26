@@ -1,0 +1,32 @@
+---
+# Duenner Wrapper auf github_binary - talosctl gibt es weder in den
+# Distributionsquellen noch in einem apt-Repository des Herstellers, nur als
+# Binary aus GitHub Releases.
+#
+# Gebraucht wird es fuer alles, was unterhalb von Kubernetes liegt: Disks und
+# Volumes des Nodes, die Machine-Config, Logs der Static Pods, Reboot und
+# Upgrade. `kubectl` reicht dafuer nicht - der Fall, an dem das zuletzt hing,
+# war ein User-Volume in `phase: failed`, das ausserhalb der Talos-API
+# nirgends sichtbar war (k8s/flux/clusters/talos-cp1/README.md).
+#
+# Die Pruefsumme kommt aus dem Release selbst; github_binary bricht ab, wenn
+# checksums_asset fehlt oder das Release keine passende Zeile enthaelt.
+- name: Manage talosctl as a pinned release binary
+  ansible.builtin.include_role:
+    name: github_binary
+  vars:
+    github_binary_state: "{{ tool_state }}"
+    github_binary_tool: talosctl
+    github_binary_repo: siderolabs/talos
+    github_binary_version: "{{ talosctl_version }}"
+    github_binary_asset: talosctl-linux-amd64
+    github_binary_checksums_asset: sha256sum.txt
+    github_binary_name: talosctl
+
+    # `talosctl --version` gibt es nicht, und ein blosses `talosctl version`
+    # versucht zusaetzlich den Node zu erreichen - ohne TALOSCONFIG laeuft das
+    # in einen Fehler. `--client` beschraenkt die Ausgabe auf die eigene
+    # Fassung; die Zeile "Tag: v1.13.7" liefert das x.y.z, das die Rolle sucht.
+    github_binary_version_args:
+      - version
+      - --client
