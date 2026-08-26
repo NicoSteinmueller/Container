@@ -9,16 +9,15 @@ FluxInstance aus `../../main.tf`.
 NetworkPolicy, Namespace, Ingress). `sourceRef` zeigt auf die
 `GitRepository flux-system` - kein zweites Source-Objekt nötig.
 
-`valuesFiles` wählt die Umgebung; `values-prod.yaml` setzt `service.type:
-NodePort` auf `30083`. Eine Ingress-Variante liegt dort auskommentiert bereit
-(`ingressClassName: internal`) - sie ist vorerst wirkungslos, denn dieser
-Cluster hat derzeit keinen Ingress-Controller und damit keine IngressClass.
-Werte pro Umgebung: `k8s/whoami/README.md`.
+`valuesFiles` wählt die Umgebung; `values-prod.yaml` setzt seit
+[ingress-internal.yaml](ingress-internal.yaml) `service.type: ClusterIP` und
+einen Ingress auf `ingressClassName: internal`. Der NodePort `30083` ist damit
+weg. Werte pro Umgebung: `k8s/whoami/README.md`.
 
 ```bash
 kubectl -n flux-system get helmrelease whoami
-kubectl -n whoami get pods,svc
-curl http://<node-ip>:30083
+kubectl -n whoami get pods,svc,ingress
+curl -k https://whoami.k8s.nico-steinmueller.de
 ```
 
 ## `secrets.yaml`
@@ -74,13 +73,113 @@ Begründungen stehen als Kommentare in der Datei.
 `metrics-server.yaml` liefert die Auslastungsanzeigen, läuft in `kube-system`
 mit `--kubelet-insecure-tls` (siehe Kommentare dort).
 
-Headlamp per NodePort `30080`, HTTP - vertretbar im LAN, dieser Cluster hat
-weder Ingress-Controller noch cert-manager. Anmeldung per Token:
+Headlamp hängt seit [ingress-internal.yaml](ingress-internal.yaml) an
+`https://dashboard.k8s.nico-steinmueller.de`, nicht mehr am NodePort `30080`.
+Das Zertifikat ist das selbstsignierte von Traefik - der Browser warnt, bis
+cert-manager und step-ca stehen. Verschlüsselt ist die Verbindung trotzdem, und
+darauf kommt es hier an: Das Token, das man beim Aufruf einfügt, ging über den
+NodePort im Klartext durchs LAN.
+
+Erreichbar ist das Dashboard nur über den Controller - die NetworkPolicy im
+Namespace lässt sonst niemanden an den Pod. Anmeldung per Token:
 
 ```bash
 kubectl -n headlamp create token headlamp --duration=8h        # Lesen
 kubectl -n headlamp create token headlamp-admin --duration=1h  # Ändern
 kubectl -n flux-system get helmrelease headlamp metrics-server
+```
+
+## `ingress-internal.yaml`
+
+Der erste Ingress-Controller dieses Clusters: Namespace, IngressClass
+`internal`, NetworkPolicies und die Traefik-Release. Vorher war jeder Dienst
+nur über einen NodePort und per HTTP erreichbar.
+
+Erreichbar ausschließlich aus dem Heimnetz. Die Gegenstelle für das Internet
+(`ingress-public` hinter der Edge-VM) fehlt weiterhin — deshalb legt die Datei
+auch nur **eine** Klasse an, nicht das Paar `public`/`internal`. Eine Klasse
+ohne Controller wäre eine Falle: Ein Ingress mit `ingressClassName: public`
+würde angenommen und nie bedient.
+
+### hostPort statt hostNetwork
+
+Der frühere Plattform-Stack fuhr beide Controller mit `hostNetwork` und band
+sie über `hostIP` an je eine Node-Adresse. Das kostete den Sysctl
+`net.ipv4.ip_unprivileged_port_start=0` auf dem Node, weil Traefik als UID
+65532 sonst die Ports 80 und 443 nicht binden darf.
+
+Beides ist hier weg, und die Kette dahin steht ausführlich in der Datei. Kurz:
+Der Node hat heute **ein** Bein und dieser Cluster **einen** Controller. Damit
+entfällt der Grund für `hostIP` — und ohne `hostIP` der für `hostNetwork`, und
+ohne `hostNetwork` der für den Sysctl. Traefik bindet 8000/8443 im eigenen
+Pod-Netz, wo es kein Privileg braucht, und Cilium bildet Node:80/443 darauf ab.
+Das kann es, weil kube-proxy durch Cilium ersetzt ist.
+
+**Die Stelle, an der das zurückgedreht werden muss,** ist der Bau von
+`ingress-public`: Zwei Controller auf einem Node brauchen wieder je eine eigene
+Adresse, also `hostIP`, also `hostNetwork`, also den Sysctl.
+
+### Was den Zugang begrenzt
+
+| | wodurch |
+|---|---|
+| Von außen nur aus dem LAN | NetworkPolicy `allow-from-lan` (`ipBlock` auf das Heimnetz) |
+| An die Anwendungen nur über den Controller | `default-deny-ingress` je Namespace plus eine Regel auf `traefik-internal` |
+| Nur in gelisteten Namespaces | `rbac.namespaced: true` — Role statt ClusterRole, je Namespace einzeln |
+
+Der letzte Punkt ist die Bremse, die man beim nächsten Dienst spürt: Ein neuer
+Namespace muss in `providers.kubernetesIngress.namespaces` **und**
+`providers.kubernetesCRD.namespaces` eingetragen werden. Sonst wird sein
+Ingress schlicht nicht bedient — was besser ist als still bedient zu werden,
+aber beim ersten Mal wie ein Fehler aussieht.
+
+### Kein TLS-Aussteller
+
+Traefik liefert sein eingebautes, selbstsigniertes Zertifikat aus; der Browser
+warnt. Das ist ein bewusster Zwischenstand und kein Versehen: cert-manager und
+step-ca sind der nächste Schritt, und wenn sie stehen, wechselt hier nur das
+Zertifikat. Port 80 leitet dauerhaft auf 443 um.
+
+### Voraussetzung im Heimnetz
+
+Nicht im Repo abgebildet: Die Hostnamen müssen **nur intern** auf die
+LAN-Adresse des Nodes zeigen (AdGuard oder Fritzbox), nicht über DynDNS.
+
+```
+dashboard.k8s.nico-steinmueller.de  ->  192.168.178.230
+whoami.k8s.nico-steinmueller.de     ->  192.168.178.230
+```
+
+Die eigene Zone `k8s.` ist dabei der Punkt: Die Dienste auf dem Unraid-Host
+liegen unter `*.local.nico-steinmueller.de`, und ein Wildcard-Eintrag dorthin
+kann diese Namen nicht mehr einfangen. Am Namen ist damit ablesbar, wo ein
+Dienst läuft — und der Umzug eines Dienstes vom Host in den Cluster ist ein
+sichtbarer Namenswechsel statt einer stillen Umleitung.
+
+### Gegenproben
+
+```bash
+kubectl -n traefik-internal get pods
+kubectl get ingressclass
+kubectl get ingress -A                 # ADDRESS bleibt leer, siehe unten
+
+# Der Beweisfall - der Weg über den Controller:
+curl -k https://whoami.k8s.nico-steinmueller.de
+
+# Und die Gegenrichtung: der alte NodePort ist zu.
+curl --max-time 5 http://192.168.178.230:30083 || echo "zu, wie erwartet"
+```
+
+`kubectl get ingress` zeigt keine ADDRESS. Das ist kein Fehler: Der Controller
+läuft ohne eigenen Service (`service.enabled: false`), und das Chart trägt die
+Adresse nur aus einem solchen nach.
+
+Antwortet der Ingress gar nicht, ist die NetworkPolicy die erste Stelle:
+
+```bash
+kubectl -n traefik-internal logs deploy/traefik-internal | tail
+kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop
+kubectl -n traefik-internal delete networkpolicy allow-from-lan   # Notbremse
 ```
 
 ## `local-path.yaml`, `nfs-storage.yaml`

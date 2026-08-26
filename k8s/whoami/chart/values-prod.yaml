@@ -1,31 +1,34 @@
 # Produktiv-Cluster (talos-cp1).
 #
-# NodePort 30083, direkt im LAN erreichbar, ohne Ingress-Controller, TLS oder
-# Hostname. Das ist kein Zwischenschritt aus Bequemlichkeit: In diesem Cluster
-# läuft derzeit überhaupt kein Ingress-Controller, es gibt also auch keine
-# IngressClass, in die ein Ingress hier zeigen könnte.
+# Ingress statt NodePort, seit ingress-internal steht
+# (k8s/flux/clusters/talos-cp1/ingress-internal.yaml). whoami ist der
+# Testdienst, an dem sich der Weg von außen zeigen soll - und der Weg ist
+# jetzt der über den Controller, nicht mehr der über Port 30083.
 #
-# Die auskommentierte Variante unten wartet darauf. "internal" ist dabei eine
-# Erwartung an den kommenden Traefik, kein Objekt im Cluster - der Name stammt
-# aus dem Klassenpaar "public"/"internal", das der entfernte Plattform-Stack
-# mitbrachte und das beim Wiederaufbau als Flux-Manifest wiederkommen soll.
+# Das Zertifikat ist vorerst das selbstsignierte, das Traefik ohne
+# konfigurierten Aussteller ausliefert; der Browser warnt. `tls.enabled`
+# bleibt deshalb aus: Es verwiese auf ein Secret, das niemand füllt, und
+# Traefik fiele auf dasselbe Zertifikat zurück. Beides kommt mit cert-manager
+# und step-ca.
+#
+# Der Hostname muss im Heimnetz auf die LAN-Adresse des Nodes zeigen (AdGuard
+# oder Fritzbox) und hat im öffentlichen DNS nichts verloren.
 
 service:
-  type: NodePort
-  nodePort: 30083
+  type: ClusterIP
 
-# TODO: auf Ingress umstellen, sobald ein Hostname/TLS gebraucht wird.
-# ingress:
-#   enabled: true
-#   className: internal
-#   host: whoami.nico-steinmueller.de
-#   # TODO: aktivieren, sobald cert-manager im Ziel-Cluster installiert ist
-#   # (steht bislang aus, siehe k8s/INBETRIEBNAHME.md)
-#   # annotations:
-#   #   cert-manager.io/cluster-issuer: letsencrypt-prod
-#   # tls:
-#   #   enabled: true
-#   #   secretName: whoami-tls
-#
-# networkPolicy:
-#   ingressControllerNamespace: traefik-internal
+ingress:
+  enabled: true
+  className: internal
+  host: whoami.k8s.nico-steinmueller.de
+  # TODO: aktivieren, sobald cert-manager und step-ca im Cluster stehen
+  # annotations:
+  #   cert-manager.io/cluster-issuer: step-ca
+  # tls:
+  #   enabled: true
+  #   secretName: whoami-tls
+
+networkPolicy:
+  # Ohne diese Zeile greift nur das Default-Deny des Charts, und der
+  # Controller käme nicht an whoami heran.
+  ingressControllerNamespace: traefik-internal

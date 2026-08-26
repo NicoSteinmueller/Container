@@ -17,6 +17,19 @@ kind: Namespace
 metadata:
   name: headlamp
   labels:
+    #
+    # Die Zone ist hier eine Eigenschaft, keine Einstellung: An diesem
+    # Namespace haengt ein ClusterRoleBinding, das clusterweit lesen darf.
+    # Ein Dashboard mit Cluster-Lesezugriff hinter dem Ingress, der aus dem
+    # Internet erreichbar ist, waere genau der Fall, den die Trennung
+    # verhindern soll.
+    #
+    # Ausgewertet wird das Label noch von niemandem - der Waechter dazu war
+    # Kyverno, und der kam mit dem Plattform-Stack weg. Bis er zurueck ist,
+    # ist es eine Markierung, keine Kontrolle. Die tatsaechliche Grenze zieht
+    # unten die NetworkPolicy.
+    #
+    homelab.io/zone: internal
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/warn: restricted
@@ -133,6 +146,50 @@ subjects:
     name: headlamp-admin
     namespace: headlamp
 ---
+#
+# Eingehend nur von ingress-internal - also nur, was aus dem Heimnetz durch
+# den LAN-Controller kommt.
+#
+# Ohne diese Regel waere die Weboberflaeche fuer jeden Pod im Cluster ueber
+# die Pod-Adresse erreichbar. Bei einem Dashboard mit clusterweitem
+# Lesezugriff ist das ein anderer Umstand als bei einer gewoehnlichen
+# Anwendung: Wer es erreicht, sieht sonst jeden Namespace, jedes Deployment
+# und jedes Event - ohne dazu das LAN betreten zu haben.
+#
+# Der Port ist der des Containers (4466), nicht der des Service (80):
+# NetworkPolicies wirken auf der Pod-Ebene, die Umsetzung des Service-Ports
+# ist zu diesem Zeitpunkt schon passiert.
+#
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: headlamp
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-ingress-internal
+  namespace: headlamp
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik-internal
+      ports:
+        - protocol: TCP
+          port: 4466
+
+---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -220,16 +277,30 @@ spec:
         drop:
           - ALL
 
-    # Ohne kubectl aus dem Heimnetz erreichbar - das Token geht dabei
-    # unverschlüsselt übers LAN (README). Kein Ingress: kein Controller, kein
-    # cert-manager in diesem Cluster.
+    # ClusterIP statt NodePort: Erreichbar ist das Dashboard jetzt über
+    # ingress-internal unter seinem Hostnamen, nicht mehr über
+    # http://<node-ip>:30080. Damit ist der Weg dorthin verschlüsselt - und
+    # das Token, das man beim Aufruf einfügt, geht nicht mehr im Klartext
+    # durchs LAN.
     service:
-      type: NodePort
+      type: ClusterIP
       port: 80
-      nodePort: 30080
 
+    #
+    # Das Zertifikat ist vorerst das selbstsignierte, das Traefik ohne
+    # konfigurierten Aussteller ausliefert - der Browser warnt. Ein `tls:`
+    # -Block steht hier deshalb noch nicht: Er verweist auf ein Secret, das
+    # niemand füllt, und Traefik fiele auf genau dasselbe Zertifikat zurück,
+    # nur eine Erklärung später. Er kommt mit cert-manager und step-ca.
+    #
     ingress:
-      enabled: false
+      enabled: true
+      ingressClassName: internal
+      hosts:
+        - host: dashboard.k8s.nico-steinmueller.de
+          paths:
+            - path: /
+              type: Prefix
 
     # Knapp bemessen - RAM ist auf diesem Node die knappe Größe.
     resources:

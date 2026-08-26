@@ -3,6 +3,10 @@
 
 namespace: whoami
 
+# "internal" = nur aus dem Heimnetz erreichbar, "public" = aus dem Internet.
+# Bestimmt, welche IngressClass in diesem Namespace zulässig sein soll.
+zone: internal
+
 image:
   repository: traefik/whoami
   tag: v1.12.0
