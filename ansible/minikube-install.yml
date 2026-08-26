@@ -16,7 +16,7 @@
     # Bei Bedarf aktualisieren: https://github.com/kubernetes/minikube/releases
     # bzw. https://kubernetes.io/releases/
     minikube_release_version: "v1.38.1"
-    kubectl_release_version: "v1.36.4"
+    kubectl_release_version: "v1.37.0"
 
     # Addons zur Vorbereitung auf einen produktiven Kubernetes-Umzug
     minikube_addons:
