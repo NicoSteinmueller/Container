@@ -376,6 +376,21 @@ diesem Namen taucht es in `volumestatus` auf, nicht als `local-path`.
 Fehlt `vdb`, bleibt der Provisioner ohne Verzeichnis, und PVCs stehen auf
 `Pending` — das Event am Pod nennt dann den Pfad.
 
+**`vdb` da und trotzdem `Pending`?** Dann liegt es am Volume, nicht an der
+Disk, und der Fehler steht nur in der Talos-Ressource — nicht im Apply, nicht
+im Provisioner-Log:
+
+```bash
+talosctl -n <node-ip> get volumestatus u-local-path -o yaml
+```
+
+Steht dort `phase: failed`, sagt `errorMessage`, warum. Nach außen sieht es
+harmlos aus: `/var/mnt` bleibt read-only, und der Helper-Pod des Provisioners
+scheitert an `mkdir /var/mnt/local-path/: read-only file system`. Genau so ist
+`!system_disk` im Disk-Selektor aufgefallen — der Ausdruck übersetzt sich, die
+Variable wird bei User-Volumes aber nicht gebunden. Begründung und Ersatz in
+[vm/talos/patches/uservolume.yaml.tftpl](../../../../vm/talos/patches/uservolume.yaml.tftpl).
+
 ### Gegenproben
 
 ```bash

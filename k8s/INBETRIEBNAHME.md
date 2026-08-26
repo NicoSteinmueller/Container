@@ -175,15 +175,20 @@ ssh root@192.168.178.3 'mkdir -p /boot/config/ssh && \
   cat /root/.ssh/authorized_keys >> /boot/config/ssh/root.pubkeys'   # für später
 ```
 
-**Auf der Arbeitsstation:** `terraform`, `talosctl`, `kubectl`, `helm`.
+**Auf der Arbeitsstation:** `tofu`, `talosctl`, `kubectl`, `helm`.
 
-`talosctl` muss zur gepinnten `talos_version` passen:
+`tofu`, `talosctl`, `age` und `sops` kommen aus dem Tools-Playbook, nicht von
+Hand — dort steht der Versions-Pin, den Renovate anhebt, und die Prüfsumme
+zieht die Rolle aus dem Release:
 
 ```bash
-curl -sSL -o /usr/local/bin/talosctl \
-  https://github.com/siderolabs/talos/releases/download/v1.13.7/talosctl-linux-amd64
-chmod +x /usr/local/bin/talosctl
+cd ansible/tools
+ansible-playbook -i inventory.ini tools.yml --ask-become-pass
 ```
+
+Der Pin von `talosctl` muss zur `talos_version` in
+[../vm/talos/variables.tf](../vm/talos/variables.tf) passen; er steht in
+[../ansible/tools/roles/talosctl/defaults/main.yml](../ansible/tools/roles/talosctl/defaults/main.yml).
 
 **Adressen festlegen** (Beispiel, muss zum eigenen Netz passen):
 
