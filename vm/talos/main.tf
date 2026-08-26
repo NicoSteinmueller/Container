@@ -504,6 +504,9 @@ data "talos_machine_configuration" "controlplane" {
     #
     templatefile("${path.module}/patches/uservolume.yaml.tftpl", {
       volume_name = local.local_path_volume
+      # Der Selektor grenzt die Daten-Disk gegen die System-Disk ab und
+      # braucht deren Pfad dafuer - eine Quelle, nicht zwei.
+      install_disk = var.install_disk
     }),
 
     templatefile("${path.module}/patches/cluster.yaml.tftpl", {

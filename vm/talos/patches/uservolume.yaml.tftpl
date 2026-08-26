@@ -23,17 +23,36 @@ provisioning:
   #
   # CEL, ausgewertet gegen jede gefundene Disk. Beide Haelften sind noetig:
   #
-  #   disk.transport == "virtio"  - trifft vda *und* vdb, schliesst aber das
-  #                                 SATA-CD-Laufwerk mit der Talos-ISO aus
-  #   !system_disk                - nimmt vda wieder heraus
+  #   disk.transport == "virtio"   - trifft vda *und* vdb, schliesst aber das
+  #                                  SATA-CD-Laufwerk mit der Talos-ISO aus
+  #   disk.dev_path != install_disk - nimmt vda wieder heraus
+  #
+  # Hier stand einmal `!system_disk`, und das ist die Stelle, an der es einen
+  # halben Abend gekostet hat: Der Ausdruck laesst sich uebersetzen - die
+  # Variable ist im CEL-Environment DiskLocator deklariert -, wird bei
+  # User-Volumes aber nicht *gebunden*. Talos meldet das erst zur Laufzeit,
+  # und zwar nicht am Apply, sondern still in der Ressource:
+  #
+  #   talosctl -n <node-ip> get volumestatus u-local-path -o yaml
+  #   spec.phase: failed
+  #   spec.errorMessage: 'error evaluating disk locator:
+  #                       no such attribute(s): system_disk'
+  #
+  # Nach aussen sieht das dann so aus, dass /var/mnt read-only bleibt, jeder
+  # PVC auf local-path `Pending` steht und der Helper-Pod des Provisioners an
+  # `mkdir /var/mnt/local-path/: read-only file system` scheitert.
+  # `system_disk` gehoert zum System-Disk-Selektor; die Beispiele fuer
+  # UserVolumeConfig in Talos selbst benutzen es nirgends.
   #
   # Ueber Modell oder Seriennummer ginge es nicht: virtio-Disks melden beides
-  # nicht. Gegenprobe, was Talos tatsaechlich sieht:
+  # nicht. Bleibt der Geraetepfad - dieselbe Annahme, auf der `install_disk`
+  # ohnehin schon beruht, und deshalb kommt der Wert von dort statt noch
+  # einmal hier zu stehen. Gegenprobe, was Talos sieht:
   #   talosctl -n <node-ip> get disks
   #
   # Die Groesse steht stattdessen in vm_data_disk_gib, also am Volume selbst.
   diskSelector:
-    match: disk.transport == "virtio" && !system_disk
+    match: disk.transport == "virtio" && disk.dev_path != "${install_disk}"
 
 filesystem:
   # Dasselbe Dateisystem, das Talos auch fuer EPHEMERAL nimmt.
