@@ -10,6 +10,12 @@ Ausführlich steht alles in [../vm/edge/README.md](../vm/edge/README.md),
 Was bewusst *nicht* Teil der Inbetriebnahme ist, sondern später kommt, steht in
 [AUSBAUSTUFEN.md](AUSBAUSTUFEN.md).
 
+> **Die Schritte 4, 5 und 8 sind überholt.** Der öffentliche Zugang wird ohne
+> die vorgelagerte Edge-VM gebaut: zwei LoadBalancer-Adressen auf einem Node,
+> vergeben von Cilium. Was dafür zu tun ist und was der Verzicht kostet, steht
+> in [OHNE-EDGE.md](OHNE-EDGE.md). Die Schritte 0 bis 3, 6 und 7 gelten
+> unverändert — mit der Ausnahme, dass Schritt 1 (Edge-VM) entfällt.
+
 > **Stand: dieses Dokument beschreibt mehr, als es derzeit gibt.**
 >
 > Die Schritte 0 bis 3 lassen sich heute abarbeiten: Unraid-Host, Edge-VM,
