@@ -80,10 +80,24 @@ spec:
 #
 # Eingehend nur aus dem LAN.
 #
-# Der Grund ist ein Nebeneffekt des Charts: Es aktiviert die Dashboard-API auf
-# dem Port `traefik` (8080). Der ist weder ueber hostPort noch ueber einen
-# Service erreichbar - aber jeder Pod im Cluster koennte die Pod-Adresse
-# ansprechen. Mit dieser Policy nicht mehr.
+# Der Grund: hostPort ist nicht der einzige Weg an diesen Pod. Jeder Pod im
+# Cluster koennte die Pod-Adresse direkt auf 8000/8443 ansprechen - und damit
+# jeden Router dieses Controllers benutzen, ohne je im LAN gewesen zu sein.
+# Der Ingress waere dann der Umweg, der die Policies der Anwendungen aushebelt:
+# `allow-from-ingress-internal` im Namespace headlamp laesst Verkehr aus
+# traefik-internal zu, und aus traefik-internal kaeme er ja auch. Mit dieser
+# Policy hier gar nicht erst.
+#
+# `--api.dashboard=true`
+# legt nur den Handler `api@internal` an; bedient wird er ausschliesslich von
+# einem Router, und der einzige steht auf websecure und traegt die
+# BasicAuth-Middleware. Auf dem Entrypoint `traefik` laege die API erst mit
+#
+#   --api.insecure=true   "Activate API directly on the entryPoint named
+#                          traefik" (traefik v3.7.11 --help)
+#
+# und dieses Flag setzt der Chart nicht (`api.insecure` bleibt leer). Uebrig
+# bleibt dort `/ping`, an dem die Kubelet-Probes haengen.
 #
 # Dass die ipBlock-Regel hier greift, ist nicht selbstverstaendlich und im
 # Repo schon einmal falsch verallgemeinert worden: Cilium wertet ipBlock nicht
@@ -369,6 +383,62 @@ subjects:
   - kind: ServiceAccount
     name: traefik-internal
     namespace: traefik-internal
+
+---
+#
+# Die beiden Middlewares des Dashboards.
+#
+# Sie sind CRDs und stehen damit vor einem Henne-Ei-Problem: Die CRDs
+# installiert erst der Chart weiter unten. Beim allerersten Aufbau des
+# Clusters scheitert dieses Apply deshalb einmal und die Kustomization geht
+# auf Failed - bis kustomize-controller es nach `retryInterval` wiederholt und
+# die CRDs inzwischen da sind. Kein Handgriff noetig; wer beim Bootstrap
+# zusieht, soll nur wissen, dass diese eine rote Meldung dazugehoert.
+#
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: traefik-dashboard-auth
+  namespace: traefik-internal
+spec:
+  #
+  # Die Zugangsdaten stehen SOPS-verschluesselt in homelab-secrets
+  # (clusters/talos-cp1/traefik-dashboard-auth.sops.yaml), nicht hier - dieses
+  # Repo geht oeffentlich nach GitHub. Ein bcrypt-Hash ist zwar kein Passwort
+  # im Klartext, aber ein oeffentlich lesbarer Hash ist ein Hash, an dem
+  # beliebig lange geraten werden darf.
+  #
+  # Traefik liest das Secret ueber seinen Informer, also bei jeder Aenderung
+  # neu - ein rotiertes Passwort gilt sofort, ohne Pod-Neustart.
+  #
+  basicAuth:
+    secret: traefik-dashboard-auth
+    realm: Traefik
+    # Ohne das reicht Traefik den angemeldeten Benutzer als
+    # Authorization-Header an das Backend weiter. Backend ist hier
+    # api@internal, also Traefik selbst - der Header waere dort nutzlos und
+    # stuende trotzdem in jeder Anfrage.
+    removeHeader: true
+
+---
+#
+# Von / auf /dashboard/.
+#
+# Der abschliessende Schraegstrich ist nicht kosmetisch: Die
+# Dashboard-Oberflaeche laedt ihre Ressourcen relativ, und auf /dashboard
+# ohne Slash bleibt die Seite leer. Traefik leitet in dem Fall zwar selbst
+# weiter, aber nur von /dashboard - nicht von /.
+#
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: traefik-dashboard-root
+  namespace: traefik-internal
+spec:
+  redirectRegex:
+    regex: ^https?://[^/]+/?$
+    replacement: https://traefik.k8s.nico-steinmueller.de/dashboard/
+    permanent: false
 
 ---
 #
@@ -666,7 +736,15 @@ spec:
         enabled: true
         allowCrossNamespace: false
         allowExternalNameServices: false
+        #
+        # Hier steht der eigene Namespace mit drin, bei kubernetesIngress
+        # oben nicht: In traefik-internal liegen die IngressRoute des
+        # Dashboards und seine BasicAuth-Middleware - beides CRDs. Ohne
+        # diesen Eintrag legt Flux beide an, Traefik sieht sie nie, und das
+        # Dashboard antwortet mit 404 statt mit einem Passwortfeld.
+        #
         namespaces:
+          - traefik-internal
           - headlamp
           - whoami
 
@@ -674,12 +752,40 @@ spec:
         enabled: false
 
     #
-    # Das Dashboard bleibt aus. Es kennt keine Authentifizierung, und "nur im
-    # LAN erreichbar" ist keine.
+    # Das Dashboard - unter https://traefik.k8s.nico-steinmueller.de, und nur
+    # mit Passwort.
+    #
+    # Es kennt selbst keine Authentifizierung, und "nur im LAN erreichbar" ist
+    # keine: Wer es oeffnet, sieht jeden Router, jeden Service und jede
+    # Middleware dieses Clusters - also eine Liste dessen, was es hier
+    # ueberhaupt zu erreichen gibt. Die Bedingung, unter der es aufgemacht
+    # ist, steht deshalb als erste Middleware unten und als eigenes Objekt
+    # weiter oben.
+    #
+    # Die Regel ist bewusst nur `Host(...)` und nicht die Voreinstellung
+    # PathPrefix(`/dashboard`) || PathPrefix(`/api`): Der Hostname gehoert
+    # allein diesem Dashboard, und mit der Voreinstellung waere ausgerechnet
+    # https://traefik.k8s.nico-steinmueller.de/ - das, was man eintippt - ein
+    # 404. Den Weg von dort auf /dashboard/ macht die zweite Middleware.
+    #
+    # /api liegt damit unter demselben Namen offen. Das ist die API, aus der
+    # das Dashboard seine Anzeige speist; sie ist lesend (die Konfiguration
+    # kommt aus Kubernetes, nicht von dort) und liegt hinter derselben
+    # Authentifizierung. Der unauthentifizierte Zwilling auf Port 8080 bleibt
+    # unerreichbar - dafuer sorgt die NetworkPolicy weiter oben.
     #
     ingressRoute:
       dashboard:
-        enabled: false
+        enabled: true
+        entryPoints:
+          - websecure
+        matchRule: Host(`traefik.k8s.nico-steinmueller.de`)
+        # Reihenfolge zaehlt: erst Passwort, dann Umleitung. Andersherum
+        # verriete schon der Redirect auf /dashboard/, dass es hier etwas
+        # gibt.
+        middlewares:
+          - name: traefik-dashboard-auth
+          - name: traefik-dashboard-root
       healthcheck:
         enabled: false
 

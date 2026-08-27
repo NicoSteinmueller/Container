@@ -174,6 +174,45 @@ der Chart `traefik-internal`: `roleRef` ist unveränderlich, und wo schon eine
 Bindung dieses Namens auf eine *Role* zeigt, scheitert jedes Apply mit
 `cannot change roleRef`.
 
+### Das Dashboard
+
+Erreichbar unter `https://traefik.k8s.nico-steinmueller.de` — **mit Passwort**.
+
+Es war lange bewusst aus: Traefiks Dashboard kennt selbst keine
+Authentifizierung, und „nur im LAN erreichbar“ ist keine. Wer es öffnet, sieht
+jeden Router, jeden Service und jede Middleware — also eine Liste dessen, was
+es in diesem Cluster überhaupt zu erreichen gibt. Aufgemacht ist es deshalb nur
+zusammen mit einer BasicAuth-Middleware:
+
+| Objekt | wo |
+|---|---|
+| IngressRoute `traefik-internal-dashboard` | vom Chart, `ingressRoute.dashboard` in [ingress-internal.yaml](ingress-internal.yaml) |
+| Middleware `traefik-dashboard-auth` | eigenes Manifest in derselben Datei |
+| Middleware `traefik-dashboard-root` | dieselbe Datei — leitet `/` auf `/dashboard/` |
+| Secret `traefik-dashboard-auth` | SOPS-verschlüsselt in `homelab-secrets`, Benutzer `nico` |
+
+Die Match-Regel ist bewusst nur `Host(...)` statt der Chart-Voreinstellung
+``PathPrefix(`/dashboard`) || PathPrefix(`/api`)``: Der Hostname gehört allein
+diesem Dashboard, und mit der Voreinstellung wäre ausgerechnet die eingetippte
+Adresse ohne Pfad ein 404.
+
+Einen zweiten, ungeschützten Weg zum Dashboard gibt es **nicht**. Der
+Entrypoint `traefik` (Port 8080) trägt nur `/ping` für die Kubelet-Probes:
+`--api.dashboard=true` legt allein den Handler `api@internal` an, bedient wird
+er ausschließlich von einem Router. Auf 8080 läge die API erst mit
+`--api.insecure=true` („Activate API directly on the entryPoint named
+traefik"), und dieses Flag setzt der Chart nicht.
+
+Passwort wechseln:
+
+```bash
+python3 -c 'import bcrypt,getpass; print("nico:"+bcrypt.hashpw(getpass.getpass().encode(), bcrypt.gensalt(rounds=12)).decode())'
+sops clusters/talos-cp1/traefik-dashboard-auth.sops.yaml   # in homelab-secrets
+```
+
+Traefik liest das Secret über seinen Informer — der Wechsel gilt sofort, ohne
+Pod-Neustart.
+
 ### Das Zertifikat
 
 Ein **Wildcard von Let's Encrypt** für `*.k8s.nico-steinmueller.de`, per
@@ -229,6 +268,7 @@ LAN-Adresse des Nodes zeigen (AdGuard oder Fritzbox), nicht über DynDNS.
 
 ```
 dashboard.k8s.nico-steinmueller.de  ->  192.168.178.230
+traefik.k8s.nico-steinmueller.de    ->  192.168.178.230
 whoami.k8s.nico-steinmueller.de     ->  192.168.178.230
 ```
 
@@ -247,6 +287,10 @@ kubectl get ingress -A                 # ADDRESS bleibt leer, siehe unten
 
 # Der Beweisfall - der Weg über den Controller:
 curl -k https://whoami.k8s.nico-steinmueller.de
+
+# Das Dashboard: ohne Passwort 401, mit Passwort die Oberfläche.
+curl -k -o /dev/null -w '%{http_code}\n' https://traefik.k8s.nico-steinmueller.de/dashboard/
+curl -k -u nico https://traefik.k8s.nico-steinmueller.de/api/overview
 
 # Und die Gegenrichtung: der alte NodePort ist zu.
 curl --max-time 5 http://192.168.178.230:30083 || echo "zu, wie erwartet"
