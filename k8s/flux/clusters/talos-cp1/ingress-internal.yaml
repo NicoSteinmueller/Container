@@ -645,18 +645,34 @@ spec:
           email: nico.steinmueller@gmx.net
           storage: /data/acme.json
           #
-          # STAGING. Bewusst, und bewusst als erstes: Die Rate Limits im
-          # Produktivverzeichnis sind hart - fuenf fehlgeschlagene
-          # Validierungen je Konto und Hostname pro Stunde. Ein falscher
-          # API-Key verbraucht die in Minuten, und danach hilft nur warten.
+          # PRODUKTIV. Vorher stand hier das Staging-Verzeichnis, und der
+          # Weg dorthin zurueck ist dieselbe Zeile:
           #
-          # Staging-Zertifikate signiert eine Wurzel, der kein Browser
-          # vertraut: Die Warnung bleibt also, bis diese Zeile auf
-          # https://acme-v02.api.letsencrypt.org/directory steht. Umstellen
-          # erst, wenn `kubectl -n traefik-internal logs` eine erfolgreiche
-          # Ausstellung zeigt - dann acme.json loeschen und neu anfordern.
+          #   https://acme-staging-v02.api.letsencrypt.org/directory
           #
-          caServer: https://acme-staging-v02.api.letsencrypt.org/directory
+          # Der Grund fuer die Reihenfolge - erst Staging, dann hier - sind
+          # die Rate Limits: fuenf fehlgeschlagene Validierungen je Konto und
+          # Hostname pro Stunde, und ein falscher API-Key verbraucht die in
+          # Minuten. Wer an der DNS-01-Challenge etwas aendert, probiert das
+          # also wieder drueben aus, nicht hier.
+          #
+          # ACHTUNG beim Umstellen in BEIDE Richtungen: acme.json muss weg.
+          # Es traegt zwei Dinge, die zum Verzeichnis gehoeren und die
+          # Traefik NICHT von allein verwirft:
+          #
+          #   - das ausgestellte Zertifikat. Es ist gueltig, also nimmt
+          #     Traefik es weiter - der Browser warnt danach genauso wie
+          #     vorher, und es sieht aus, als haette die Umstellung nicht
+          #     gewirkt.
+          #   - das ACME-Konto samt Registrierungs-URI. Die zeigt auf
+          #     Staging; gegen das Produktivverzeichnis vorgelegt, antwortet
+          #     es mit "account does not exist".
+          #
+          #   kubectl -n traefik-internal exec deploy/traefik-internal \
+          #     -- rm -f /data/acme.json
+          #   kubectl -n traefik-internal rollout restart deploy/traefik-internal
+          #
+          caServer: https://acme-v02.api.letsencrypt.org/directory
           keyType: EC256
           dnsChallenge:
             provider: ionos
