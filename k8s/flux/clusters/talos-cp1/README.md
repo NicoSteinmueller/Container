@@ -242,18 +242,26 @@ Das Zertifikat hängt am **Entrypoint**, nicht an den Ingress-Objekten. Ein
 neuer Dienst braucht damit keinen `tls:`-Block und kein eigenes Secret; er ist
 mit seinem Namen abgedeckt.
 
-> **Der Resolver steht auf Staging.** Die Rate Limits im Produktivverzeichnis
-> sind hart — fünf fehlgeschlagene Validierungen je Konto und Hostname pro
-> Stunde, und ein falscher API-Key verbraucht die in Minuten. Staging-Wurzeln
-> vertraut kein Browser, die Warnung bleibt also. Umstellen erst, wenn im Log
-> eine erfolgreiche Ausstellung steht:
+> **Der Resolver steht auf dem Produktivverzeichnis.** Vorher war es Staging —
+> zum Ausprobieren, weil die Rate Limits hart sind: fünf fehlgeschlagene
+> Validierungen je Konto und Hostname pro Stunde, und ein falscher API-Key
+> verbraucht die in Minuten. Wer an der DNS-01-Challenge etwas ändert, probiert
+> das wieder in Staging aus.
+>
+> **Beim Umstellen muss `acme.json` weg** — in beide Richtungen. Es trägt das
+> ausgestellte Zertifikat *und* die Registrierungs-URI des ACME-Kontos, beides
+> gehört zum jeweiligen Verzeichnis, und Traefik verwirft es nicht von allein:
+> Das alte Zertifikat ist gültig, also wird es weiter ausgeliefert (die
+> Browser-Warnung bleibt, und es sieht aus, als sei nichts passiert), und das
+> Staging-Konto quittiert das Produktivverzeichnis mit `account does not exist`.
 >
 > ```bash
-> kubectl -n traefik-internal logs deploy/traefik-internal | grep -i acme
+> kubectl -n traefik-internal exec deploy/traefik-internal -- rm -f /data/acme.json
+> kubectl -n traefik-internal rollout restart deploy/traefik-internal
+> kubectl -n traefik-internal logs -f deploy/traefik-internal | grep -i acme
 > ```
 >
-> Dann `caServer` auf `https://acme-v02.api.letsencrypt.org/directory`, das
-> alte `acme.json` im PVC löschen und den Pod neu starten.
+> Danach zieht die Warnung im Browser weg — und `curl` braucht kein `-k` mehr.
 
 ### Der API-Key
 
