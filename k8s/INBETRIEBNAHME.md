@@ -12,9 +12,10 @@ Was bewusst *nicht* Teil der Inbetriebnahme ist, sondern später kommt, steht in
 > **Stand: dieses Dokument beschreibt mehr, als es derzeit gibt.**
 >
 > Die Schritte 0 bis 2 lassen sich heute abarbeiten: Unraid-Host, Talos-Node,
-> Flux. Storage und der **interne** Ingress sind zurückgekommen, als
-> Flux-Manifest statt als Terraform-Modul. Ab Schritt 3 setzt der Ablauf den
-> Rest des Plattform-Stacks voraus — Ingress-Firewall, LB-IPAM,
+> Flux. Storage, der **interne** Ingress und die LAN-Adressen (Schritt 4) sind
+> zurückgekommen, als Flux-Manifest statt als Terraform-Modul. Offen sind die
+> Ingress-Firewall (Schritt 3), die Umstellung von `ingress-internal` auf
+> LoadBalancer (Schritt 5) und der Rest des früheren Plattform-Stacks —
 > `ingress-public`, Kyverno, CrowdSec. Der lag im Modul `k8s/platform`, ist
 > entfernt worden und soll stückweise als Flux-Manifest wiederkommen.
 >
@@ -314,19 +315,24 @@ NetworkPolicies, IngressClasses, local-path-provisioner, cert-manager, step-ca,
 Traefik als `public`/`internal`, Kyverno, CrowdSec und der kubelet-csr-approver.
 Es ist entfernt worden und kommt stückweise als Flux-Manifest zurück.
 
-**Zurück sind:** Storage (`local-path.yaml`, `nfs-storage.yaml`) und der
-interne Ingress mit Namespaces, NetworkPolicies und der IngressClass
-`internal` (`ingress-internal.yaml`). Damit sind zwei der früheren Sperren weg:
-PVCs binden, und Dienste hängen unter Hostnamen statt an NodePorts.
+**Zurück sind:** Storage (`local-path.yaml`, `nfs-storage.yaml`), der interne
+Ingress mit Namespaces, NetworkPolicies und der IngressClass `internal`
+(`ingress-internal.yaml`) sowie die LAN-Adressen (`lb-ipam.yaml`, Schritt 4).
+Damit sind drei der früheren Sperren weg: PVCs binden, Dienste hängen unter
+Hostnamen statt an NodePorts, und ein Service vom Typ `LoadBalancer` bekommt
+eine Adresse, die im Netz auch angekündigt wird.
 
 **Noch offen, und was daran hängt:**
 
 - **Keine Ingress-Firewall auf dem Node.** `talosctl get nftableschains` kommt
   leer zurück, `admin_sources` gibt es in `vm/talos` noch nicht. Das ist
   Schritt 3 und muss stehen, bevor die Fritzbox irgendetwas weiterleitet.
-- **Keine LoadBalancer-Adressen.** LB-IPAM und L2-Announcements sind in den
-  Cilium-Werten nicht eingeschaltet; `ingress-internal` hängt noch an
-  `hostPort` auf der Node-Adresse. Schritte 4 und 5.
+- **`ingress-internal` hängt noch an `hostPort`.** Die Adressen selbst stehen
+  seit Schritt 4 bereit — Pool `lan` mit `.231`–`.232`, Ankündigung
+  nachgemessen —, aber der Controller fordert noch keine an. Das ist Schritt 5
+  und dort ein Zweizeiler; die Aufräumarbeiten daran (PodSecurity zurück auf
+  `restricted`, der gegenstandslose `hostPort`-Kommentarblock) stehen ebenfalls
+  dort.
 - **Kein `ingress-public`.** Die Klasse `public` existiert nicht, eine
   Portfreigabe führte ins Leere. Schritt 8.
 - **Kein Kyverno.** Die Regel auf `ingressClassName: public` gibt es damit
