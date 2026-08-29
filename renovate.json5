@@ -23,9 +23,6 @@
   customManagers: [
     {
       // Traefik-Plugins im Docker-Stack (traefik/config/traefik.yml).
-      // Die Edge-VM steht bewusst nicht hier: Dort steht in der Vorlage ein
-      // Terraform-Platzhalter statt einer Version - getrackt wird der Wert
-      // weiter unten in vm/edge/variables.tf.
       customType: 'regex',
       managerFilePatterns: [
         '/(^|/)traefik\\.ya?ml$/',
@@ -34,45 +31,6 @@
         'moduleName:\\s*github\\.com\\/(?<depName>[^\\/]+\\/[^\\s]+)\\s+version:\\s*(?<currentValue>v[^\\s]+)',
       ],
       datasourceTemplate: 'github-releases',
-    },
-    {
-      // Traefik-Binary der Edge-VM. Die Prüfsumme daneben muss beim Update von
-      // Hand nachgezogen werden - deshalb kein Automerge (siehe packageRules).
-      customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)vm\\/edge\\/variables\\.tf$/',
-      ],
-      matchStrings: [
-        'variable "traefik_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>v[0-9.]+)"',
-      ],
-      datasourceTemplate: 'github-releases',
-      depNameTemplate: 'traefik/traefik',
-    },
-    {
-      // Version des Traefik-Plugins in vm/edge/variables.tf. Die statische
-      // Konfiguration setzt den Wert nur ein, tracken lässt er sich hier.
-      customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)vm\\/edge\\/variables\\.tf$/',
-      ],
-      matchStrings: [
-        'variable "crowdsec_plugin_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>v[0-9.]+)"',
-      ],
-      datasourceTemplate: 'github-releases',
-      depNameTemplate: 'maxlerebourg/crowdsec-bouncer-traefik-plugin',
-    },
-    {
-      // step-cli der Edge-VM, ebenfalls mit Prüfsumme daneben.
-      customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)vm\\/edge\\/variables\\.tf$/',
-      ],
-      matchStrings: [
-        'variable "step_cli_version"[\\s\\S]*?default\\s*=\\s*"(?<currentValue>[0-9.]+)"',
-      ],
-      datasourceTemplate: 'github-releases',
-      depNameTemplate: 'smallstep/cli',
-      extractVersionTemplate: '^v(?<version>.*)$',
     },
     {
       customType: 'regex',
@@ -106,8 +64,7 @@
       // Bewusst generisch ueber alle Rollen: Datasource und Repo stehen als
       // Kommentar an der Version selbst, damit eine neue Rolle hier nichts
       // nachtragen muss. Die Pruefsumme zieht die Rolle zur Laufzeit aus dem
-      // Release - anders als bei der Edge-VM ist hier nichts von Hand
-      // nachzuziehen.
+      // Release - hier ist nichts von Hand nachzuziehen.
       customType: 'regex',
       managerFilePatterns: [
         '/(^|/)ansible\\/tools\\/roles\\/[^/]+\\/defaults\\/main\\.ya?ml$/',
@@ -160,11 +117,6 @@
       depNameTemplate: 'cilium',
       registryUrlTemplate: 'https://helm.cilium.io',
     },
-    // Das Debian-Cloud-Image der Edge-VM (vm/edge/variables.tf) bleibt bewusst
-    // ohne Manager: Renovate hat keine Datasource für die Snapshot-Stände auf
-    // cloud.debian.org, und der Docker-Tag "debian" folgt einer anderen
-    // Zählung als debian_image_snapshot. Der Wert wird von Hand nachgezogen,
-    // siehe vm/edge/README.md.
   ],
   branchPrefix: 'renovate/',
   additionalBranchPrefix: '{{parentDir}}-',
@@ -277,20 +229,6 @@
       prCreation: 'immediate',
       prBodyNotes: [
         '### 🔌 Traefik Plugin Update\n\n⚠️ **WICHTIG: Manuelles Deployment erforderlich!**\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{/each}}{{/if}}',
-      ],
-    },
-    {
-      description: 'Edge-VM: Update immer mit Review, Prüfsumme von Hand',
-      matchManagers: [
-        'custom.regex',
-      ],
-      matchFileNames: [
-        'vm/edge/variables.tf',
-      ],
-      automerge: false,
-      prCreation: 'immediate',
-      prBodyNotes: [
-        '### 🛡️ Update der Edge-VM\n\n⚠️ **Vor dem Merge:** Die passende SHA256 in derselben Datei nachziehen – ohne sie schlägt `edge-install-stack` mit einem Prüfsummenfehler fehl.\n\n```bash\n# Traefik\ncurl -sL https://github.com/traefik/traefik/releases/download/<v>/traefik_<v>_checksums.txt | grep linux_amd64.tar.gz\n# step-cli\ncurl -sL https://github.com/smallstep/cli/releases/download/v<v>/checksums.txt | grep _amd64.deb\n```\n\nNach dem `terraform apply` fällig:\n- `sudo /usr/local/sbin/edge-install-stack` (oder Neuausrollen der VM)\n- `vm/edge/verify/assert-ruleset.sh`\n- `vm/edge/verify/proxy-test.sh <öffentlicher-name>`',
       ],
     },
     {

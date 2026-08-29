@@ -93,11 +93,11 @@ Der erste Ingress-Controller dieses Clusters: Namespace, IngressClass
 `internal`, NetworkPolicies und die Traefik-Release. Vorher war jeder Dienst
 nur über einen NodePort und per HTTP erreichbar.
 
-Erreichbar ausschließlich aus dem Heimnetz. Die Gegenstelle für das Internet
-(`ingress-public` hinter der Edge-VM) fehlt weiterhin — deshalb legt die Datei
-auch nur **eine** Klasse an, nicht das Paar `public`/`internal`. Eine Klasse
-ohne Controller wäre eine Falle: Ein Ingress mit `ingressClassName: public`
-würde angenommen und nie bedient.
+Erreichbar ausschließlich aus dem Heimnetz. Der zweite Controller für das
+Internet (`ingress-public`, eigene LoadBalancer-Adresse) fehlt weiterhin —
+deshalb legt die Datei auch nur **eine** Klasse an, nicht das Paar
+`public`/`internal`. Eine Klasse ohne Controller wäre eine Falle: Ein Ingress
+mit `ingressClassName: public` würde angenommen und nie bedient.
 
 ### hostPort statt hostNetwork
 

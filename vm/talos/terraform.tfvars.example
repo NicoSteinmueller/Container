@@ -10,8 +10,9 @@
 libvirt_uri = "qemu+ssh://root@<host>/system"
 
 # Kommt `virsh --connect "$libvirt_uri" pool-list --all` leer zurück, legt
-# dieses Modul den Pool an; bringt ihn vm/edge mit, bleibt manage_pool aus -
-# ein libvirt-Objekt in zwei States ist beim Zerstören eine Fehlerquelle.
+# dieses Modul den Pool an. Bringt ihn ein anderes Modul mit, bleibt
+# manage_pool aus - ein libvirt-Objekt in zwei States ist beim Zerstören eine
+# Fehlerquelle.
 libvirt_pool = "homelab"
 manage_pool  = true
 pool_path    = "/mnt/cache/domains"

@@ -56,9 +56,8 @@ build/
 # terraform.tfstate.backup legt Terraform bei `state rm` und `state mv`
 # zusaetzlich Sicherungen mit Zeitstempel an - terraform.tfstate.<epoch>.backup.
 # Die wurden von den frueheren, exakten Mustern nicht erfasst und lagen damit
-# ungeschuetzt im Baum. In diesen Dateien stehen die Cluster-PKI und die
-# cloud-init-user_data der Edge-VM; sie gehoeren unter keinen Umstaenden in
-# einen Commit.
+# ungeschuetzt im Baum. In diesen Dateien steht die Cluster-PKI; sie gehoert
+# unter keinen Umstaenden in einen Commit.
 **/terraform.tfstate*
 # Schreibt tofu, wenn der State nach einem Apply nicht in den Backend
 # zurueckgeschrieben werden kann - etwa weil der Lock haengt. Der Name faengt
@@ -71,6 +70,4 @@ build/
 # .terraform.lock.hcl gehoert bewusst NICHT hierher: Die Datei haelt die
 # Pruefsummen der Provider fest. Ohne sie nimmt `terraform init` auf einem
 # frischen Klon, was die Registry gerade ausliefert - und Constraints wie
-# "~> 2.17" waehlen dabei eine andere Version als die laufende. Das ist
-# dieselbe Ueberlegung, aus der vm/edge die SHA256 von Traefik und step-cli
-# im Repo festhaelt statt sie neben dem Release abzuholen.
+# "~> 2.17" waehlen dabei eine andere Version als die laufende.

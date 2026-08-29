@@ -294,8 +294,10 @@ nachziehen.
 
  Für später vorgesehen:
 
-- **DMZ-Bein zur Edge-VM**, Ingress-Firewall, `admin_sources`. Der Node hängt
-  offen im LAN; von außen erreichbar ist er nur, wenn der Router weiterleitet.
+- **Ingress-Firewall mit `admin_sources`.** Der Node hängt offen im LAN, die
+  Talos-API ist dort nur durch Client-Zertifikate geschützt. Das muss stehen,
+  bevor die Fritzbox irgendetwas weiterleitet — der Ablauf steht in
+  [../../k8s/INBETRIEBNAHME.md](../../k8s/INBETRIEBNAHME.md), Schritt 3.
 - **Plattform-Stack** (cert-manager, Traefik, Kyverno, CrowdSec, Headlamp).
 - **serverTLSBootstrap** fürs Kubelet. Braucht einen Genehmiger im Cluster;
   ohne ihn bleibt der CSR `Pending` und der Health-Check bricht ab.
