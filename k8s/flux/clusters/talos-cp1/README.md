@@ -87,6 +87,55 @@ kubectl -n headlamp create token headlamp-admin --duration=1h  # Ändern
 kubectl -n flux-system get helmrelease headlamp metrics-server
 ```
 
+## `lb-ipam.yaml`
+
+Die LAN-Adressen des Clusters: welche es gibt (`CiliumLoadBalancerIPPool`,
+`.231`–`.232`) und wie das Netz von ihnen erfährt
+(`CiliumL2AnnouncementPolicy` auf `enp1s0`).
+
+Zwei Teile, die man auseinanderhalten muss — die Verwechslung ist der
+häufigste Fehler an dieser Stelle:
+
+| | was es tut | wo es eingeschaltet wird |
+|---|---|---|
+| **LB-IPAM** | *vergibt* eine Adresse an einen Service | nirgends — es genügt, dass ein IPPool existiert |
+| **L2-Announcement** | *kündigt* sie per Gratuitous ARP im Netz an | `l2announcements.enabled` in [cilium.yaml.tftpl](../../../../vm/talos/values/cilium.yaml.tftpl) |
+
+Fehlt der zweite Teil, sieht der Service **gesund aus** — `EXTERNAL-IP` steht
+da — und ist trotzdem für niemanden erreichbar. Die aussagekräftige Gegenprobe
+ist deshalb nicht der Service, sondern die Lease:
+
+```bash
+kubectl -n kube-system get lease | grep l2announce
+kubectl get ciliumloadbalancerippools,ciliuml2announcementpolicies
+```
+
+Der Wert in den Cilium-Werten setzt zweierlei: das Agent-Flag
+`enable-l2-announcements` **und** die RBAC-Regeln auf
+`coordination.k8s.io/leases`. Wer die Abkürzung über
+`kubectl patch cm cilium-config` nimmt, bekommt nur das Flag — und damit einen
+Agent, der ankündigen will und nicht darf:
+
+```
+leases.coordination.k8s.io "cilium-l2announce-..." is forbidden
+```
+
+Dass Gratuitous ARP für eine Zusatzadresse über das macvtap-Interface des
+Nodes überhaupt durchgeht, war die offene Frage der ganzen Umstellung. Sie ist
+nachgemessen: Vom Unraid-Host aus trägt `.231` dieselbe MAC wie `.230`.
+Vorgehen samt der beiden Fallen, die ein falsches Negativ liefern, in
+[../../../INBETRIEBNAHME.md](../../../INBETRIEBNAHME.md), Schritt 4.
+
+Die Zuordnung Service → Adresse steht **nicht** hier, sondern als Annotation
+`lbipam.cilium.io/ips` am jeweiligen Service. Ohne sie wäre sie die
+Reihenfolge der Vergabe — und ein Neustart könnte die beiden Ingress-Adressen
+tauschen, mitten in einer bestehenden Portfreigabe.
+
+Die beiden CRs tragen verschiedene apiVersions: Beim IPPool ist `cilium.io/v2`
+die Storage-Version (`v2alpha1` quittiert das Apply mit einer
+Deprecation-Warnung), die L2-Policy kennt in Cilium 1.20.1 **kein** `v2`. Beim
+Cilium-Update mitprüfen.
+
 ## `ingress-internal.yaml`
 
 Der erste Ingress-Controller dieses Clusters: Namespace, IngressClass

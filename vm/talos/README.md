@@ -142,6 +142,58 @@ Was daran hängt:
   neu und die Machine-Config wäre nie driftfrei.
 - Die Machine-Config wächst dadurch um rund 60 KB gerendertes YAML.
 
+### Eine Wertänderung ist mit `tofu apply` **nicht** im Cluster
+
+Der wichtigste Fallstrick dieser Bauweise, und er meldet sich nicht von selbst:
+**Talos schreibt geänderte Inline-Manifeste nicht auf bereits bestehende
+Objekte durch.** Die Manifeste werden beim Bootstrap angelegt; danach hebt ein
+`apply` zwar die interne Manifest-Ressource an, fasst die Objekte im Cluster
+aber nicht mehr an.
+
+Was man dann sieht — und was daran täuscht:
+
+| | |
+|---|---|
+| `tofu plan` | `No changes` |
+| `talosctl get mc v1alpha1` | enthält den neuen Wert |
+| `talosctl get manifests` | `99-cilium` mit erhöhter `VERSION` |
+| der laufende Cluster | **unverändert** |
+
+Vier Anzeigen sagen „fertig", eine sagt die Wahrheit. Gemerkt haben wir es
+beim Einschalten von `l2announcements`: Flag und Leases-RBAC standen in der
+Machine-Config und fehlten im Cluster, und der Cilium-Pod war nicht einmal
+neu gestartet.
+
+Der Nachtrag ist ein Zweizeiler — der Inhalt kommt aus Talos selbst, ist also
+exakt das, was dort hinterlegt ist:
+
+```bash
+talosctl -n <node-ip> get manifests 99-cilium -o yaml \
+  | python3 -c 'import sys,yaml; print(yaml.safe_dump_all(yaml.safe_load(sys.stdin)["spec"]))' \
+  | kubectl apply -f -
+kubectl -n kube-system rollout status ds/cilium
+```
+
+Vorher lohnt `kubectl diff -f -` an derselben Stelle: Der Diff muss genau die
+beabsichtigte Änderung zeigen und sonst nichts. Die Checksum-Annotation
+`cilium.io/cilium-configmap-checksum` an DaemonSet und Operator ändert sich
+mit — sie ist es, die den Rollout auslöst.
+
+Zwei Dinge, die dabei auffallen und in Ordnung sind:
+
+- `kubectl` warnt für jedes Objekt, dass die Annotation
+  `last-applied-configuration` fehlt, und ergänzt sie. Erwartbar: Angelegt hat
+  die Objekte Talos, nicht `kubectl apply`.
+- Der Agent-Neustart unterbricht den Datapfad nicht spürbar — Cilium behält
+  seine eBPF-Maps über einen Neustart hinweg.
+
+**Nicht per `kubectl patch cm cilium-config` abkürzen.** Etliche Werte hängen
+nicht nur an einem ConfigMap-Eintrag, sondern auch an RBAC: `l2announcements`
+etwa braucht zusätzlich `coordination.k8s.io/leases`. Wer nur die ConfigMap
+patcht, bekommt einen Agent, der die Funktion versucht und nicht darf — im Log
+eine Endlosschleife aus `... is forbidden`, nach außen ein Dienst, der gesund
+aussieht und nicht antwortet.
+
 ### NetworkPolicies gelten ab jetzt wirklich
 
 Die unscheinbarste Folge des Wechsels, und die, die am ehesten überrascht:
