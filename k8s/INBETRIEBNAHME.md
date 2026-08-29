@@ -3,31 +3,56 @@
 Der Weg von einem leeren Unraid-Host zu Immich und Nextcloud im Internet.
 Reihenfolge einhalten — die Portfreigabe kommt **zuletzt**, nicht zuerst.
 
-Ausführlich steht alles in [../vm/edge/README.md](../vm/edge/README.md),
-[../vm/talos/README.md](../vm/talos/README.md) und
+Ausführlich steht alles in [../vm/talos/README.md](../vm/talos/README.md) und
 [flux/README.md](flux/README.md); das hier ist der Ablauf.
 
 Was bewusst *nicht* Teil der Inbetriebnahme ist, sondern später kommt, steht in
 [AUSBAUSTUFEN.md](AUSBAUSTUFEN.md).
 
-> **Die Schritte 4, 5 und 8 sind überholt.** Der öffentliche Zugang wird ohne
-> die vorgelagerte Edge-VM gebaut: zwei LoadBalancer-Adressen auf einem Node,
-> vergeben von Cilium. Was dafür zu tun ist und was der Verzicht kostet, steht
-> in [OHNE-EDGE.md](OHNE-EDGE.md). Die Schritte 0 bis 3, 6 und 7 gelten
-> unverändert — mit der Ausnahme, dass Schritt 1 (Edge-VM) entfällt.
-
 > **Stand: dieses Dokument beschreibt mehr, als es derzeit gibt.**
 >
-> Die Schritte 0 bis 3 lassen sich heute abarbeiten: Unraid-Host, Edge-VM,
-> Talos-Node, Flux. Storage und der **interne** Ingress sind seither
-> zurückgekommen, als Flux-Manifest statt als Terraform-Modul. Ab Schritt 4
-> setzt der Ablauf den Rest des Plattform-Stacks voraus — interne CA,
-> ingress-public, Kyverno, CrowdSec im Cluster. Der lag im Modul
-> `k8s/platform`, ist entfernt worden und soll ebenso wiederkommen.
+> Die Schritte 0 bis 2 lassen sich heute abarbeiten: Unraid-Host, Talos-Node,
+> Flux. Storage und der **interne** Ingress sind zurückgekommen, als
+> Flux-Manifest statt als Terraform-Modul. Ab Schritt 3 setzt der Ablauf den
+> Rest des Plattform-Stacks voraus — Ingress-Firewall, LB-IPAM,
+> `ingress-public`, Kyverno, CrowdSec. Der lag im Modul `k8s/platform`, ist
+> entfernt worden und soll stückweise als Flux-Manifest wiederkommen.
 >
 > Die betroffenen Schritte bleiben trotzdem hier stehen. Sie beschreiben, was
 > der Wiederaufbau zu leisten hat, und die Begründungen darin sind mit dem Code
-> nicht ungültig geworden. Was genau fehlt, steht am Ende von Schritt 3.
+> nicht ungültig geworden. Was genau fehlt, steht am Ende von Schritt 2.
+
+## Zielbild
+
+Ein Node, zwei LoadBalancer-Adressen aus dem LAN, vergeben von Cilium per
+LB-IPAM und im Netz angekündigt per L2-Announcement. Kein `hostPort`, kein
+`hostNetwork`, kein Sysctl.
+
+| Adresse | Wer lauscht | Erreichbar von |
+|---|---|---|
+| `192.168.178.230` | Node selbst: Talos-API, Kubelet, kube-apiserver | nur `admin_sources`, siehe Schritt 3 |
+| `192.168.178.231` | `ingress-internal` — Headlamp, whoami, Paperless | nur LAN |
+| `192.168.178.232` | `ingress-public` — Immich, Nextcloud | Internet (Fritzbox-Freigabe) **und** LAN über Split-DNS |
+
+Beide LoadBalancer-Adressen müssen außerhalb des Fritzbox-DHCP-Bereichs liegen
+und dürfen nicht mit `lan_ip` aus [../vm/talos](../vm/talos) kollidieren.
+
+Warum LoadBalancer und nicht `hostIP` auf zwei Adressen: Der Kommentarblock in
+[flux/clusters/talos-cp1/ingress-internal.yaml](flux/clusters/talos-cp1/ingress-internal.yaml)
+beschreibt den `hostIP`-Weg und seine Folgekosten — das Chart schreibt `hostIP`
+auch in die Entrypoint-Adresse, Traefik scheitert dann im Pod-Netz am Binden,
+Ausweg ist `hostNetwork` plus `net.ipv4.ip_unprivileged_port_start=0`. Dazu
+kommt eine Folge, die dort nicht steht: **Mit `hostNetwork` liegt der Pod im
+Host-Namespace und trägt die Cilium-Identität `host`.** Die NetworkPolicies
+`default-deny-ingress` und `allow-from-lan` in derselben Datei greifen dann
+nicht mehr wie heute — Cilium erzwingt Policies gegen Host-Netzwerk-Pods nur
+mit aktivierter Host-Firewall und `CiliumClusterwideNetworkPolicy`. Der
+LoadBalancer-Weg lässt die Pods im Pod-Netz und damit alle Policies so gültig,
+wie sie heute begründet sind.
+
+Warum der öffentliche Ingress im Cluster steht und nicht auf einer
+vorgelagerten VM, und was dieser Verzicht kostet, steht im
+[Sicherheitskonzept](homelab-sicherheitskonzept.html) unter **E2**.
 
 ## 0. Voraussetzungen auf dem Unraid-Host
 
@@ -38,12 +63,12 @@ Was bewusst *nicht* Teil der Inbetriebnahme ist, sondern später kommt, steht in
 | Share `domains` vorhanden, ~120 GB frei | `ssh root@unraid df -h /mnt/cache/domains` |
 | RAM-Budget, siehe unten — Container zählen mit | `ssh root@unraid free -m` |
 
-**Zum RAM-Budget.** Die Zahl im Konzept — 1,5 GB Edge, 10 GB Talos — beschreibt
-den Endausbau, nicht den Tag der Inbetriebnahme. An dem laufen Nextcloud, Immich
+**Zum RAM-Budget.** Die Zahl im Konzept — 10 GB für den Node — beschreibt den
+Endausbau, nicht den Tag der Inbetriebnahme. An dem laufen Nextcloud, Immich
 und Paperless noch als Container auf dem Host und belegen ihren Speicher weiter:
 
 ```
-16 GB gesamt  −  ~7,5 GB Docker  −  1,5 GB Edge  =  ~5 GB frei
+16 GB gesamt  −  ~7,5 GB Docker  =  ~8,5 GB frei
 ```
 
 **Diese Rechnung ist eine Obergrenze, kein Budget.** Sie unterstellt, dass der
@@ -54,12 +79,13 @@ der Kernel-Modul-Squashfs `/boot/bzmodules`, dessen Backing-Store der
 USB-Boot-Stick ist. Der stand bei 74 % Auslastung, der ganze Host bei 70 %
 iowait und 6 % User-CPU — Load 15,7, ohne dass irgendetwas gerechnet hätte.
 
-Real verfügbar sind eher 2–2,5 GB. Ein Versuch mit 3 GB scheiterte dann aber an
-der anderen Seite der Rechnung: Der Plattform-Stack ist nicht „fast nichts".
-Gemessen im damals laufenden Cluster, ohne jede Nutzlast, sind es **1900 MiB
-Memory-Requests** — auf einem Node, dem Talos von 3072 MiB VM nur 2880 MiB
-meldet, und der davon selbst rund 600 MiB für kubelet und containerd braucht.
-Talos' `runtime.OOMController` schoss daraufhin reihenweise Cgroups ab.
+Real verfügbar sind eher 2–2,5 GB pro Gigabyte auf dem Papier. Ein Versuch mit
+3 GB scheiterte dann aber an der anderen Seite der Rechnung: Der
+Plattform-Stack ist nicht „fast nichts". Gemessen im damals laufenden Cluster,
+ohne jede Nutzlast, sind es **1900 MiB Memory-Requests** — auf einem Node, dem
+Talos von 3072 MiB VM nur 2880 MiB meldet, und der davon selbst rund 600 MiB
+für kubelet und containerd braucht. Talos' `runtime.OOMController` schoss
+daraufhin reihenweise Cgroups ab.
 
 **Reihenfolge, die dabei zählt:** Der Plattform-Stack muss passen, *bevor* der
 erste Dienst migriert. Auf einem 16-GB-Host heißt das, vorher hostseitig Platz
@@ -84,7 +110,7 @@ sondern das Abschalten eines Containers.
 
 **Zum Ablageort der VM-Disks.** Unraid definiert keine libvirt-Storage-Pools —
 es schreibt VM-Disks über absolute Pfade ins Domain-XML, `virsh pool-list --all`
-ist ab Werk leer. `vm/edge` legt deshalb selbst einen Verzeichnis-Pool an, der
+ist ab Werk leer. `vm/talos` legt deshalb selbst einen Verzeichnis-Pool an, der
 auf den Share `domains` zeigt (`manage_pool`, `pool_path`); von Hand ist dafür
 nichts zu tun.
 
@@ -92,9 +118,7 @@ Was dort liegt, sind gewöhnliche qcow2-Dateien — sichtbar in der
 Unraid-Oberfläche und für die Backup-Plugins:
 
 ```
-/mnt/cache/domains/edge1.qcow2
 /mnt/cache/domains/homelab-cp1.qcow2
-/mnt/cache/domains/debian-13-genericcloud-amd64-<snapshot>.qcow2
 ```
 
 Der Pfad geht bewusst über `/mnt/cache` und nicht über `/mnt/user`: derselbe
@@ -125,8 +149,8 @@ Die automatische Firmware-Auswahl von libvirt scheitert deshalb mit
 Failed to open file '/usr/share/qemu/edk2-i386-vars.fd': No such file or directory
 ```
 
-Unraid bringt stattdessen sein eigenes OVMF mit. In **beiden** tfvars-Dateien
-deshalb setzen:
+Unraid bringt stattdessen sein eigenes OVMF mit. In der tfvars-Datei deshalb
+setzen:
 
 ```hcl
 efi_loader        = "/usr/share/qemu/ovmf-x64/OVMF_CODE-pure-efi.fd"
@@ -146,16 +170,14 @@ bzw. `eth0`, und der VM-Start scheitert mit
 Cannot get interface MTU on 'br0': No such device
 ```
 
-Dann statt `lan_bridge` in **beiden** Modulen setzen:
+Dann statt `lan_bridge` setzen:
 
 ```hcl
 lan_macvtap_dev = "bond0"     # ip -br link auf dem Host zeigt den Namen
 ```
 
 Was das bedeutet, und das ist kein Detail: Mit macvtap erreichen sich VM und
-Hypervisor-Host **nicht**. Für die Edge-VM passt das zum Konzept („kein LAN,
-keine Shares, keine Unraid-Oberfläche") und ist eher ein Gewinn. Zwei Folgen
-muss man aber kennen:
+Hypervisor-Host **nicht**. Zwei Folgen muss man kennen:
 
 - **Der interne Resolver darf nicht auf dem Host selbst liegen.** Läuft
   AdGuard als Docker-Container in einem macvlan-Netz (auf Unraid der
@@ -201,68 +223,28 @@ Der Pin von `talosctl` muss zur `talos_version` in
 | Was | Adresse | Wo eingetragen |
 |---|---|---|
 | Unraid | 192.168.178.3 | — |
-| Interner Resolver (AdGuard) | eigene LAN-Adresse des Containers, **nicht** die des Hosts | `dns_servers` in beiden Modulen |
-| Edge-VM, LAN | 192.168.178.221 | `lan_ip`, Ziel der Fritzbox-Freigabe |
-| Talos-Node, LAN | 192.168.178.222 | `lan_ip` in vm/talos |
-| Edge-VM, DMZ | 10.10.20.2 | `edge_dmz_ip` |
-| Talos-Node, DMZ | 10.10.20.3 | `node_dmz_ip` / `cluster_ingress_ip` |
+| Interner Resolver (AdGuard) | eigene LAN-Adresse des Containers, **nicht** die des Hosts | `dns_servers` in vm/talos |
+| Talos-Node, LAN | 192.168.178.230 | `lan_ip` in vm/talos |
+| `ingress-internal` | 192.168.178.231 | LB-IPAM-Pool, Schritt 4 |
+| `ingress-public` | 192.168.178.232 | LB-IPAM-Pool, Schritt 4; Ziel der Fritzbox-Freigabe |
 
-Beide LAN-Adressen müssen **außerhalb** des Fritzbox-DHCP-Bereichs liegen.
+Alle drei Adressen müssen **außerhalb** des Fritzbox-DHCP-Bereichs liegen.
 
-## 1. Edge-VM
+## 1. Talos-Node
 
 ```bash
-cd vm/edge
+cd vm/talos
 cp terraform.tfvars.example terraform.tfvars
 ```
 
-In `terraform.tfvars` mindestens setzen:
+Anpassen:
 
 ```hcl
 # Die wichtigste Zeile: ohne sie baut Terraform alles auf der eigenen
 # Arbeitsstation statt auf Unraid.
-libvirt_uri         = "qemu+ssh://root@192.168.178.3/system"
-lan_bridge          = "br0"
-lan_ip              = "192.168.178.221"
-lan_gateway         = "192.168.178.1"
-dns_servers         = ["192.168.178.2"]
-ssh_authorized_keys = ["ssh-ed25519 AAAA... nico"]
-admin_sources       = ["192.168.178.0/24"]
-
-domain = "domain.de"
-public_services = [
-  { name = "immich", subdomain = "immich", strict_paths = ["/api/auth"] },
-  { name = "cloud",  subdomain = "cloud",  strict_paths = ["/login"], relaxed_paths = ["/remote.php"] },
-]
-acme_email = "post@domain.de"
-# Für die ersten Läufe:
-acme_ca_server = "https://acme-staging-v02.api.letsencrypt.org/directory"
-```
-
-```bash
-terraform init && terraform apply
-ssh edge@192.168.178.221 cloud-init status --wait     # dauert ein paar Minuten
-verify/assert-ruleset.sh
-verify/egress-test.sh
-```
-
-Damit steht die VM, das isolierte Netz `edge-dmz` existiert auf dem Host —
-und noch kommt niemand von außen hinein.
-
-## 2. Talos-Node
-
-```bash
-cd ../talos
-cp terraform.tfvars.example terraform.tfvars
-```
-
-Anpassen — dieselben Werte wie in Schritt 1, sonst finden sich die beiden VMs
-nicht:
-
-```hcl
 libvirt_uri     = "qemu+ssh://root@192.168.178.3/system"
 lan_macvtap_dev = "bond0"          # oder lan_bridge, je nach Host
-lan_ip          = "192.168.178.222"
+lan_ip          = "192.168.178.230"
 lan_gateway     = "192.168.178.1"
 dns_servers     = ["192.168.178.2"]
 admin_sources   = ["192.168.178.50/32"]   # die eigene Arbeitsstation
@@ -276,7 +258,7 @@ vm_memory_mib = 5120               # Startwert, siehe RAM-Budget oben
 ```bash
 terraform init && terraform apply       # 5-10 Minuten, wartet auf einen gesunden Cluster
 export TALOSCONFIG=$PWD/talosconfig KUBECONFIG=$PWD/kubeconfig
-kubectl get nodes -o wide               # Ready, INTERNAL-IP 192.168.178.222
+kubectl get nodes -o wide               # Ready, INTERNAL-IP 192.168.178.230
 verify/assert-cluster.sh
 ```
 
@@ -285,7 +267,7 @@ und die VM auf Unraid trotzdem als gestartet erscheint, ist der Node im
 Maintenance-Mode nicht unter `lan_ip` erreichbar. Nachsehen:
 
 ```bash
-ping -c2 192.168.178.222                    # keine Antwort?
+ping -c2 192.168.178.230                    # keine Antwort?
 ip -4 neigh show | grep 52:54:00:7a:20:01   # welche Adresse hat er wirklich?
 ```
 
@@ -302,7 +284,7 @@ talosctl get links --insecure -n <gefundene-adresse> -e <gefundene-adresse>
 Sonst hilft die serielle Konsole:
 `virsh -c qemu+ssh://root@192.168.178.3/system console homelab-cp1`.
 
-## 3. Cluster ausstatten
+## 2. Cluster ausstatten
 
 Was im Cluster läuft, kommt aus zwei Quellen: Flux selbst per tofu, alles
 Weitere als Manifest aus Git. Werte und State liegen in Gitea, deshalb der
@@ -339,98 +321,220 @@ PVCs binden, und Dienste hängen unter Hostnamen statt an NodePorts.
 
 **Noch offen, und was daran hängt:**
 
-- **Kein Client-Zertifikat für die Edge-VM.** Die Server-Zertifikate kommen
-  von Let's Encrypt (Wildcard, DNS-01 über IONOS), damit ist der Browserpfad
-  erledigt. Let's Encrypt stellt aber nur `serverAuth` aus — die Zusage „hier
-  wird geprüft, DASS das Paket von der Edge kommt" braucht ein
-  Client-Zertifikat. Schritt 4 hängt daran, und die Antwort dort ist offen:
-  eine winzige CA nur für diese beiden Maschinen, oder WireGuard statt mTLS.
-- **Kein `ingress-public`.** Die Edge-VM hat damit weiterhin keine
-  Gegenstelle; eine Portfreigabe führte ins Leere. Beim Bau dieses zweiten
-  Controllers muss `ingress-internal` auf `hostNetwork` zurück, samt Sysctl auf
-  dem Node — die Begründung steht in
-  [flux/clusters/talos-cp1/ingress-internal.yaml](flux/clusters/talos-cp1/ingress-internal.yaml).
+- **Keine Ingress-Firewall auf dem Node.** `talosctl get nftableschains` kommt
+  leer zurück, `admin_sources` gibt es in `vm/talos` noch nicht. Das ist
+  Schritt 3 und muss stehen, bevor die Fritzbox irgendetwas weiterleitet.
+- **Keine LoadBalancer-Adressen.** LB-IPAM und L2-Announcements sind in den
+  Cilium-Werten nicht eingeschaltet; `ingress-internal` hängt noch an
+  `hostPort` auf der Node-Adresse. Schritte 4 und 5.
+- **Kein `ingress-public`.** Die Klasse `public` existiert nicht, eine
+  Portfreigabe führte ins Leere. Schritt 8.
 - **Kein Kyverno.** Die Regel auf `ingressClassName: public` gibt es damit
   nicht. Solange die Klasse `public` gar nicht existiert, fehlt ihr auch der
-  Anwendungsfall. Die Reloader-Annotation, die Kyverno ebenfalls setzte, wird
-  nicht mehr gebraucht — Reloader regelt das seit dem Wegfall selbst (siehe
-  [flux/README.md](flux/README.md), Abschnitt Rotation).
+  Anwendungsfall — mit ihr wird die Regel tragend, siehe Schritt 9. Die
+  Reloader-Annotation, die Kyverno ebenfalls setzte, wird nicht mehr gebraucht
+  (siehe [flux/README.md](flux/README.md), Abschnitt Rotation).
+- **Kein CrowdSec.** Weder LAPI noch Agent noch Bouncer. Schritt 10.
 - **Kein CSR-Genehmiger.** `kubelet_server_certs` in `vm/talos` muss aus
   bleiben, sonst bricht der Apply dort ab.
 
-## 4. Die drei Bootstrap-Schritte
+## 3. Talos-Ingress-Firewall
 
-> **Setzt den Plattform-Stack voraus, siehe Ende von Schritt 3.** Alles hier — step-ca im
-> Cluster, die Skripte unter `k8s/platform/scripts/` — ist mit dem Modul
-> entfernt worden. Der Ablauf steht als Vorgabe für den Wiederaufbau.
+**Muss fertig sein, bevor die Fritzbox irgendetwas weiterleitet.** Heute ist die
+Talos-API LAN-weit erreichbar, geschützt nur durch Client-Zertifikate:
+`talosctl get nftableschains` kommt leer zurück, und
+[../vm/talos/variables.tf](../vm/talos/variables.tf) kennt keine `admin_sources`.
 
-Zugangsdaten kommen bewusst nicht aus Terraform. Der Reihe nach:
+Neue Variable in `vm/talos`, dazu ein Patch-Dokument. Talos nimmt dafür
+eigenständige Machine-Config-Dokumente:
+
+```yaml
+# vm/talos/patches/firewall.yaml.tftpl
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: talos-api
+portSelector:
+  ports: [50000, 50001]
+  protocol: tcp
+ingress:
+%{ for src in admin_sources ~}
+  - subnet: ${src}
+%{ endfor ~}
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: kube-apiserver
+portSelector:
+  ports: [6443]
+  protocol: tcp
+ingress:
+%{ for src in admin_sources ~}
+  - subnet: ${src}
+%{ endfor ~}
+  - subnet: ${pod_subnet}
+---
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: kubelet
+portSelector:
+  ports: [10250]
+  protocol: tcp
+ingress:
+  - subnet: ${pod_subnet}
+%{ for src in admin_sources ~}
+  - subnet: ${src}
+%{ endfor ~}
+```
+
+`pod_subnet` ist `10.244.0.0/16` — der metrics-server spricht das Kubelet aus
+dem Pod-Netz an, ohne diese Zeile fällt `kubectl top` aus.
+
+**Zwei Dinge vorher wissen:**
+
+- **Ein falscher Regelsatz sperrt dich aus dem Node aus.** Der Rückweg ist die
+  serielle Konsole: `virsh -c qemu+ssh://root@192.168.178.3/system console
+  homelab-cp1`. Vor dem Apply `admin_sources` gegen die eigene Adresse prüfen.
+- **Ob die Regeln auch den LoadBalancer-Verkehr sehen, ist offen.** Cilium
+  verarbeitet LB-Verkehr in eBPF und kann Netfilter dabei umgehen; die Regeln
+  für `apid` und Kubelet greifen dagegen sicher, weil das gewöhnliche
+  Host-Prozesse sind. Das ist kein Problem — wir *wollen* den LB-Verkehr
+  durchlassen —, aber es heißt: **verlass dich für die Absicherung der
+  Ingress-Ports nicht auf diese Firewall**, dafür sind die NetworkPolicies
+  zuständig. Nachmessen nach dem Apply:
 
 ```bash
-# a) Interne CA in vm/edge eintragen
-kubectl -n step-ca exec sts/step-ca -- \
-  step certificate fingerprint /home/step/certs/root_ca.crt
+talosctl -n 192.168.178.230 get nftableschains        # darf nicht mehr leer sein
+nmap -Pn -p 50000,6443,10250 192.168.178.230          # von einem Nicht-Admin-Host
 ```
 
-In `vm/edge/terraform.tfvars`:
+## 4. Cilium: LB-IPAM und L2-Announcements
 
-```hcl
-step_ca_url         = "https://10.10.20.3:9000"
-step_ca_fingerprint = "<Ausgabe von oben>"
-cluster_ingress_ip  = "10.10.20.3"
+Die Voraussetzung ist erfüllt — `kubeProxyReplacement: true` steht bereits in
+[../vm/talos/values/cilium.yaml.tftpl](../vm/talos/values/cilium.yaml.tftpl),
+Cilium läuft als v1.20.1. Es fehlen drei Zeilen in denselben Werten:
+
+```yaml
+l2announcements:
+  enabled: true
+
+# Die L2-Announcements arbeiten mit Leases; die Cilium-Doku empfiehlt dafür
+# ein höheres Client-Limit, sonst drosselt der Agent sich selbst.
+k8sClientRateLimit:
+  qps: 20
+  burst: 40
 ```
+
+Cilium liegt als Inline-Manifest in der Machine-Config, das ist also ein
+`tools/tf apply` in `vm/talos` und kein Flux-Commit.
+
+Dazu ein neues Flux-Manifest `flux/clusters/talos-cp1/lb-ipam.yaml`:
+
+```yaml
+apiVersion: cilium.io/v2alpha1
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: lan
+spec:
+  blocks:
+    - start: "192.168.178.231"
+      stop: "192.168.178.232"
+---
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: lan
+spec:
+  # Der LAN-Anschluss des Nodes. Name gegenprüfen mit
+  #   talosctl -n 192.168.178.230 get links
+  interfaces:
+    - enp1s0
+  loadBalancerIPs: true
+  externalIPs: false
+```
+
+**Vor allem anderen verifizieren — und zwar mit einem Wegwerf-Dienst, nicht mit
+dem Ingress.** Der Node hängt per `macvtap` an `bond0`; die Announcements sind
+Gratuitous ARP für zusätzliche Adressen unter derselben MAC. Das sollte
+durchgehen, aber „sollte" ist hier das operative Wort:
 
 ```bash
-cd ../../vm/edge && terraform apply
-
-# b) Client-Zertifikat der Edge (Token läuft nach Minuten ab)
-../../k8s/platform/scripts/edge-token.sh edge1.dmz
-ssh edge@192.168.178.221 sudo edge-mtls-bootstrap '<token>'
-
-# c) CrowdSec-Zugangsdaten
-../../k8s/platform/scripts/edge-register.sh
-# das Skript gibt den fertigen edge-crowdsec-connect-Aufruf für die VM aus
+kubectl -n whoami patch svc whoami --type merge \
+  -p '{"spec":{"type":"LoadBalancer"}}'
+kubectl -n whoami get svc whoami          # EXTERNAL-IP muss vergeben werden
+curl http://192.168.178.231              # von einem anderen LAN-Rechner
+ip -4 neigh show | grep 192.168.178.231  # MAC muss die des Nodes sein
 ```
 
-Danach in `vm/edge/terraform.tfvars` `crowdsec_bouncer_armed = true` setzen
-und `terraform apply`. Der **Firewall**-Bouncer bleibt noch aus.
+Kommt hier nichts an, ist die ganze Umstellung blockiert — dann bleibt nur der
+Weg über `hostIP` mit `hostNetwork` (samt der Policy-Folge aus dem Zielbild)
+oder ein zweites virtuelles Interface. Erst wenn das hier funktioniert, weiter.
 
-## 5. Erst jetzt: DNS und Fritzbox
+Danach den Patch zurücknehmen: `kubectl -n whoami patch svc whoami --type merge
+-p '{"spec":{"type":"ClusterIP"}}'`.
 
-> **Setzt den Plattform-Stack voraus, siehe Ende von Schritt 3.** Die Edge-VM allein steht zwar,
-> aber hinter ihr wartet kein `ingress-public` — eine Portfreigabe führt
-> derzeit ins Leere. Punkt 5 der Liste (interne Namen im Heimnetz) ist davon
-> unabhängig und gilt schon heute.
+## 5. `ingress-internal` auf LoadBalancer umstellen
 
-1. `immich.domain.de` und `cloud.domain.de` per DynDNS auf die eigene IP —
-   über den DNS-Anbieter, nicht über MyFRITZ!.
-2. ACME-DNS-Instanz aufsetzen, ihre Adresse als `acme_dns_api_base` in
-   `vm/edge/terraform.tfvars` eintragen und anwenden — ohne diesen Wert legt
-   Traefik den Resolver `acmedns` gar nicht erst an. Danach
-   `_acme-challenge`-CNAMEs anlegen (`terraform output acme_challenge_cnames`
-   in `vm/edge`; das Ziel steht nach dem ersten Lauf in
-   `/var/lib/traefik/acme-dns.json` auf der VM), Zertifikate erst gegen
-   Staging holen, dann `acme_ca_server` auf Produktion umstellen.
-3. Fritzbox: **nur 443/TCP** auf `192.168.178.221`. Port 80 bleibt zu.
-4. **IPv6 getrennt prüfen** — „Host komplett freigeben" öffnet mehr als
-   gedacht. UPnP aus, MyFRITZ!-Fernzugriff aus.
-5. Interne Namen **nur im Heimnetz** auflösen (AdGuard oder Fritzbox), nicht
-   per DynDNS: `dashboard.<interne-domain>` und `whoami.<interne-domain>` auf
-   die LAN-Adresse des Nodes. Im öffentlichen DNS haben sie nichts verloren.
-   Gibt es dort schon einen Wildcard-Eintrag auf den Unraid-Host, müssen diese
-   Namen explizit gesetzt werden — sonst landen sie beim Traefik im
-   Docker-Netz des Hosts.
+In [flux/clusters/talos-cp1/ingress-internal.yaml](flux/clusters/talos-cp1/ingress-internal.yaml):
 
-```bash
-vm/edge/verify/proxy-test.sh cloud.domain.de
+```yaml
+service:
+  enabled: true
+  type: LoadBalancer
+  annotations:
+    lbipam.cilium.io/ips: "192.168.178.231"
+  spec:
+    # Feldname gegen die Chart-Version prüfen; in 41.x geht der spec-Block durch.
+    externalTrafficPolicy: Local
+
+ports:
+  web:
+    port: 8000
+    exposedPort: 80
+    expose:
+      default: true
+    http:
+      redirections:
+        entryPoint: { to: websecure, scheme: https, permanent: true }
+  websecure:
+    port: 8443
+    exposedPort: 443
+    expose:
+      default: true
+    # tls-Block unverändert
 ```
 
-Die beiden wichtigsten Proben darin: Ein gefälschter `X-Forwarded-For` darf im
-Log **nicht** auftauchen, und ein fremder Hostname muss im TLS-Handshake enden.
+Zu entfernen: beide `hostPort`-Zeilen und der `updateStrategy: Recreate` — der
+Grund dafür (der Scheduler behandelt hostPorts wie NodePorts, der neue Pod
+bleibt Pending) fällt mit dem hostPort weg.
+
+**`externalTrafficPolicy: Local` ist keine Feinheit.** Ohne sie wird die
+Client-Adresse per SNAT auf die Node-Adresse ersetzt. Dann trägt das Paket die
+Cilium-Identität `host` statt `world` — und damit greift die NetworkPolicy
+`allow-from-lan` nicht mehr, aus genau dem Grund, den der Kommentar in derselben
+Datei beschreibt (Cilium wertet `ipBlock` nicht gegen `host` und `remote-node`
+aus). Zusätzlich sähe CrowdSec später überall dieselbe Quell-IP.
+
+Zwei Aufräumarbeiten, die jetzt möglich werden:
+
+- Der ausführliche Kommentarblock zu `hostPort`/`hostNetwork`/Sysctl ist
+  gegenstandslos und sollte durch die Begründung für LoadBalancer ersetzt
+  werden — nicht gelöscht, ersetzt.
+- Das PodSecurity-Label des Namespace steht auf `enforce: privileged`, **nur**
+  weil hostPorts ab `baseline` als Verstoß zählen. Ohne hostPort kann es zurück;
+  der Pod läuft ohnehin als 65532 mit `readOnlyRootFilesystem`, gedroppten
+  Capabilities und `RuntimeDefault`-Seccomp. Auf `restricted` stellen und den
+  Rollout beobachten.
+
+Abnahme: `https://dashboard.k8s.nico-steinmueller.de` löst weiter auf und
+antwortet — der DNS-Eintrag muss dabei von `.230` auf `.231` umgezogen werden.
 
 ## 6. Dashboard und Metriken
 
-Das Dashboard steht mit Schritt 3 schon und hängt seit `ingress-internal.yaml`
+Das Dashboard steht mit Schritt 2 schon und hängt seit `ingress-internal.yaml`
 unter seinem Hostnamen, nicht mehr am NodePort `30080`. Aufrufen unter
 `https://dashboard.<interne-domain>` — und dort nach einem Token gefragt
 werden:
@@ -448,7 +552,7 @@ mit genau der Identität mit der API, zu der das eingefügte Token gehört. Wer
 die Adresse ohne Token aufruft, sieht nichts.
 
 **Die Auslastungsanzeigen laufen ebenfalls schon** — der metrics-server kommt
-als HelmRelease aus Schritt 3:
+als HelmRelease aus Schritt 2:
 
 ```bash
 kubectl top node
@@ -491,7 +595,7 @@ Danach `--kubelet-insecure-tls` aus den Werten des metrics-server nehmen.
 ## 7. Anwendungen
 
 > **Gesperrt, solange keine StorageClass da ist.** Ohne sie bleibt jeder PVC
-> `Pending`, und kein Dienst mit Daten kommt hoch — siehe Ende von Schritt 3.
+> `Pending`, und kein Dienst mit Daten kommt hoch — siehe Ende von Schritt 2.
 > Der Abschnitt zum RAM weiter unten gilt unabhängig davon.
 
 Namespaces, NetworkPolicies und die Klasse `internal` stehen wieder; ein
@@ -504,8 +608,8 @@ spec:
 ```
 
 `public` ist dabei noch keine Option: Die Klasse existiert nicht, solange
-`ingress-public` fehlt. Und zwei Handgriffe kommen je Dienst dazu, die es
-früher nicht gab — beide wegen `rbac.namespaced` am Controller:
+`ingress-public` fehlt (Schritt 8). Und zwei Handgriffe kommen je Dienst dazu,
+die es früher nicht gab — beide wegen `rbac.namespaced` am Controller:
 
 - der neue Namespace muss an drei Stellen in
   [flux/clusters/talos-cp1/ingress-internal.yaml](flux/clusters/talos-cp1/ingress-internal.yaml)
@@ -515,8 +619,9 @@ früher nicht gab — beide wegen `rbac.namespaced` am Controller:
 - und er braucht eine NetworkPolicy, die `traefik-internal` hereinlässt —
   sonst greift sein eigenes Default-Deny.
 
-`public` in einem internen Namespace lehnte früher Kyverno ab; die Regel kommt
-mit ihm zurück.
+**Jeder Dienst kommt zuerst über `ingress-internal` hoch**, auch die beiden,
+die später öffentlich werden. Erst wenn er dort steht und die Daten stimmen,
+ist Schritt 8 überhaupt sinnvoll.
 
 **Pro migriertem Dienst, in dieser Reihenfolge:**
 
@@ -530,7 +635,7 @@ cd vm/talos && vim terraform.tfvars     # vm_memory_mib erhöhen
 terraform apply                         # in-place, kein Neubau
 
 # 4. Wirksam beim nächsten Start
-talosctl -n 192.168.178.222 shutdown
+talosctl -n 192.168.178.230 shutdown
 ssh root@unraid virsh start homelab-cp1
 ```
 
@@ -541,19 +646,143 @@ den größten Prozess — das ist qemu, also der ganze Cluster.
 Den Container erst löschen, wenn der Dienst im Cluster ein paar Tage steht.
 Bis dahin ist er der Rückweg.
 
-## 8. Scharfschalten (nach 1-2 Wochen)
+## 8. `ingress-public` bauen
 
-> **Setzt den Plattform-Stack voraus, siehe Ende von Schritt 3.** CrowdSec läuft heute weder im
-> Cluster noch als Gegenstelle der Edge.
+Neues Manifest `flux/clusters/talos-cp1/ingress-public.yaml`, gebaut wie
+`ingress-internal`, mit fünf Unterschieden:
+
+1. **Eigener Namespace** `traefik-public`, eigene ClusterRole
+   `traefik-public-namespaced`, eigene RoleBindings. Kein gemeinsames Objekt mit
+   dem internen Controller.
+2. **Eigene Adresse:** `lbipam.cilium.io/ips: "192.168.178.232"`,
+   `externalTrafficPolicy: Local`.
+3. **Die Namespace-Liste ist die Sicherheitsgrenze.** `rbac.namespaced: true`
+   mit `providers.kubernetesIngress.namespaces` und
+   `providers.kubernetesCRD.namespaces` auf genau die öffentlichen Dienste —
+   anfangs `immich` und `nextcloud`, sonst nichts. Ein `ingressClassName:
+   public` in einem nicht aufgeführten Namespace bleibt wirkungslos. Diese Liste
+   ist der Grund, warum ein einzelner Fehler im Manifest eines internen Dienstes
+   ihn nicht exponiert.
+4. **Kein Zugriff auf das interne Wildcard.** Eigener `certResolver`, eigener
+   PVC für den ACME-Speicher, Zertifikate je Name über DNS-01 für die
+   öffentliche Zone. Das Wildcard `*.k8s.nico-steinmueller.de` bleibt im
+   Namespace `traefik-internal` und wird dort nicht herausgereicht — E10
+   sinngemäß. **Offen dabei:** Der Controller hält damit einen
+   DNS-Provider-Token in der exponierten Zone. Die beiden möglichen
+   Auflösungen — ACME-DNS-Delegation oder ein von cert-manager geliefertes
+   Secret — stehen im [Sicherheitskonzept](homelab-sicherheitskonzept.html)
+   unter E4; entschieden ist keine.
+5. **Die Verarbeitungskette am Entrypoint `websecure`**, als dynamische
+   Konfiguration: `sniStrict: true` ohne `defaultCertificate` (fremde Namen
+   enden im Handshake), `strip-client-forwarded` gegen gefälschte
+   Herkunftsheader, `forwardedHeaders.trustedIPs: []` (vor diesem Controller
+   steht kein Proxy), HSTS, und die drei Ratelimit-Stufen. Der laufende
+   Docker-Stand in [../traefik/](../traefik/) ist dafür die Vorlage.
+
+NetworkPolicies im neuen Namespace:
+
+```
+default-deny-ingress          wie im internen Namespace
+allow-from-world              ingress auf 8000/8443 ohne ipBlock-Einschränkung
+allow-to-served-namespaces    egress nur zu immich/nextcloud und kube-dns
+allow-to-crowdsec-lapi        egress auf die LAPI, Port und Namespace benannt
+```
+
+Und je öffentlichem Dienst — wie beim internen Controller — eine
+NetworkPolicy im Ziel-Namespace, die `traefik-public` hereinlässt.
+
+## 9. Kyverno — tragend, nicht ergänzend
+
+Es gibt nur noch **eine** unabhängige Sperre gegen „privater Dienst
+versehentlich öffentlich": die Namespace-Liste aus Schritt 8. **Kyverno gehört
+deshalb vor den ersten öffentlichen Dienst, nicht danach.**
+
+Regel: `ingressClassName: public` nur in Namespaces mit dem Label
+`exposure: public`. Damit muss ein Versehen an zwei Stellen gleichzeitig
+passieren — Label am Namespace **und** Eintrag in der Namespace-Liste —, und
+beide stehen in Git und sind im Review sichtbar.
+
+Die Reloader-Annotation, die Kyverno früher ebenfalls setzte, wird nicht mehr
+gebraucht; siehe [flux/README.md](flux/README.md), Abschnitt Rotation.
+
+## 10. CrowdSec im Cluster
+
+Alle Bausteine sind aus dem Docker-Stand übernehmbar; die Collection-Liste steht
+fertig in [../traefik/compose.yml](../traefik/compose.yml).
+
+- **LAPI in einem eigenen Namespace** `crowdsec`, **nicht** in `traefik-public`.
+  Das ist E7 eine Ebene tiefer: Die exponierte Komponente darf Entscheidungen
+  nicht löschen. Der Bouncer-Key ist lesend, die NetworkPolicy der LAPI lässt
+  nur `traefik-public` auf den einen Port.
+- **Agent** liest die Traefik-Logs von `ingress-public`, plus die Logs der
+  Anwendungen dort, wo sie entstehen.
+- **AppSec-Listener** mit `crowdsecurity/appsec-virtual-patching`,
+  `appsec-crs` und der Nextcloud-Exclusion — zwei Listener: Virtual Patching
+  plus CRS für die strengen Pfade, Virtual Patching allein für
+  `/remote.php/*`.
+- **Bouncer** als Traefik-Plugin-Middleware am öffentlichen Entrypoint.
+  `clientTrustedIPs` auf das LAN, sonst sperrt ein Test von zu Hause den eigenen
+  Zugang. Die Folge davon ist bekannt und gewollt: LAN-Clients haben die
+  Abwehrschicht nicht vor sich, siehe „Restrisiken" im
+  [Sicherheitskonzept](homelab-sicherheitskonzept.html).
+
+**Der Bouncer sperrt zunächst nicht.** Ein bis zwei Wochen Beobachtungsmodus,
+dann Schritt 12.
+
+## 11. Erst jetzt: DNS und Fritzbox
+
+Die Freigabe kommt zuletzt.
+
+1. `immich.domain.de` und `cloud.domain.de` per DynDNS auf die eigene Adresse,
+   über den DNS-Anbieter, nicht über MyFRITZ!.
+2. Zertifikate erst gegen das Staging-Verzeichnis holen, dann auf Produktion
+   umstellen. Fünf Fehlversuche je Stunde, dann sperrt Let's Encrypt.
+3. Fritzbox: **nur 443/TCP auf `192.168.178.232`.** Port 80 bleibt zu, und die
+   Freigabe zeigt auf die LoadBalancer-Adresse, nicht auf `lan_ip` des Nodes.
+4. **IPv6 getrennt prüfen** — „Host komplett freigeben" öffnet mehr als gedacht.
+   UPnP aus, MyFRITZ!-Fernzugriff aus.
+5. Interne Namen **nur im Heimnetz** auf `192.168.178.231` auflösen (AdGuard
+   oder Fritzbox), öffentliche Namen im LAN per Split-DNS auf
+   `192.168.178.232`. Im öffentlichen DNS haben die internen Namen nichts
+   verloren. Gibt es dort schon einen Wildcard-Eintrag auf den Unraid-Host,
+   müssen diese Namen explizit gesetzt werden — sonst landen sie beim Traefik
+   im Docker-Netz des Hosts.
+
+### Abnahme
+
+```bash
+# Die Adresse der Freigabe bedient nur den öffentlichen Controller
+curl -k -H 'Host: dashboard.k8s.nico-steinmueller.de' https://192.168.178.232
+#   -> muss im TLS-Handshake enden (sniStrict, kein Default-Zertifikat)
+
+# Ein gefälschter Herkunftsheader darf nicht durchkommen
+curl -H 'X-Forwarded-For: 1.2.3.4' https://cloud.domain.de/ >/dev/null
+kubectl -n traefik-public logs deploy/traefik-public | tail -5
+#   -> im Log steht die echte Peer-IP, nicht 1.2.3.4
+
+# Die echte Client-IP kommt an (externalTrafficPolicy: Local)
+#   -> nicht 192.168.178.230
+
+# Die Talos-API ist von einem Nicht-Admin-Host tot
+nmap -Pn -p 50000,6443,10250 192.168.178.230
+
+# Ein interner Dienst lässt sich nicht öffentlich schalten
+kubectl -n headlamp patch ingress headlamp --type merge \
+  -p '{"spec":{"ingressClassName":"public"}}'
+#   -> Kyverno lehnt ab; und selbst wenn nicht, bedient ingress-public
+#      den Namespace headlamp nicht. Danach zurückpatchen.
+```
+
+## 12. Scharfschalten (nach 1-2 Wochen)
 
 ```bash
 kubectl -n crowdsec exec deploy/crowdsec-lapi -- cscli alerts list
-ssh edge@192.168.178.221 sudo edge-crowdsec-connect --arm-firewall-bouncer
 ```
 
-Danach in `vm/edge/terraform.tfvars` den Egress zumachen: Counter lesen
-(`sudo nft list table inet edge`), `egress_targets` füllen,
-`egress_open = false`, `terraform apply`, `verify/egress-test.sh`.
+Sind die Alarme plausibel und ist nichts aus dem eigenen Netz darunter, den
+Bouncer aus dem Beobachtungsmodus nehmen und die Sperre einschalten. Danach
+noch einmal von außen prüfen, dass ein absichtlich falscher Login tatsächlich
+gebannt wird — und dass der eigene LAN-Zugang davon unberührt bleibt.
 
 ## Wenn etwas klemmt
 
@@ -563,40 +792,49 @@ Danach in `vm/edge/terraform.tfvars` den Egress zumachen: Counter lesen
 | `Failed to open file '…edk2-i386-vars.fd'` | `efi_loader`/`efi_vars_template` setzen, siehe Abschnitt 0 |
 | `AppArmor-Profil … kann nicht geladen werden` | Der Apply läuft gegen den **lokalen** libvirt — `libvirt_uri` in der tfvars fehlt. `terraform destroy`, URI setzen, erneut anwenden |
 | `Cannot get interface MTU on 'br0'` | Kein Bridging auf dem Host — `lan_macvtap_dev = "bond0"` statt `lan_bridge` |
-| Edge-VM ohne Netz | `virsh console edge1`, MACs und `lan_bridge`/`lan_macvtap_dev` prüfen |
-| `talos_machine_configuration_apply` hängt, VM läuft aber | Node hat im Maintenance-Mode eine DHCP-Adresse statt `lan_ip` — siehe Schritt 2 |
+| `talos_machine_configuration_apply` hängt, VM läuft aber | Node hat im Maintenance-Mode eine DHCP-Adresse statt `lan_ip` — siehe Schritt 1 |
 | `data.talos_cluster_health` läuft in den Timeout, `talosctl` antwortet aber | Control Plane startet nicht. `talosctl -n … containers -k` zeigt `CONTAINER_EXITED`, die Begründung steht in `talosctl -n … logs -k kube-system/kube-apiserver-<node>:kube-apiserver` |
 | Static Pod neu gerendert, aber kein neuer Startversuch | Kubelet hängt: `talosctl -n … service kubelet restart` |
 | Talos bleibt NotReady | `kubectl -n kube-system get pods -l k8s-app=cilium`, `talosctl -n … dmesg` |
 | Dienst über NodePort im Timeout, Service und Endpoint sehen gesund aus | Fast immer eine NetworkPolicy, oft eine vom Chart mitgebrachte — mit Cilium werden sie erstmals durchgesetzt, unter Flannel waren sie wirkungslos. `kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop`; Quelle `(world)` heißt: Regel ohne `ipBlock` erfasst LAN-Clients nicht |
 | Node nicht mehr erreichbar | `admin_sources` falsch → serielle Konsole, siehe vm/talos/README.md |
-| Edge erreicht den Cluster nicht | `vm/edge/verify/egress-test.sh`, dann `talosctl -n … get nftableschains` |
-| ACME schlägt fehl | Zeit (NTP), CNAME-Delegation, Staging-Verzeichnis verwenden |
+| LoadBalancer-Service bleibt ohne `EXTERNAL-IP` | Kein passender `CiliumLoadBalancerIPPool`, oder die Adresse liegt außerhalb des Blocks. `kubectl get ciliumloadbalancerippool`, `kubectl describe svc <name>` |
+| `EXTERNAL-IP` steht, antwortet aber nicht | L2-Announcement kommt nicht durch. `ip -4 neigh show \| grep <adresse>` von einem LAN-Rechner — steht dort nicht die MAC des Nodes, stimmt `interfaces` in der `CiliumL2AnnouncementPolicy` nicht, oder macvtap schluckt das Gratuitous ARP |
+| Im Log steht überall die Node-Adresse als Client-IP | `externalTrafficPolicy: Local` fehlt am Service — siehe Schritt 5 |
+| ACME schlägt fehl | Zeit (NTP), DNS-Provider-Credentials, Staging-Verzeichnis verwenden |
 | `HelmRelease` oder `Kustomization` bleibt auf `False` | `kubectl -n flux-system describe helmrelease <name>`; bei `homelab-secrets` fast immer die drei Bootstrap-Secrets, siehe [flux/README.md](flux/README.md) |
 | Secret im Cluster enthält wörtlich `ENC[AES256_GCM,…]` | Der `decryption`-Block der Kustomization greift nicht — der age-Schlüssel in `sops-age` passt nicht zu `.sops.yaml` |
-| PVC bleibt `Pending` | Es gibt keine StorageClass, siehe Ende von Schritt 3. `kubectl get storageclass` ist leer |
+| PVC bleibt `Pending` | Es gibt keine StorageClass, siehe Ende von Schritt 2. `kubectl get storageclass` ist leer |
 | Ingress antwortet nicht | `kubectl -n traefik-internal logs deploy/traefik-internal`. Kommt dort nichts an, ist es fast immer die NetworkPolicy: `kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop`. Notbremse: `kubectl -n traefik-internal delete networkpolicy allow-from-lan` |
 | Ingress wird gar nicht bedient, Objekt sieht richtig aus, Traefik antwortet mit 404 | Zwei Kandidaten: Sein Namespace fehlt in `providers.kubernetesIngress.namespaces` oder hat keine RoleBinding. Oder — falls jemand `rbac.namespaced: true` gesetzt hat — greift `spec.ingressClassName` gar nicht mehr, siehe Abschnitt „RBAC von Hand" in [flux/clusters/talos-cp1/README.md](flux/clusters/talos-cp1/README.md) |
 | `RoleBinding ... cannot change roleRef` beim Apply | Eine gleichnamige Bindung zeigt noch auf eine `Role` statt auf die `ClusterRole`. `roleRef` ist unveränderlich — alte löschen oder unter eigenem Namen anlegen |
-| Traefik in CrashLoop mit `bind: permission denied` | Es läuft mit `hostNetwork` statt `hostPort` — dann braucht der Node den Sysctl `net.ipv4.ip_unprivileged_port_start=0`. Siehe Kopf von `ingress-internal.yaml` |
+| Traefik in CrashLoop mit `bind: permission denied` | Es läuft noch mit `hostNetwork` statt über den LoadBalancer-Service — dann braucht der Node den Sysctl `net.ipv4.ip_unprivileged_port_start=0`. Der Weg dahin zurück ist Schritt 5 |
 | Browser warnt vor dem Zertifikat | Steht `caServer` noch auf dem Staging-Verzeichnis? Dessen Wurzel kennt kein Browser. Sonst: `kubectl -n traefik-internal logs deploy/traefik-internal \| grep -i acme` |
 | ACME schlägt fehl mit DNS-Fehlern | IONOS-API-Key prüfen (`traefik-ionos` in homelab-secrets, Format `<prefix>.<secret>`). Vorsicht mit Wiederholungen: fünf Fehlversuche je Stunde, dann sperrt Let's Encrypt |
-| Alles tot nach Policy-Änderung *(ingress-public, sobald es steht)* | `kubectl -n traefik-public delete networkpolicy allow-from-edge` |
+| Alles tot nach Policy-Änderung *(ingress-public, sobald es steht)* | `kubectl -n traefik-public delete networkpolicy allow-from-world` |
 | `kubectl logs`/`exec` brechen weg, Node ist aber Ready | Kubelet-CSR ungenehmigt. `kubectl get csr`, dann `kubectl -n kube-system logs -l app.kubernetes.io/name=kubelet-csr-approver`. Notbremse: `kubelet_server_certs = false` in `vm/talos`, apply, reboot |
 | `apply` in `vm/talos` bricht ab mit „kubelet server certificate rotation is enabled, but CSR is not approved" | `kubelet_server_certs` wurde gesetzt, ohne dass ein CSR-Genehmiger im Cluster läuft — den gibt es derzeit nicht, siehe Schritt 6 |
 | `kubectl top node` sagt „Metrics API not available" | `kubectl -n kube-system logs deploy/metrics-server` |
-| Dashboard nicht erreichbar, Pod läuft | Löst der Hostname auf die LAN-Adresse des Nodes auf? Ein Wildcard-Eintrag auf den Unraid-Host zieht sonst vor. Der NodePort `30080` ist weg |
+| Dashboard nicht erreichbar, Pod läuft | Löst der Hostname auf die Adresse von `ingress-internal` auf? Ein Wildcard-Eintrag auf den Unraid-Host zieht sonst vor. Der NodePort `30080` ist weg |
 | Dashboard zeigt überall „Forbidden" | Token abgelaufen oder von der falschen Identität. Neu: `kubectl -n headlamp create token headlamp --duration=8h` |
 
 ## Was danach noch fehlt
 
-Vom Plattform-Stack fehlen noch `ingress-public` als Gegenstelle der Edge-VM,
-Kyverno und CrowdSec — diesmal als Flux-Manifest statt als Terraform-Modul.
-Storage, der interne Ingress und dessen Zertifikate sind zurück; eine interne
-CA braucht es dafür nicht mehr, seit die Zertifikate von Let's Encrypt kommen.
+- **Kein Backup.** Weder etcd-Snapshots noch PVC-Sicherung, kein Restore-Test.
+  Gehört vor den ersten migrierten Dienst, nicht danach.
+- **Der NFS-PV kann nicht mounten.** `unraid-data` zeigt auf `192.168.178.3`,
+  den Unraid-Host — und der Node hängt per `macvtap` am LAN, womit VM und
+  Hypervisor einander nicht erreichen. Der PVC steht auf `Bound`, aber das ist
+  nur die statische Bindung; benutzt hat ihn noch niemand.
+- **Keine Benachrichtigung.** `kubectl get alerts,providers` ist leer — ein
+  fehlschlagender Reconcile fällt nur auf, wenn jemand nachsieht.
+- **Kein CSR-Genehmiger**, deshalb läuft der metrics-server weiter mit
+  `--kubelet-insecure-tls`. `kubelet_server_certs` ist in `vm/talos` nicht
+  einmal als Variable vorhanden, obwohl Schritt 6 sie beschreibt.
+- **Flux synct `refs/heads/kubernetes-try`**, nicht `master`. Vor dem
+  Scharfschalten drehen.
 
-Danach unverändert offen: kein Backup, keine NFS-Exporte vom Array, kein
-Monitoring — „Nächste Schritte" im
+Der Rest steht unter „Nächste Schritte" im
 [Sicherheitskonzept](homelab-sicherheitskonzept.html).
 
 Und zum State: Er enthält die Cluster-PKI — wer ihn hat, hat den Cluster. Er

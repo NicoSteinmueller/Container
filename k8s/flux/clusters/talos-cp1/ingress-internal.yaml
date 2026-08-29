@@ -2,27 +2,25 @@
 # ingress-internal - der erste Ingress-Controller dieses Clusters.
 #
 # Erreichbar ausschliesslich aus dem Heimnetz. Was aus dem Internet kommen
-# soll, braucht einen zweiten Controller hinter der Edge-VM (ingress-public);
-# der steht noch aus, und deshalb legt diese Datei auch nur die IngressClass
-# `internal` an, nicht das Klassenpaar. Eine Klasse ohne Controller waere eine
-# Falle: Ein Ingress mit `ingressClassName: public` wuerde angenommen und nie
-# bedient.
+# soll, braucht einen zweiten Controller auf einer eigenen Adresse
+# (ingress-public); der steht noch aus, und deshalb legt diese Datei auch nur
+# die IngressClass `internal` an, nicht das Klassenpaar. Eine Klasse ohne
+# Controller waere eine Falle: Ein Ingress mit `ingressClassName: public`
+# wuerde angenommen und nie bedient.
 #
-# Die Vertrauensgrenze ist hier das Heimnetz. Kein Client-Zertifikat, keine
-# WAF, kein CrowdSec-Bouncer - wer im LAN steht, hat ohnehin mehr Wege als
-# diesen.
+# Die Vertrauensgrenze ist hier das Heimnetz. Keine WAF, kein
+# CrowdSec-Bouncer - wer im LAN steht, hat ohnehin mehr Wege als diesen.
 #
 # Was noch fehlt und bewusst nicht hier steht:
 #
-#   - Ein Client-Zertifikat fuer die Edge-VM. Let's Encrypt stellt nur
-#     Server-Zertifikate aus (serverAuth); die Zusage "hier wird geprueft,
-#     DASS das Paket von der Edge kommt" braucht aber genau ein
-#     Client-Zertifikat. Das kommt mit ingress-public und ist dort eine
-#     eigene Entscheidung - betroffen sind nur zwei Maschinen, die einander
-#     kennen, also braucht es dafuer keine Wurzel auf irgendeinem Endgeraet.
+#   - ingress-public: eigener Namespace, eigene Adresse, eigener
+#     Zertifikatsspeicher. Das Wildcard dieses Namespace bekommt er nicht zu
+#     sehen; die Trennung laeuft ueber Namespace und RBAC, nicht ueber ein
+#     Client-Zertifikat auf einer Zwischenstrecke - es gibt keine mehr.
 #   - Kyverno. Die Regel "ingressClassName: public nur in Namespaces mit
 #     homelab.io/zone=public" gibt es damit nicht. Solange die Klasse `public`
-#     gar nicht existiert, fehlt ihr auch der Anwendungsfall.
+#     gar nicht existiert, fehlt ihr auch der Anwendungsfall. Mit dem
+#     oeffentlichen Controller wird sie tragend, nicht ergaenzend.
 #
 ---
 #
@@ -637,7 +635,8 @@ spec:
     # und keine eigene Wurzel, der irgendein Geraet erst vertrauen muesste.
     #
     # Der Preis steht im Secret traefik-ionos: Der API-Key kann die ganze
-    # Zone umschreiben. Der engere Weg ueber acme-dns kommt mit der Edge-VM.
+    # Zone umschreiben - fuer einen Controller, der nur aus dem LAN
+    # erreichbar ist, ist das vertretbar.
     #
     certificatesResolvers:
       letsencrypt:

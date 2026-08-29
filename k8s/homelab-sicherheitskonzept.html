@@ -186,7 +186,7 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
   <a href="#grundidee">Grundidee</a>
   <a href="#topologie">Netzzonen</a>
   <a href="#fritzbox" data-z="extern">Fritzbox</a>
-  <a href="#edge" data-z="exposed">Edge-VM</a>
+  <a href="#ingress-public" data-z="exposed">Öffentlicher Ingress</a>
   <a href="#cluster" data-z="trusted">Talos-Cluster</a>
   <a href="#crowdsec">CrowdSec-Aufteilung</a>
   <a href="#nextcloud">Nextcloud freischalten</a>
@@ -200,19 +200,20 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
 
 <section id="grundidee">
   <h2>Grundidee</h2>
-  <p class="lede">Der eigentliche Knackpunkt ist nicht Kubernetes, sondern die Fritzbox: Sie kann keine VLANs, kein echtes DMZ und keine Filterregeln jenseits von Portfreigaben. Die gesamte Segmentierung muss deshalb innerhalb von Unraid passieren.</p>
-  <p>Daraus folgt der Aufbau: drei getrennte Zonen auf einem einzigen Blech, realisiert über isolierte virtuelle Netze in Unraid. Internet-Traffic landet nie direkt im Cluster, sondern wird in einer vorgelagerten VM beendet, geprüft und erst dann weitergereicht.</p>
+  <p class="lede">Der eigentliche Knackpunkt ist nicht Kubernetes, sondern die Fritzbox: Sie kann keine VLANs, kein echtes DMZ und keine Filterregeln jenseits von Portfreigaben. Die gesamte Segmentierung muss deshalb hinter ihr passieren — auf dem Host und im Cluster.</p>
+  <p>Daraus folgt der Aufbau: Was aus dem Internet kommt und was aus dem LAN kommt, trifft nie auf dieselbe Adresse und nie auf dieselbe Komponente. Der Node trägt drei Adressen — eine für sich selbst, je eine für die beiden Ingress-Controller —, und die Fritzbox kennt genau eine davon. Die Trennung liegt damit nicht mehr in getrennten virtuellen Netzen, sondern in getrennten Namespaces mit eigenem RBAC, eigenen NetworkPolicies und eigenem Zertifikatsspeicher.</p>
+  <p>Ursprünglich stand an dieser Stelle eine vorgelagerte VM in einer eigenen DMZ. Warum sie es nicht geworden ist, steht bei <strong>E2</strong> — mitsamt dem, was der Verzicht kostet.</p>
   <p>Die zweite tragende Idee ist die Trennung nach Erreichbarkeit statt nach Konfiguration: Es gibt zwei Ingress-Controller, einen für öffentliche und einen für private Dienste. Die Netzwerkgrenze allein leistet dabei weniger, als es zunächst aussieht — sie verhindert, dass ein privat deklarierter Dienst aus Versehen öffentlich <em>erreichbar</em> wird, aber nicht, dass jemand <code>ingressClassName: public</code> an das falsche Manifest schreibt. Genau diese Zeile bekommt deshalb eine erzwingende Regel (Kapitel Talos-Cluster), statt sich auf die Topologie zu verlassen.</p>
 </section>
 
 <section id="topologie">
   <h2>Netzzonen</h2>
-  <p>Von außen nach innen: Die Fritzbox reicht ausschließlich Port 443 an die Edge-VM weiter. Alles Private ist nur aus dem LAN erreichbar und berührt die exponierte Zone nie — es gibt derzeit bewusst keinen Fernzugriff auf die internen Dienste.</p>
+  <p>Von außen nach innen: Die Fritzbox reicht ausschließlich Port 443 an <em>eine</em> Adresse weiter — die des öffentlichen Ingress. Alles Private hängt an einer zweiten Adresse, die im Internet nicht bekannt ist und auf die nichts weitergeleitet wird.</p>
 
   <figure>
-    <svg viewBox="0 0 720 690" role="img" xmlns="http://www.w3.org/2000/svg" aria-labelledby="topo-t topo-d">
+    <svg viewBox="0 0 720 600" role="img" xmlns="http://www.w3.org/2000/svg" aria-labelledby="topo-t topo-d">
       <title id="topo-t">Netzzonen des Homelab-Aufbaus</title>
-      <desc id="topo-d">Drei Vertrauenszonen: Extern mit Internet und Fritzbox, DMZ mit der Edge-VM, und die interne Zone mit der Talos-VM, zwei Ingress-Controllern und dem Unraid-Array. Der öffentliche Pfad führt aus dem Internet über die Edge-VM zum öffentlichen Ingress, der LAN-Pfad von der LAN-Seite der Fritzbox direkt zum internen Ingress.</desc>
+      <desc id="topo-d">Zwei Vertrauenszonen: Extern mit Internet und Fritzbox, intern die Talos-VM mit zwei Ingress-Controllern auf zwei getrennten LoadBalancer-Adressen und dem Unraid-Array darunter. Der öffentliche Pfad führt aus dem Internet auf die Adresse des öffentlichen Ingress, der LAN-Pfad von der LAN-Seite der Fritzbox auf die des internen.</desc>
       <defs>
         <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
@@ -220,15 +221,12 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
       </defs>
 
       <rect x="118" y="16" width="586" height="176" fill="#EAEDF1"/>
-      <rect x="118" y="206" width="586" height="112" fill="#FAEDF0"/>
-      <rect x="118" y="332" width="586" height="300" fill="#E6F1EF"/>
+      <rect x="118" y="206" width="586" height="320" fill="#E6F1EF"/>
 
       <text x="16" y="40" font-family="IBM Plex Mono, monospace" font-size="11" letter-spacing="1.4" fill="#5E6C7E">EXTERN</text>
       <text x="16" y="58" font-family="IBM Plex Sans, sans-serif" font-size="12" fill="#78879A">unvertraut</text>
-      <text x="16" y="230" font-family="IBM Plex Mono, monospace" font-size="11" letter-spacing="1.4" fill="#9E2E48">DMZ</text>
-      <text x="16" y="248" font-family="IBM Plex Sans, sans-serif" font-size="12" fill="#78879A">exponiert</text>
-      <text x="16" y="356" font-family="IBM Plex Mono, monospace" font-size="11" letter-spacing="1.4" fill="#0F5B55">INTERN</text>
-      <text x="16" y="374" font-family="IBM Plex Sans, sans-serif" font-size="12" fill="#78879A">vertraut</text>
+      <text x="16" y="230" font-family="IBM Plex Mono, monospace" font-size="11" letter-spacing="1.4" fill="#0F5B55">INTERN</text>
+      <text x="16" y="248" font-family="IBM Plex Sans, sans-serif" font-size="12" fill="#78879A">vertraut</text>
 
       <rect x="310" y="34" width="180" height="42" fill="#FFFFFF" stroke="#5E6C7E" stroke-width="1"/>
       <text x="400" y="60" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-weight="500" font-size="14" fill="#131B25">Internet</text>
@@ -236,40 +234,37 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
 
       <rect x="264" y="108" width="272" height="62" fill="#FFFFFF" stroke="#5E6C7E" stroke-width="1"/>
       <text x="400" y="132" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-weight="500" font-size="14" fill="#131B25">Fritzbox</text>
-      <text x="400" y="152" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">443 aus dem Internet · LAN-Seite intern</text>
+      <text x="400" y="152" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">443 nur auf .232 · LAN-Seite intern</text>
 
-      <line x1="500" y1="170" x2="500" y2="226" stroke="#9E2E48" stroke-width="1.6" marker-end="url(#ar)"/>
-      <rect x="380" y="230" width="300" height="68" fill="#FFFFFF" stroke="#9E2E48" stroke-width="1"/>
-      <text x="530" y="255" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-weight="500" font-size="14" fill="#131B25">Edge-VM</text>
-      <text x="530" y="276" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">Proxy · CrowdSec · WAF</text>
+      <path d="M520 170 L520 212 L545 212 L545 274" fill="none" stroke="#9E2E48" stroke-width="1.6" marker-end="url(#ar)"/>
+      <path d="M320 170 L320 200 L136 200 L136 320 L166 320" fill="none" stroke="#0F5B55" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#ar)"/>
 
-      <line x1="546" y1="298" x2="546" y2="396" stroke="#9E2E48" stroke-width="1.6" marker-end="url(#ar)"/>
-      <path d="M330 170 L330 186 L136 186 L136 434 L166 434" fill="none" stroke="#0F5B55" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#ar)"/>
+      <rect x="150" y="236" width="540" height="190" fill="none" stroke="#0F5B55" stroke-width="1"/>
+      <text x="170" y="262" font-family="Space Grotesk, sans-serif" font-weight="500" font-size="14" fill="#131B25">Talos-VM · Kubernetes · 192.168.178.230</text>
 
-      <rect x="150" y="350" width="540" height="186" fill="none" stroke="#0F5B55" stroke-width="1"/>
-      <text x="170" y="376" font-family="Space Grotesk, sans-serif" font-weight="500" font-size="14" fill="#131B25">Talos-VM · Kubernetes</text>
+      <rect x="170" y="278" width="230" height="84" fill="#FFFFFF" stroke="#0F5B55" stroke-width="1"/>
+      <text x="285" y="302" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-weight="500" font-size="13.5" fill="#131B25">ingress-internal</text>
+      <text x="285" y="322" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">Paperless, Admin-UIs</text>
+      <text x="285" y="344" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="#0F5B55">.231 · nur LAN</text>
 
-      <rect x="170" y="400" width="230" height="66" fill="#FFFFFF" stroke="#0F5B55" stroke-width="1"/>
-      <text x="285" y="425" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-weight="500" font-size="13.5" fill="#131B25">ingress-internal</text>
-      <text x="285" y="446" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">Paperless, Admin-UIs</text>
+      <rect x="430" y="278" width="230" height="84" fill="#FFFFFF" stroke="#9E2E48" stroke-width="1"/>
+      <text x="545" y="302" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-weight="500" font-size="13.5" fill="#131B25">ingress-public</text>
+      <text x="545" y="322" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">Immich, Nextcloud</text>
+      <text x="545" y="344" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="#9E2E48">.232 · exponiert</text>
 
-      <rect x="430" y="400" width="230" height="66" fill="#FFFFFF" stroke="#9E2E48" stroke-width="1"/>
-      <text x="545" y="425" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-weight="500" font-size="13.5" fill="#131B25">ingress-public</text>
-      <text x="545" y="446" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">Immich, Nextcloud</text>
+      <text x="420" y="394" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">getrennte Namespaces · eigenes RBAC · Default-Deny · eigener Zertifikatsspeicher</text>
 
-      <text x="420" y="500" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">mTLS zwischen Edge-VM und Ingress</text>
+      <line x1="420" y1="426" x2="420" y2="450" stroke="#0F5B55" stroke-width="1.2" marker-end="url(#ar)"/>
+      <rect x="150" y="454" width="540" height="52" fill="#FFFFFF" stroke="#0F5B55" stroke-width="1"/>
+      <text x="420" y="476" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-weight="500" font-size="13.5" fill="#131B25">Unraid-Array</text>
+      <text x="420" y="494" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">NFS/iSCSI nur ins Talos-Netz</text>
 
-      <line x1="420" y1="536" x2="420" y2="556" stroke="#0F5B55" stroke-width="1.2" marker-end="url(#ar)"/>
-      <rect x="150" y="560" width="540" height="52" fill="#FFFFFF" stroke="#0F5B55" stroke-width="1"/>
-      <text x="420" y="582" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-weight="500" font-size="13.5" fill="#131B25">Unraid-Array</text>
-      <text x="420" y="600" text-anchor="middle" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">NFS/iSCSI nur ins Talos-Netz</text>
-
-      <line x1="118" y1="650" x2="150" y2="650" stroke="#9E2E48" stroke-width="1.6"/>
-      <text x="160" y="655" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">öffentlicher Pfad</text>
-      <line x1="300" y1="650" x2="332" y2="650" stroke="#0F5B55" stroke-width="1.6" stroke-dasharray="6 4"/>
-      <text x="342" y="655" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">LAN-Pfad, kein Internet</text>
+      <line x1="118" y1="560" x2="150" y2="560" stroke="#9E2E48" stroke-width="1.6"/>
+      <text x="160" y="565" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">öffentlicher Pfad</text>
+      <line x1="300" y1="560" x2="332" y2="560" stroke="#0F5B55" stroke-width="1.6" stroke-dasharray="6 4"/>
+      <text x="342" y="565" font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="#5E6C7E">LAN-Pfad, kein Internet</text>
     </svg>
-    <figcaption>DMZ und interne Zone laufen beide auf demselben Unraid-Host, aber in getrennten virtuellen Netzen ohne gemeinsames Uplink. Die Edge-VM erreicht ausschließlich eine IP und einen Port im Cluster — kein LAN, keine Shares, keine Unraid-Oberfläche.</figcaption>
+    <figcaption>Beide Controller laufen im selben Cluster, aber in getrennten Namespaces mit eigenem RBAC, eigenen NetworkPolicies und eigenem Zertifikatsspeicher. Die Adressen vergibt Cilium per LB-IPAM und kündigt sie per L2-Announcement im LAN an; die Fritzbox kennt nur <code>.232</code>. Der Node selbst hört auf <code>.230</code> und ist per Talos-Ingress-Firewall auf die Verwaltungsadressen beschränkt.</figcaption>
   </figure>
 </section>
 
@@ -277,7 +272,7 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
   <span class="zone-tag extern">Zone 1 — Extern</span>
   <h2>Fritzbox</h2>
   <ul>
-    <li>Nur <strong>443/TCP</strong> an die Edge-VM freigeben. Port 80 entfällt, weil die Zertifikate per DNS-01 geholt werden.</li>
+    <li>Nur <strong>443/TCP</strong> auf die LoadBalancer-Adresse des öffentlichen Ingress freigeben (<code>192.168.178.232</code>) — nicht auf die Node-Adresse. Port 80 entfällt, weil die Zertifikate per DNS-01 geholt werden.</li>
     <li><strong>IPv6 separat prüfen.</strong> Die Fritzbox filtert v6 unabhängig von v4; ein „Host komplett freigeben“ öffnet mehr, als man denkt. Das ist das häufigste Loch in solchen Aufbauten.</li>
     <li>UPnP aus, MyFRITZ!-Fernzugriff aus, Telefonie-Fernzugang aus.</li>
     <li><strong>Kein VPN auf der Fritzbox.</strong> Sie kann Peers nicht filtern — ein VPN-Client landet dort im flachen LAN und erreicht damit Unraid-WebGUI, Talos-API und alle Shares. Genau die Segmentierung, für die dieser Aufbau existiert, wäre mit einem einzigen kompromittierten Profil hinfällig. Fernzugriff auf private Dienste ist deshalb vorerst nicht vorgesehen.</li>
@@ -285,21 +280,25 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
   </ul>
 
   <div class="note">
+    <p><strong>Die Freigabe zeigt jetzt in das vertraute Netz.</strong> Solange eine Edge-VM in einer eigenen DMZ vorgesehen war, endete die Weiterleitung in einem isolierten Segment. Das ist mit E2 entfallen: Ziel ist eine Adresse auf demselben Node, der auch die Talos-API trägt. Zwei Dinge fangen das auf — eine <em>eigene</em> Adresse für den öffentlichen Ingress, sodass die Freigabe nicht auf den Node als Ganzes zeigt, und die <strong>Talos-Ingress-Firewall</strong>, die API, kube-apiserver und Kubelet auf die Verwaltungsadressen beschränkt. Letztere ist keine Kür: <code>apid</code> bindet auf <code>0.0.0.0:50000/50001</code> und antwortet auf <em>jeder</em> Adresse des Nodes, auch auf der zweiten. Eine zweite IP allein isoliert also nichts.</p>
+  </div>
+
+  <div class="note">
     <p><strong>Offener Punkt: Fernzugriff.</strong> Paperless und die Admin-UIs sind damit nur im LAN erreichbar. Wenn das zu wenig ist, gehört der VPN-Endpunkt an eine Stelle, die filtern kann — eine eigene kleine VM mit nftables, die Peers ausschließlich auf <code>ingress-internal</code> und DNS routet, in einem eigenen Subnetz, das im Konzept als vierte Zone auftaucht. Nicht auf die Fritzbox.</p>
   </div>
 </section>
 
-<section id="edge">
-  <span class="zone-tag exposed">Zone 2 — DMZ</span>
-  <h2>Edge-VM</h2>
-  <p class="lede">Ein bewusst klein gehaltener Torwächter: Er beendet die Verbindung aus dem Internet, prüft sie in mehreren Stufen und reicht dann eine saubere HTTP-Anfrage an genau eine interne Adresse weiter. Debian oder Alpine minimal, rund 1,5 GB RAM.</p>
+<section id="ingress-public">
+  <span class="zone-tag exposed">Zone 2 — Exponiert</span>
+  <h2>Öffentlicher Ingress</h2>
+  <p class="lede">Ein eigener Traefik in einem eigenen Namespace, auf einer eigenen LoadBalancer-Adresse: Er beendet die Verbindung aus dem Internet, prüft sie in mehreren Stufen und reicht sie an genau die Dienste weiter, die in seiner Namespace-Liste stehen. Er ist die einzige Komponente im Cluster, die aus dem Internet erreichbar ist — und wird deshalb behandelt wie eine eigene Zone, auch wenn er kein eigenes Netz mehr hat.</p>
 
   <div class="ask">
     <p class="q-label">Rückfrage</p>
-    <p class="q">Kann ich nicht direkt auf Traefik als Ingress die Portfreigabe einrichten?</p>
-    <p>Kann man — viele Homelabs laufen so. Das stärkste Gegenargument ist, dass ein Ingress-Controller im Cluster mehr Rechte hat, als man annimmt: Er braucht Lesezugriff auf Secrets, weil dort die TLS-Zertifikate liegen. Wer über eine Traefik-Lücke Code im Pod ausführt, hat damit den ServiceAccount-Token und die Schlüssel — <em>ohne</em> aus dem Container ausbrechen zu müssen. Eine Edge-VM kennt kein Kubernetes, nur eine IP und einen Port.</p>
-    <p>Dazu kommt: CrowdSec-Sperren, die in derselben Zone durchgesetzt werden, die gerade kompromittiert wurde, sind wertlos. Ein Bouncer auf nftables in einer anderen VM ist für den Angreifer unerreichbar.</p>
-    <p>Der Preis ist real — 1,5 GB RAM, eine zusätzliche Wartungseinheit außerhalb des GitOps-Flows und der Fallstrick mit der Client-IP. Als Alternative ohne zweite VM stand im Raum: Traefiks RBAC hart einschränken (kein clusterweiter Secret-Zugriff) und den CrowdSec-Bouncer auf dem Unraid-Host betreiben. Das hätte rund 80 % des Gewinns bei null RAM gebracht.</p>
+    <p class="q">Ursprünglich stand hier eine vorgelagerte Edge-VM in einer DMZ. Warum ist sie es nicht geworden?</p>
+    <p>Das Argument für sie war gut und steht weiter: Ein Ingress-Controller im Cluster hat mehr Rechte, als man annimmt — er liest Secrets, weil dort die TLS-Zertifikate liegen, und trägt einen ServiceAccount-Token. Wer über eine Traefik-Lücke Code im Pod ausführt, hat beides, <em>ohne</em> aus dem Container ausbrechen zu müssen. Eine Edge-VM kennt kein Kubernetes, nur eine IP und einen Port.</p>
+    <p>Dagegen standen vier Punkte, in der Reihenfolge ihres Gewichts. <strong>Erstens</strong> deckt dieser Schutz den unwahrscheinlichen Zweig ab: Traefik ist ein Go-Binary mit kleiner Angriffsfläche; die realistische Kompromittierung kommt über Nextcloud oder Immich — und die laufen in beiden Varianten im Cluster. <strong>Zweitens</strong> zieht die Verarbeitungskette mit um: Von den sechs Stufen sind vier reine Traefik-Konfiguration und eine CrowdSec-Konfiguration. Der laufende Docker-Stand beweist das, er fährt CRS, Virtual Patching und die Nextcloud-Collections bereits im selben Netz wie den Proxy. <strong>Drittens</strong> 1,5 GB RAM auf einem Host, dem der Plattform-Stack schon bei 3 GB messbar nicht gepasst hat. <strong>Viertens</strong> ein Betriebsmodell statt zwei — die Edge wäre Terraform plus cloud-init gewesen, außerhalb von GitOps.</p>
+    <p>Was der Verzicht kostet, steht bei <strong>E2</strong> und unter Restrisiken. Der Punkt, der sich nicht kompensieren lässt: Sperren wirken nur noch auf L7. Es gibt keinen nftables-Bouncer mehr, der eine Adresse vor dem TLS-Handshake abweist.</p>
   </div>
 
   <h3>Die Verarbeitungskette einer Anfrage</h3>
@@ -307,29 +306,29 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
     <div class="stage">
       <div class="num">1</div>
       <div>
-        <h5>nftables</h5>
-        <p>Eingehend nur 443/TCP. Ausgehend nur zur Talos-Ingress-IP, zum internen Resolver, NTP, ACME und CrowdSec-Hub — letztere als IP-Sets, nicht als Hostnamen. Der Egress-Filter verhindert die bequemen Angriffe: keine Reverse Shell, kein Nachladen von Tools, kein LAN-Scan. Er verhindert kein Exfiltrieren — über DNS und die erlaubten TLS-Ziele bleibt ein Kanal offen. Deshalb DNS ausschließlich zum internen Resolver mit Query-Logging und Blocklist, und ausgehende Verbindungen zählen statt ihnen zu vertrauen.</p>
+        <h5>Netzgrenze</h5>
+        <p>Die Fritzbox reicht nur 443/TCP auf <code>192.168.178.232</code> weiter — nicht auf den Node. Die Talos-Ingress-Firewall hält Talos-API, kube-apiserver und Kubelet auf den Verwaltungsadressen, damit die zusätzliche Adresse nicht nebenbei die Steuerebene öffnet. Nach innen ersetzen NetworkPolicies den früheren Egress-Filter: Default-Deny im Namespace, ausgehend nur zu den bedienten Diensten, kube-dns und der CrowdSec-LAPI. Das verhindert dieselben bequemen Angriffe — keine Reverse Shell, kein Nachladen, kein LAN-Scan — und exfiltrieren kann es genauso wenig ausschließen wie vorher.</p>
       </div>
     </div>
     <div class="stage block">
       <div class="num">2</div>
       <div>
         <h5>CrowdSec-Bouncer</h5>
-        <p>Gesperrte IPs stehen in einem nftables-Set und kosten einen Paketvergleich statt eines TLS-Handshakes. Die Community-Blocklist fängt einen erheblichen Teil des Hintergrundrauschens ab.</p>
+        <p>Als Traefik-Plugin am öffentlichen Entrypoint, mit der Community-Blocklist. <strong>Der Unterschied zum früheren Entwurf steht hier:</strong> Die Prüfung passiert auf L7, nicht in nftables. Eine gesperrte Adresse kostet weiterhin TLS-Handshake und Request, statt an einem Paketvergleich zu scheitern. Für die Korrektheit der Sperre ist das egal, für die Last unter Bruteforce nicht.</p>
       </div>
     </div>
     <div class="stage">
       <div class="num">3</div>
       <div>
         <h5>TLS-Terminierung</h5>
-        <p>Ein Zertifikat je öffentlichem Namen, per ACME DNS-01 über die delegierte ACME-DNS-Instanz. TLS 1.2/1.3, HSTS, OCSP Stapling.</p>
+        <p>Ein Zertifikat je öffentlichem Namen, per ACME DNS-01 aus einem eigenen Speicher. <code>sniStrict: true</code> <strong>ohne</strong> <code>defaultCertificate</code>: Wer einen fremden Namen oder die nackte IP anspricht, bekommt kein Zertifikat und endet im Handshake. TLS 1.2/1.3, HSTS.</p>
       </div>
     </div>
     <div class="stage block">
       <div class="num">4</div>
       <div>
-        <h5>Host-Whitelist</h5>
-        <p>Der Proxy antwortet nur auf konfigurierte Hostnamen. Direkte IP-Zugriffe und Scanner bekommen ein Reset statt einer Antwort.</p>
+        <h5>Namespace-Grenze</h5>
+        <p>An die Stelle der Hostnamen-Whitelist der Edge tritt die Namespace-Liste des Controllers: Mit <code>rbac.namespaced</code> bedient er ausschließlich die dort aufgezählten Namespaces. Ein Manifest mit <code>ingressClassName: public</code> in einem anderen Namespace wird nie bedient — unabhängig davon, was in der Klasse steht. Die Liste steht in Git und ist im Review sichtbar; Kyverno ist die zweite Sperre daneben.</p>
       </div>
     </div>
     <div class="stage block">
@@ -343,53 +342,52 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
       <div class="num">6</div>
       <div>
         <h5>Rate Limiting und Routing</h5>
-        <p>Streng auf Login-Pfaden, großzügig auf Sync-Pfaden. Danach Weiterleitung per mTLS an den öffentlichen Ingress. <code>X-Forwarded-For</code> wird dabei <strong>hart auf die TCP-Peer-Adresse überschrieben</strong>, nicht angehängt; alle vom Client mitgeschickten <code>X-Forwarded-*</code>- und <code>Forwarded</code>-Header werden vorher verworfen.</p>
+        <p>Streng auf Login-Pfaden, großzügig auf Sync-Pfaden. Danach direkt an den Service im Ziel-Namespace. <code>forwardedHeaders.trustedIPs</code> bleibt <strong>leer</strong> — vor diesem Controller steht kein Proxy —, und alle vom Client mitgeschickten <code>X-Forwarded-*</code>- und <code>Forwarded</code>-Header werden verworfen, statt sie zu ergänzen.</p>
       </div>
     </div>
   </div>
 
   <div class="note">
-    <p><strong>Der häufigste Fehler.</strong> Wird <code>X-Forwarded-For</code> nicht sauber durchgereicht und die Edge-IP nicht als vertrauenswürdiger Proxy eingetragen, sieht CrowdSec bei jedem Angriff nur die eigene Edge-VM — und sperrt am Ende den gesamten Zugang. Vor dem Scharfschalten einmal absichtlich falsch einloggen und im Log prüfen, ob dort die echte öffentliche IP steht.</p>
-    <p><strong>Der gefährlichere Fehler ist der umgekehrte.</strong> Hängt die Edge den vom Client gelieferten Wert nur an, statt ihn zu ersetzen, dann bestimmt der Angreifer per Header, als welche IP er bewertet wird. Ein <code>X-Forwarded-For: 192.168.178.20</code> landet in jeder Whitelist, die auf LAN-Adressen aufbaut — Bruteforce, Scanner und Exploit-Versuche werden dann nie gebannt, und die zentrale Abwehrschicht ist mit einer Kopfzeile abgeschaltet. Zweiter Abnahmetest deshalb: Request mit gefälschtem <code>X-Forwarded-For</code> absetzen und prüfen, dass im Log die echte Peer-IP steht.</p>
+    <p><strong>Der häufigste Fehler.</strong> Fehlt <code>externalTrafficPolicy: Local</code> am Service, ersetzt kube-proxy beziehungsweise Cilium die Client-Adresse durch die des Nodes. CrowdSec sieht dann bei jedem Angriff dieselbe IP — und sperrt am Ende den gesamten Zugang. Nebenwirkung an anderer Stelle: Das Paket trägt dann die Cilium-Identität <code>host</code> statt <code>world</code>, womit auch die NetworkPolicies nicht mehr greifen wie gedacht. Vor dem Scharfschalten einmal absichtlich falsch einloggen und im Log prüfen, ob dort die echte öffentliche IP steht.</p>
+    <p><strong>Der gefährlichere Fehler ist der umgekehrte.</strong> Hängt der Proxy den vom Client gelieferten Wert nur an, statt ihn zu ersetzen, dann bestimmt der Angreifer per Header, als welche IP er bewertet wird. Ein <code>X-Forwarded-For: 192.168.178.20</code> landet in jeder Whitelist, die auf LAN-Adressen aufbaut — Bruteforce, Scanner und Exploit-Versuche werden dann nie gebannt, und die zentrale Abwehrschicht ist mit einer Kopfzeile abgeschaltet. Zweiter Abnahmetest deshalb: Request mit gefälschtem <code>X-Forwarded-For</code> absetzen und prüfen, dass im Log die echte Peer-IP steht.</p>
   </div>
 
-  <h3>Was die Edge-VM ausdrücklich nicht tut</h3>
+  <h3>Was im Namespace <code>traefik-public</code> ausdrücklich nicht liegt</h3>
   <ul>
     <li>Keine Anwendungsdaten, kein Cache von Fotos oder Dokumenten</li>
-    <li>Keine Secrets außer den Zertifikaten der öffentlichen Namen und den Credentials der ACME-DNS-Delegation</li>
-    <li><strong>Kein API-Token des DNS-Anbieters</strong> — der wäre wertvoller als jedes Zertifikat, das hier liegt</li>
-    <li>Kein Zertifikat und kein Schlüssel, der interne Namen abdeckt</li>
-    <li>Kein kubeconfig, kein ServiceAccount-Token, keine Talos-Credentials</li>
-    <li>Keine Storage-Mounts, weder NFS noch SMB</li>
+    <li><strong>Kein Zugriff auf das interne Wildcard-Zertifikat</strong> — das bleibt in <code>traefik-internal</code> und wird nicht herausgereicht (E10)</li>
+    <li>Kein clusterweites RBAC: <code>rbac.namespaced</code>, RoleBindings ausschließlich in den bedienten Namespaces, keine gemeinsamen Objekte mit dem internen Controller</li>
+    <li>Keine CrowdSec-LAPI und keine Sperrliste, nur ein lesender Bouncer-Key</li>
+    <li>Keine Storage-Mounts außer dem eigenen PVC für den ACME-Speicher</li>
+    <li>Kein Zugang zu Secrets der internen Dienste — er bedient ihre Namespaces nicht und darf dort nichts lesen</li>
   </ul>
-  <p>Der Test, ob zu viel hineingebaut wurde: Löscht man die VM und rollt sie neu aus, darf außer den ACME-Zertifikaten nichts verloren gehen. Und: Was auf der VM liegt, darf nach einer Kompromittierung nichts wert sein, das die VM überlebt.</p>
+  <p>Der Test, ob zu viel hineingebaut wurde: Löscht man den Namespace und legt ihn aus Git neu an, darf außer den ACME-Zertifikaten nichts verloren gehen.</p>
+  <p><strong>Was er sehr wohl hat, und das ist der Preis von E2:</strong> einen ServiceAccount-Token und Leserecht auf die Secrets seiner eigenen und der bedienten Namespaces. Die Trennung reduziert die Beute, sie hebt sie nicht auf.</p>
 
   <div class="ask">
     <p class="q-label">Rückfrage</p>
-    <p class="q">Die Zertifikate soll doch eigentlich Traefik automatisch machen — warum liegen die in der Edge-VM?</p>
-    <p>Weil daran hängt, wer TLS beendet. Ohne Entschlüsselung gibt es keine WAF, kein pfadbasiertes Rate Limiting, keine Host-Whitelist und keine HTTP-Logs für CrowdSec. Bei TLS-Passthrough würde die Edge-VM zu einem reinen L4-Weiterleiter, der nur noch IP, Port und SNI sieht — von sechs Stufen blieben zwei übrig. Dann kann man sich die VM auch sparen.</p>
-    <p>cert-manager bleibt trotzdem zuständig, nur für einen anderen Bereich: die internen Dienste im LAN und das Zertifikat für die mTLS-Strecke. Zwei ACME-Clients, die nichts voneinander wissen — denn geteilte Zertifikate bräuchten entweder Cluster-Credentials auf der Edge oder Schreibzugriff vom Cluster in die DMZ. Beides hebt die Trennung auf, für die die VM überhaupt existiert.</p>
+    <p class="q">Warum holt sich der öffentliche Controller seine Zertifikate selbst, statt sie von cert-manager zu bekommen?</p>
+    <p>Weil es dieselbe Mechanik ist, die der interne Controller schon fährt: Traefik bringt lego mit, lego kennt den DNS-Anbieter, und damit fällt ein Controller mitsamt Webhook weg. Getrennt sind trotzdem beide Seiten — <strong>eigener Resolver, eigener ACME-Speicher, eigenes PVC</strong>. Der öffentliche Controller bekommt die internen Namen nie zu sehen, und der interne bekommt keinen Speicher, aus dem sich öffentliche Zertifikate ziehen ließen.</p>
+    <p>Kein Wildcard über die internen Namen auf der öffentlichen Seite: Sonst läge der Schlüssel, der Paperless absichert, in dem Namespace mit Internetkontakt. Umgekehrt ist das Wildcard <em>innen</em> gewollt — jedes einzeln ausgestellte Zertifikat landet in den Certificate-Transparency-Logs und schriebe dort eine Landkarte des Heimnetzes hin.</p>
   </div>
 
   <div class="ask">
     <p class="q-label">Rückfrage</p>
-    <p class="q">DNS-01 braucht einen Provider-Token. Der liegt dann auf der exponiertesten Maschine im Haus?</p>
-    <p>Nein — und das ist der Grund für die <strong>ACME-DNS-Delegation</strong>. Ein DNS-Token mit Schreibrecht auf die Zone ist wertvoller als jedes Zertifikat, das die Edge hält: Damit lassen sich MX-Records umbiegen, fremde Subdomains übernehmen und jederzeit neue gültige Zertifikate ausstellen. Der Schaden überlebt das Neuausrollen der VM, das sonst die Reparaturstrategie ist.</p>
-    <p>Stattdessen zeigt <code>_acme-challenge.&lt;name&gt;</code> per <strong>CNAME auf eine dedizierte ACME-DNS-Instanz</strong>. Die Edge bekommt Credentials für genau diesen einen Challenge-Record und kann die produktive Zone nicht anfassen. Wer die Edge übernimmt, kann Zertifikate für die ohnehin öffentlichen Namen ausstellen — mehr nicht.</p>
-    <p>Zweite Konsequenz: <strong>kein Wildcard über die interne Zone.</strong> Die Edge hält nur die Zertifikate für <code>immich.</code> und <code>cloud.</code>; die internen Namen bekommen ihre eigenen von cert-manager. Sonst läge der Schlüssel, der Paperless absichert, auf der Maschine mit Internetkontakt.</p>
+    <p class="q">DNS-01 braucht einen Provider-Token. Der liegt dann im exponierten Namespace?</p>
+    <p><strong>Ja — und das ist der offene Punkt, den der Wegfall der Edge hinterlässt.</strong> Ein Zonen-Token ist wertvoller als jedes Zertifikat, das daneben liegt: Damit lassen sich MX-Records umbiegen, fremde Subdomains übernehmen und jederzeit neue gültige Zertifikate ausstellen. Der Schaden überlebt das Neuanlegen des Namespace, das sonst die Reparaturstrategie ist.</p>
+    <p>Solange eine Edge-VM vorgesehen war, löste das die <strong>ACME-DNS-Delegation</strong>: <code>_acme-challenge.&lt;name&gt;</code> per CNAME auf eine dedizierte Instanz, die exponierte Seite bekommt Credentials für genau diesen einen Record. Das bleibt eine gültige Antwort. Die zweite, näher an dem, was der Cluster ohnehin kann: <strong>cert-manager hält den Token in seinem eigenen Namespace und legt das fertige Secret in <code>traefik-public</code> ab</strong> — dieselbe Bauform, die E10 für das Serverzertifikat beschreibt. Entschieden ist das nicht; bis dahin gilt der Token als das wertvollste Objekt in der exponierten Zone und gehört auf den öffentlichen Namensraum beschränkt, soweit der Anbieter das zulässt.</p>
   </div>
 
   <table>
     <thead><tr><th>Zone</th><th>Wer holt das Zertifikat</th><th>Wofür</th></tr></thead>
     <tbody>
-      <tr><td>ingress-public</td><td>Edge-VM, ACME DNS-01 über ACME-DNS-Delegation</td><td>Nur <code>immich.</code> und <code>cloud.</code> — kein Wildcard, keine internen Namen</td></tr>
-      <tr><td>ingress-internal</td><td>cert-manager, ACME DNS-01 mit eigenem Provider-Zugang</td><td>Paperless — nur aus dem LAN erreichbar, im Browser trotzdem gültig</td></tr>
-      <tr><td>Edge → Cluster</td><td>eigene interne CA im Cluster (step-ca)</td><td>mTLS auf der Zwischenstrecke, Laufzeit 24 h mit automatischer Erneuerung. Eine Online-CA mit API, weil die Edge außerhalb des Clusters steht und selbst erneuern muss — cert-manager könnte das nur, wenn die Edge Cluster-Zugangsdaten hätte.</td></tr>
+      <tr><td>ingress-public</td><td>Traefik selbst, eigener Resolver, ACME DNS-01</td><td>Nur <code>immich.</code> und <code>cloud.</code> — kein Wildcard, keine internen Namen</td></tr>
+      <tr><td>ingress-internal</td><td>Traefik selbst, eigener Resolver, ACME DNS-01</td><td>Wildcard über die interne Zone — nur aus dem LAN erreichbar, im Browser trotzdem gültig, und in den CT-Logs steht kein Dienstname</td></tr>
     </tbody>
   </table>
 
   <div class="note">
-    <p><strong>Warum 24 Stunden.</strong> Das Client-Zertifikat der Edge ist der alleinige Türsteher vor <code>ingress-public</code>. Eine cert-manager-CA stellt keine CRL aus, und Traefiks <code>clientAuth</code> prüft ohnehin keine Revokation — ein einmal erbeutetes Zertifikat bliebe also bis zum Ablauf gültig, auch nachdem die VM längst neu ausgerollt wurde. Bei einem einzigen Verbraucher ist kurze Laufzeit billiger als jeder Revokationsmechanismus: Ablauf ersetzt Rückruf. Die Rotation der internen CA gehört trotzdem als dokumentierter Schritt in die Incident-Response.</p>
+    <p><strong>Was an dieser Stelle weggefallen ist.</strong> Der ursprüngliche Entwurf sicherte die Strecke von der Edge zum Cluster per mTLS ab, mit einer eigenen internen CA (step-ca) und einem Client-Zertifikat mit 24 Stunden Laufzeit als alleinigem Türsteher vor <code>ingress-public</code> (E5). Ohne Zwischenstrecke gibt es nichts mehr zu authentifizieren: Der Controller nimmt die Verbindung direkt vom Client entgegen. An die Stelle des Türstehers treten Namespace-Grenze, <code>rbac.namespaced</code> und die NetworkPolicies — sie schützen aber eine andere Sache, nämlich was der Controller <em>erreichen</em> kann, nicht wer ihn erreichen darf. Wer ihn erreichen darf, ist seit dieser Entscheidung: jeder aus dem Internet. Genau dafür ist die Verarbeitungskette oben da.</p>
   </div>
 </section>
 
@@ -400,11 +398,11 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
   <ul>
     <li><strong>Single-Node Control Plane</strong> mit <code>allowSchedulingOnControlPlanes: true</code>, 4–6 vCPU, 10 GB RAM.</li>
     <li><strong>Cilium</strong> mit kube-proxy-Replacement — NetworkPolicies inklusive L7 und Hubble zur Sichtbarkeit.</li>
-    <li><strong>Zwei Ingress-Controller.</strong> <code>ingress-public</code> ist nur aus dem DMZ-Netz erreichbar, <code>ingress-internal</code> nur über das LAN-Interface. Die <code>ingressClassName</code> ist damit die eine Zeile, die über öffentlich oder privat entscheidet.</li>
-    <li><strong>Kyverno erzwingt die Ingress-Klasse.</strong> <code>ingressClassName: public</code> ist nur in explizit gelabelten Namespaces zulässig, überall sonst wird das Manifest abgelehnt. Ohne diese Regel schützt die Topologie nur gegen den harmlosen Tippfehler: Ein aus Nextcloud kopiertes Ingress-Manifest, das mit <code>public</code> bei Paperless landet, exponiert es genau so, wie es verhindert werden soll — und Flux appliziert es ohne Rückfrage.</li>
-    <li><strong>Service-Bindung prüfen, nicht annehmen.</strong> Bei NodePort beziehungsweise LoadBalancer mit Cilium lauscht ein Service standardmäßig auf allen Node-IPs. <code>ingress-public</code> wird deshalb aktiv an die DMZ-Adresse gebunden, und die Abnahme umfasst <code>ss -lntp</code> auf dem Node plus einen Verbindungsversuch aus dem LAN, der scheitern muss.</li>
+    <li><strong>Zwei Ingress-Controller auf zwei LoadBalancer-Adressen</strong>, vergeben von Cilium per LB-IPAM und im LAN angekündigt per L2-Announcement. Die Fritzbox kennt nur die des öffentlichen. Getrennt sind sie über Namespace, RBAC, NetworkPolicies und Zertifikatsspeicher — nicht mehr über getrennte Netze.</li>
+    <li><strong>Kyverno erzwingt die Ingress-Klasse.</strong> <code>ingressClassName: public</code> ist nur in explizit gelabelten Namespaces zulässig, überall sonst wird das Manifest abgelehnt. Ohne diese Regel schützt die Topologie nur gegen den harmlosen Tippfehler: Ein aus Nextcloud kopiertes Ingress-Manifest, das mit <code>public</code> bei Paperless landet, exponiert es genau so, wie es verhindert werden soll — und Flux appliziert es ohne Rückfrage. <strong>Seit E2 ist diese Regel tragend, nicht mehr ergänzend:</strong> Die Hostnamen-Whitelist auf einer vorgelagerten VM, die früher unabhängig davon gegriffen hätte, gibt es nicht mehr. Was bleibt, sind zwei Sperren in Git — die Namespace-Liste des Controllers und diese Policy.</li>
+    <li><strong>Service-Bindung prüfen, nicht annehmen.</strong> Jeder Controller bekommt seine Adresse ausdrücklich zugewiesen (<code>lbipam.cilium.io/ips</code>), dazu <code>externalTrafficPolicy: Local</code>, damit die echte Client-Adresse ankommt. Zur Abnahme gehört ein Aufruf der öffentlichen Adresse mit dem Hostnamen eines internen Dienstes — er muss im TLS-Handshake enden, nicht antworten.</li>
     <li><strong>Default-Deny NetworkPolicies</strong> pro Namespace, dann gezielt öffnen. Kein Pod erreicht das LAN.</li>
-    <li><strong>Talos-API auf 50000</strong> nur aus dem LAN. Talos-Config und Secrets mit sops/age verschlüsselt in Git.</li>
+    <li><strong>Talos-Ingress-Firewall.</strong> API (50000/50001), kube-apiserver (6443) und Kubelet (10250) nur von den Verwaltungsadressen, das Kubelet zusätzlich aus dem Pod-Netz. Das muss stehen, <em>bevor</em> die Fritzbox etwas weiterleitet: <code>apid</code> bindet auf <code>0.0.0.0</code> und antwortet sonst auch auf der öffentlichen LoadBalancer-Adresse. Talos-Config und Secrets mit sops/age verschlüsselt in Git.</li>
     <li><strong>GitOps mit Flux</strong>, Renovate für Image-Updates. Der Clusterzustand ist damit reproduzierbar — gesichert werden muss nur, was Daten sind.</li>
   </ul>
 
@@ -431,31 +429,33 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
     <p>Die saubere Lösung ist nicht, Rohlogs in die exponierte Zone zu schieben, sondern CrowdSecs eigene Architektur zu nutzen: <strong>Agents</strong> laufen dort, wo die Logs entstehen, und schicken nur fertige Alarme an die zentrale <strong>LAPI</strong>. Über die Netzgrenze gehen ein paar hundert Byte pro Vorfall statt eines Logstroms.</p>
   </div>
 
-  <p>Die LAPI gehört dabei <strong>in den Cluster, nicht auf die Edge-VM</strong> — auch wenn die Intuition etwas anderes nahelegt. Die Edge ist die Komponente mit Internetkontakt und damit die, die am ehesten kompromittiert wird. Läge die Entscheidungsdatenbank dort, könnte ein Angreifer die Sperrliste löschen, die ihn blockiert.</p>
+  <p>Die LAPI gehört dabei <strong>in einen eigenen Namespace, nicht in den des öffentlichen Ingress</strong> — auch wenn die Intuition etwas anderes nahelegt. Der öffentliche Ingress ist die Komponente mit Internetkontakt und damit die, die am ehesten kompromittiert wird. Läge die Entscheidungsdatenbank dort, könnte ein Angreifer die Sperrliste löschen, die ihn blockiert. Das ist E7, und es gilt unverändert — nur ist die Grenze, über die es geht, seit E2 eine Namespace-Grenze statt einer Netzgrenze.</p>
 
-  <p>Die naheliegende Schlussfolgerung — „die Edge hat nur einen lesenden Bouncer-Key" — stimmt allerdings nur zur Hälfte. Auf der Edge läuft auch ein <strong>Agent</strong>, und der hat Machine-Credentials, die per Definition Alarme <em>schreiben</em> dürfen. Damit existiert vom exponierten Netz aus ein authentifizierter Schreibpfad in die zentrale Entscheidungsdatenbank der vertrauten Zone. Wer die Edge übernimmt, kann Alarme für beliebige IPs melden — etwa für die eigene öffentliche IP des Betreibers, die der Bouncer dann brav in nftables sperrt. Der LAPI-Port ist außerdem die <strong>einzige Öffnung von DMZ nach intern</strong> und verdient dieselbe Aufmerksamkeit wie der Ingress-Port, nicht die Behandlung als Nebeneffekt. Konkret:</p>
+  <p>Dieselbe Überlegung eine Stufe weiter: <strong>Auch der Agent, der die Proxy-Logs auswertet, gehört nicht in den Namespace des Proxys.</strong> Ein Agent hat Machine-Credentials, und die dürfen per Definition Alarme <em>schreiben</em>. Läge er neben dem exponierten Controller, gäbe es von dort einen authentifizierten Schreibpfad in die zentrale Entscheidungsdatenbank — wer den Controller übernimmt, meldet Alarme für beliebige Adressen, etwa für die eigene öffentliche IP des Betreibers, und der Bouncer sperrt sie brav. Konkret:</p>
 
   <ul>
-    <li>LAPI-Zugang aus der DMZ ausschließlich über die bestehende mTLS-Strecke, NetworkPolicy auf genau diesen Port und genau diese Quell-IP.</li>
-    <li>Agent-Credentials der Edge getrennt von denen der Cluster-Agents, einzeln rotierbar und als solche dokumentiert.</li>
-    <li>Alarme vom Edge-Agent mit niedrigerem Vertrauensgewicht bewerten als die aus dem Cluster.</li>
-    <li>Die Whitelist der eigenen Verwaltungs-IP so setzen, dass eingehende Alarme sie nicht überschreiben können.</li>
+    <li>LAPI in <code>crowdsec</code>, NetworkPolicy auf genau einen Port und genau die Namespaces, die ihn brauchen.</li>
+    <li>Der Bouncer in <code>traefik-public</code> bekommt einen <strong>lesenden</strong> Key, sonst nichts.</li>
+    <li>Agent-Credentials getrennt und einzeln rotierbar, damit ein kompromittierter Agent nicht die anderen mitnimmt.</li>
+    <li>Die Whitelist der eigenen Verwaltungsadresse so setzen, dass eingehende Alarme sie nicht überschreiben können.</li>
   </ul>
 
   <table>
     <thead><tr><th>Komponente</th><th>Ort</th><th>Aufgabe</th></tr></thead>
     <tbody>
-      <tr><td>Agent (Proxy-Logs)</td><td>Edge-VM</td><td>404-Stürme, CVE-Scans, 401-Muster</td></tr>
+      <tr><td>Agent (Proxy-Logs)</td><td>Namespace <code>crowdsec</code></td><td>404-Stürme, CVE-Scans, 401-Muster aus den Logs von <code>ingress-public</code></td></tr>
       <tr><td>Agent (App-Logs)</td><td>Cluster, DaemonSet</td><td>Nextcloud-Loginfehler, Paperless</td></tr>
-      <tr><td>LAPI</td><td>Cluster</td><td>sammelt Alarme, hält die Sperrliste</td></tr>
-      <tr><td>Firewall-Bouncer</td><td>Edge-VM</td><td>setzt nftables-Regeln</td></tr>
+      <tr><td>LAPI</td><td>Namespace <code>crowdsec</code></td><td>sammelt Alarme, hält die Sperrliste</td></tr>
+      <tr><td>Bouncer</td><td>Traefik-Plugin in <code>ingress-public</code></td><td>weist gesperrte Adressen ab — auf L7, nicht in nftables</td></tr>
     </tbody>
   </table>
 
-  <p>Angenehmer Nebeneffekt: Alle Verbindungen laufen in dieselbe Richtung, Edge → Cluster. Es braucht keine zusätzliche Freigabe vom Cluster in die DMZ, und das bestehende mTLS lässt sich für den LAPI-Port mitnutzen.</p>
+  <div class="note">
+    <p><strong>Was mit E2 verloren geht: das Blocken vor dem Handshake.</strong> Im ursprünglichen Entwurf setzte ein Firewall-Bouncer die Sperren in nftables auf einer eigenen VM — ein gesperrtes Paket kostete einen Regelvergleich. Jetzt greift die Sperre erst, wenn TLS steht und der Request geparst ist. Die Sperre bleibt korrekt, sie wird nur teurer. Es ist der eine Punkt aus dem Wegfall der Edge-VM, für den es keinen Ersatz im Cluster gibt.</p>
+  </div>
 
   <div class="note">
-    <p><strong>Zwei Dinge vor dem Scharfschalten.</strong> Erstens einen Weg offenhalten, der nicht über die gesperrte IP führt — sonst sperrt der erste Vertipper einen auf nftables-Ebene aus, und dann hilft nur noch der physische Zugang zum Server. Eine Whitelist auf LAN-Adressen leistet das <em>nicht</em>: Sie greift auf der aus <code>X-Forwarded-For</code> geparsten IP, und wer diesen Header setzen kann, weißt sich selbst ein. Der Notzugang gehört deshalb auf einen separaten Listener, der aus dem Internet gar nicht erreichbar ist. Zweitens ein bis zwei Wochen im Beobachtungsmodus fahren und <code>cscli alerts list</code> auswerten: Immich-Mobile-Clients erzeugen im Hintergrund viele Requests, und die daraus entstehenden Fehlalarme will man kennen, bevor sie die Familie aus der Fotogalerie werfen.</p>
+    <p><strong>Zwei Dinge vor dem Scharfschalten.</strong> Erstens einen Weg offenhalten, der nicht über die gesperrte IP führt — sonst sperrt der erste Vertipper einen aus dem eigenen Zugang aus. Der Rückweg ist hier immerhin billiger als früher: Die Sperre steht in der LAPI, und die erreicht man aus dem LAN mit <code>cscli decisions delete</code> — kein nftables-Set auf einer Maschine, an die man nicht mehr herankommt. Eine Whitelist auf LAN-Adressen leistet das <em>nicht</em>: Sie greift auf der aus <code>X-Forwarded-For</code> geparsten IP, und wer diesen Header setzen kann, weißt sich selbst ein. Der Notzugang gehört deshalb auf einen separaten Listener, der aus dem Internet gar nicht erreichbar ist. Zweitens ein bis zwei Wochen im Beobachtungsmodus fahren und <code>cscli alerts list</code> auswerten: Immich-Mobile-Clients erzeugen im Hintergrund viele Requests, und die daraus entstehenden Fehlalarme will man kennen, bevor sie die Familie aus der Fotogalerie werfen.</p>
   </div>
 </section>
 
@@ -483,16 +483,16 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
         <li>Body-Size-Limit aufheben, Timeouts auf 3600 s.</li>
         <li><strong>Buffering aus</strong>, sonst puffert der Proxy einen 20-GB-Upload komplett zwischen.</li>
         <li><code>.well-known</code> für CalDAV, CardDAV, Webfinger und Nodeinfo weiterleiten — sonst scheitert die Kalender-Autoerkennung.</li>
-        <li>TLSOption mit <code>clientAuth: RequireAndVerifyClientCert</code> gegen die interne CA.</li>
+        <li>Der Namespace muss in der Namespace-Liste von <code>ingress-public</code> stehen und das Label <code>exposure: public</code> tragen — sonst bedient ihn niemand, und Kyverno lehnt ab.</li>
       </ul>
     </div>
     <div class="card">
-      <span class="zone-tag exposed">Edge-VM</span>
+      <span class="zone-tag exposed">ingress-public</span>
       <h5>Außengrenze</h5>
       <ul>
-        <li>DNS-Eintrag, Fritzbox-Freigabe, Zertifikat für <code>cloud.domain.de</code> per DNS-01 über den delegierten <code>_acme-challenge</code>-Record.</li>
-        <li>Client-Zertifikat zum Cluster, Server-Zertifikat gegen die interne CA prüfen. Kein <code>insecureSkipVerify</code>.</li>
-        <li><code>X-Forwarded-For</code>, <code>-Proto</code> und <code>-Host</code> setzen — überschreiben, nicht anhängen, und Client-Header vorher verwerfen.</li>
+        <li>DNS-Eintrag, Fritzbox-Freigabe auf <code>192.168.178.232</code>, Zertifikat für <code>cloud.domain.de</code> per DNS-01 aus dem eigenen ACME-Speicher.</li>
+        <li><code>sniStrict</code> ohne <code>defaultCertificate</code>, <code>externalTrafficPolicy: Local</code> — sonst steht in jeder Logzeile der Node statt des Angreifers.</li>
+        <li><code>X-Forwarded-For</code>, <code>-Proto</code> und <code>-Host</code> setzen — überschreiben, nicht anhängen, und Client-Header vorher verwerfen. <code>trustedIPs</code> bleibt leer.</li>
         <li>HSTS hier setzen; die übrigen Security-Header liefert Nextcloud selbst — doppelte Header brechen Teile der Oberfläche.</li>
         <li>Rate Limiting getrennt: <code>/login</code> streng, <code>/remote.php/dav</code> großzügig.</li>
       </ul>
@@ -509,7 +509,7 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
     <p>Der Zuschnitt bleibt vorerst so — ein abbrechender Sync ist der teurere Fehler. Die saubere Auflösung wäre, nicht nach Pfad, sondern <strong>nach Antwortcode</strong> zu staffeln: 2xx und 207 großzügig, 401 auf <code>/remote.php/*</code> scharf limitiert und an CrowdSec gemeldet (<code>nextcloud/bf_auth</code>). Ergänzend in Nextcloud App-Passwörter erzwingen, dann ist das Hauptpasswort über WebDAV gar kein gültiger Pfad mehr. Beides ist notiert, aber nicht Teil dieses Stands.</p>
   </div>
 
-  <p>Wenn Push-Benachrichtigungen gewünscht sind, braucht <code>notify_push</code> einen WebSocket-Upgrade auf <code>/push/</code> durch <em>beide</em> Proxys. Ohne ihn pollen die Clients, was funktioniert, aber unnötig Last erzeugt — nachträglich sucht man den Fehler allerdings lange.</p>
+  <p>Wenn Push-Benachrichtigungen gewünscht sind, braucht <code>notify_push</code> einen WebSocket-Upgrade auf <code>/push/</code> am Ingress. Ohne ihn pollen die Clients, was funktioniert, aber unnötig Last erzeugt — nachträglich sucht man den Fehler allerdings lange.</p>
 </section>
 
 <section id="ressourcen">
@@ -519,9 +519,8 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
     <thead><tr><th>Komponente</th><th>RAM</th><th>Anmerkung</th></tr></thead>
     <tbody>
       <tr><td>Unraid und Docker, minimal</td><td>~2 GB</td><td></td></tr>
-      <tr><td>Edge-VM</td><td>1,5 GB</td><td>Proxy, CrowdSec-Agent, Bouncer</td></tr>
       <tr><td>Talos-VM</td><td>10 GB</td><td>Cluster-Overhead allein ~2 GB</td></tr>
-      <tr><td>Reserve</td><td>~2,5 GB</td><td></td></tr>
+      <tr><td>Reserve</td><td>~4 GB</td><td>1,5 GB davon waren für die Edge-VM vorgesehen und bleiben seit E2 frei</td></tr>
     </tbody>
   </table>
   <p>Innerhalb der Talos-VM konkurrieren Nextcloud mit Postgres (~2 GB), Immich inklusive Machine Learning (~3 GB) und Paperless mit Tika und Gotenberg (~1,5 GB). Ein vollständiger Monitoring-Stack passt nicht mehr dazu — entweder VictoriaMetrics statt Prometheus, oder 32 GB einplanen. RAM ist die billigste Investition in diesem ganzen Aufbau. Wer auf Gesichtserkennung und Smart Search in Immich verzichtet, gewinnt sofort 2–3 GB.</p>
@@ -540,23 +539,23 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
       </tr>
       <tr>
         <td class="id">E2</td>
-        <td>Vorgelagerte Edge-VM statt direkter Freigabe auf den Ingress</td>
-        <td>Der Ingress-Pod hält ServiceAccount-Token und Zugriff auf TLS-Secrets; Sperren sollen außerhalb der potenziell kompromittierten Zone durchgesetzt werden. Preis: 1,5 GB RAM, eine Wartungseinheit außerhalb von GitOps. Verworfen: RBAC härten plus Bouncer auf dem Unraid-Host.</td>
+        <td>Öffentlicher Ingress im Cluster statt vorgelagerter Edge-VM <em>— revidiert</em></td>
+        <td><strong>Diese Entscheidung ist umgedreht worden.</strong> Ursprünglich stand hier eine vorgelagerte VM in einer eigenen DMZ, begründet damit, dass der Ingress-Pod ServiceAccount-Token und Zugriff auf TLS-Secrets hält und Sperren außerhalb der potenziell kompromittierten Zone durchgesetzt werden sollen. Dagegen: Der Schutz deckt den unwahrscheinlichen Zweig ab — die realistische Kompromittierung kommt über Nextcloud oder Immich, und die laufen so oder so im Cluster. Vier der sechs Stufen der Verarbeitungskette sind reine Traefik-Konfiguration und ziehen mit um; dazu 1,5 GB RAM auf einem knappen Host und ein zweites Betriebsmodell außerhalb von GitOps. <strong>Preis:</strong> keine Isolation bei Ingress-Kompromittierung, kein Blocken vor dem TLS-Handshake (nicht kompensierbar), und die Portfreigabe zielt auf eine Maschine im vertrauten Netz. Kompensiert wird, was sich kompensieren lässt: eigener Namespace mit <code>rbac.namespaced</code>, Default-Deny-NetworkPolicies, kein Zugriff auf das interne Wildcard, eigene LoadBalancer-Adresse und die Talos-Ingress-Firewall.</td>
       </tr>
       <tr>
         <td class="id">E3</td>
-        <td>TLS-Terminierung auf der Edge-VM statt Passthrough</td>
-        <td>Ohne Klartext keine WAF, kein pfadbasiertes Rate Limiting, keine HTTP-Logs. Passthrough hätte die Edge auf L4 reduziert und damit ihren Zweck aufgehoben.</td>
+        <td>TLS wird dort terminiert, wo geprüft wird <em>— mit E2 gegenstandslos geworden</em></td>
+        <td>Der Punkt bleibt richtig und hat jetzt nur keine Alternative mehr: Ohne Klartext keine WAF, kein pfadbasiertes Rate Limiting, keine HTTP-Logs. Da es keine Zwischenstation mehr gibt, stellt sich die Frage nach Passthrough nicht.</td>
       </tr>
       <tr>
         <td class="id">E4</td>
-        <td>Zwei getrennte ACME-Clients, Edge über ACME-DNS-Delegation</td>
-        <td>Geteilte Zertifikate erfordern entweder Cluster-Credentials auf der Edge oder Schreibzugriff vom Cluster in die DMZ. Zusätzlich bekommt die Edge keinen Provider-Token, sondern nur Credentials für ihren delegierten <code>_acme-challenge</code>-Record — ein Zonen-Token wäre wertvoller als alles andere auf der VM und würde ihr Neuausrollen überleben. Preis: eine ACME-DNS-Instanz mehr.</td>
+        <td>Getrennte ACME-Speicher je Controller</td>
+        <td>Jeder Controller hat seinen eigenen Resolver und sein eigenes PVC. Der öffentliche bekommt die internen Namen nie zu sehen, der interne keinen Speicher, aus dem sich öffentliche Zertifikate ziehen ließen. <strong>Offen geblieben:</strong> Der öffentliche Controller hält damit einen DNS-Provider-Token in der exponierten Zone — ein Zonen-Token ist wertvoller als jedes Zertifikat daneben und überlebt das Neuanlegen des Namespace. Zwei Auflösungen stehen bereit, entschieden ist keine: ACME-DNS-Delegation auf einen <code>_acme-challenge</code>-Record, oder cert-manager hält den Token und liefert das fertige Secret (Bauform wie E10).</td>
       </tr>
       <tr>
         <td class="id">E5</td>
-        <td>mTLS auf der Strecke Edge → Cluster, Client-Zertifikat mit 24-h-Laufzeit</td>
-        <td>Der Ingress akzeptiert nur Verbindungen mit gültigem Client-Zertifikat. Selbst wenn später etwas anderes im DMZ-Netz landet, kommt es nicht durch. Da eine cert-manager-CA keine CRL kennt, ersetzt die kurze Laufzeit den fehlenden Rückruf — bei einem Verbraucher ist das die billigere Lösung.</td>
+        <td>mTLS zwischen Edge und Cluster <em>— mit E2 entfallen</em></td>
+        <td>Der Ingress sollte nur Verbindungen mit gültigem Client-Zertifikat annehmen, ausgestellt von einer internen CA (step-ca) mit 24 Stunden Laufzeit, weil eine cert-manager-CA keine CRL kennt. Ohne Zwischenstrecke gibt es nichts mehr zu authentifizieren — der Controller nimmt die Verbindung direkt vom Client entgegen. Damit entfallen auch die interne CA, der Token-Bootstrap und der Erneuerungs-Timer.</td>
       </tr>
       <tr>
         <td class="id">E6</td>
@@ -565,8 +564,8 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
       </tr>
       <tr>
         <td class="id">E7</td>
-        <td>CrowdSec-LAPI im Cluster, Bouncer auf der Edge</td>
-        <td>Die exponierte Komponente darf Entscheidungen nicht löschen. Sie kann über ihren Agent allerdings Alarme schreiben — der LAPI-Port ist damit die einzige Öffnung von DMZ nach intern und wird entsprechend eng gefasst: eigene Credentials, NetworkPolicy auf Port und Quell-IP, geringeres Vertrauensgewicht.</td>
+        <td>CrowdSec-LAPI in einem eigenen Namespace, nur ein lesender Bouncer im öffentlichen Ingress</td>
+        <td>Die exponierte Komponente darf Entscheidungen nicht löschen. Deshalb liegen LAPI <em>und</em> der Agent, der die Proxy-Logs auswertet, in <code>crowdsec</code> und nicht neben dem Proxy: Ein Agent hat Machine-Credentials und darf Alarme schreiben — läge er in <code>traefik-public</code>, gäbe es von der exponierten Zone aus einen authentifizierten Schreibpfad in die Sperrliste. Eng gefasst wird entsprechend: eigene Credentials je Agent, NetworkPolicy auf genau einen Port und genau die Namespaces, die ihn brauchen.</td>
       </tr>
       <tr>
         <td class="id">E8</td>
@@ -575,13 +574,18 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
       </tr>
       <tr>
         <td class="id">E9</td>
-        <td>ACME per DNS-01 statt HTTP-01, ohne Wildcard</td>
-        <td>Port 80 bleibt zu. Auf ein Wildcard wird bewusst verzichtet: Es hätte den Schlüssel, der die internen Namen absichert, auf der exponierten VM abgelegt. Preis: ein Zertifikat pro öffentlichem Namen.</td>
+        <td>ACME per DNS-01 statt HTTP-01; Wildcard nur intern</td>
+        <td>Port 80 bleibt zu. Das Wildcard über die interne Zone bleibt in <code>traefik-internal</code>: Einzelzertifikate schrieben jeden Dienstnamen in die Certificate-Transparency-Logs — eine Landkarte des Heimnetzes für jeden, der die Domain kennt. Öffentlich gilt das Gegenteil, dort ist ein Zertifikat je Name richtig: Die Namen sind ohnehin bekannt, und der exponierte Namespace bekommt keinen Schlüssel, der interne Namen abdeckt.</td>
       </tr>
       <tr>
         <td class="id">E10</td>
-        <td>Kein Zugang zur internen CA im Namespace von <code>ingress-public</code></td>
-        <td>Dieselbe Überlegung wie E2, eine Ebene tiefer: Ein Ingress-Controller darf Secrets in den Namespaces lesen, die er bedient — auch im eigenen. Ein Provisioner-Passwort dort wäre nach einer Übernahme ein Schlüssel zur CA, mit dem sich Zertifikate auf jeden Namen ausstellen lassen, auch auf den der Edge-VM; das Client-Zertifikat als alleiniger Türsteher (E5) wäre damit wertlos. Das Serverzertifikat entsteht deshalb im Namespace der CA und kommt als fertiges Secret an. Preis: ein kleiner Aussteller dort, der es turnusmäßig erneuert. Verworfen: Token-Bootstrap wie auf der Edge — ein Token lebt fünf Minuten, hier müsste es niemand von Hand eintragen können.</td>
+        <td>Kein Schlüsselmaterial der internen Zone im Namespace von <code>ingress-public</code></td>
+        <td>Ein Ingress-Controller darf Secrets in den Namespaces lesen, die er bedient — auch im eigenen. Was dort liegt, ist nach einer Übernahme weg. Das interne Wildcard-Zertifikat bleibt deshalb in <code>traefik-internal</code> und wird nicht herausgereicht; der öffentliche Controller bekommt weder ein Zertifikat noch einen Schlüssel, der interne Namen abdeckt. Die Bauform, wenn doch einmal etwas von innen nach außen muss: Es entsteht im Namespace des Ausstellers und kommt als fertiges Secret an, nie als Zugangsdaten zum Aussteller selbst.</td>
+      </tr>
+      <tr>
+        <td class="id">E11</td>
+        <td>Zwei LoadBalancer-Adressen per Cilium LB-IPAM statt <code>hostPort</code> oder <code>hostNetwork</code></td>
+        <td>Der zweite Controller braucht eine zweite Adresse, damit die Fritzbox-Freigabe nicht auf den Node als Ganzes zeigt. Der Weg über <code>hostIP</code> erzwingt <code>hostNetwork</code> samt <code>net.ipv4.ip_unprivileged_port_start=0</code> — und legt die Pods damit in den Host-Namespace, wo sie die Cilium-Identität <code>host</code> tragen. Die Default-Deny- und LAN-Policies wären dann wirkungslos, solange nicht Host-Firewall und <code>CiliumClusterwideNetworkPolicy</code> dazukommen. LB-IPAM lässt die Pods im Pod-Netz und alle Policies so gültig, wie sie begründet sind. Preis: L2-Announcements müssen über <code>macvtap</code> tatsächlich durchgehen — das ist vor allem anderen zu verifizieren, mit einem Wegwerf-Dienst, nicht mit dem Ingress.</td>
       </tr>
     </tbody>
   </table>
@@ -592,11 +596,15 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
   <ul>
     <li><strong>Nextcloud und Immich sind die Angriffsfläche.</strong> Immich ist noch jung und hatte mehrfach sicherheitsrelevante Releases. Automatische Updates und ein Backup vor jedem Update sind hier nicht optional.</li>
     <li><strong>Kein Schutz vor volumetrischen Angriffen.</strong> CrowdSec ist stark gegen Scanner, Bruteforce und Exploit-Versuche. Gegen jemanden, der die Leitung dichtmachen will, hilft nur der Upstream — das ist der bewusst in Kauf genommene Preis von E1.</li>
-    <li><strong>Ein Host ist eine Fehlerdomäne.</strong> Ein Hypervisor-Escape aus der Edge-VM ist unwahrscheinlich, aber nicht ausgeschlossen. Sobald ein zweiter kleiner Rechner übrig ist, gehört die Edge-VM dorthin — das ist der größte Sicherheitsgewinn für wenig Geld.</li>
+    <li><strong>Der exponierte Ingress läuft im selben Cluster wie alles andere.</strong> Das ist der Preis von E2 und der wichtigste Punkt dieser Liste. Wer über eine Traefik-Lücke Code im Pod ausführt, hat einen ServiceAccount-Token und Leserecht auf die Secrets der bedienten Namespaces — ohne aus dem Container ausbrechen zu müssen. Eigener Namespace, <code>rbac.namespaced</code> mit minimaler ClusterRole, Default-Deny-NetworkPolicies und kein Zugriff auf das interne Wildcard reduzieren die Beute; sie heben den Verlust nicht auf.</li>
+    <li><strong>Kein Blocken vor dem TLS-Handshake.</strong> Der CrowdSec-Bouncer wirkt nur noch auf L7. Eine gesperrte Adresse kostet weiterhin Handshake und Request. Für die Korrektheit der Sperre egal, für die Last unter Bruteforce nicht — und dafür gibt es im Cluster keinen Ersatz.</li>
+    <li><strong>Die Portfreigabe zielt ins vertraute Netz.</strong> Statt in ein isoliertes Segment führt sie auf eine Adresse desselben Nodes, der auch die Talos-API trägt. Aufgefangen wird das durch eine eigene LoadBalancer-Adresse und die Talos-Ingress-Firewall — die damit von einer Fleißaufgabe zu einer tragenden Sperre wird. Fehlt sie, ist die Steuerebene über die freigegebene Adresse erreichbar.</li>
+    <li><strong>Ein Host ist eine Fehlerdomäne.</strong> Es gibt nur einen Node und einen Hypervisor; ein Escape aus der Talos-VM ist unwahrscheinlich, aber nicht ausgeschlossen, und ein Ausfall des Blechs nimmt alles mit. Sobald ein zweiter kleiner Rechner übrig ist, ist der öffentliche Ingress der erste Kandidat, der dorthin gehört.</li>
+    <li><strong>Ein DNS-Provider-Token liegt in der exponierten Zone.</strong> Solange der öffentliche Controller seine Zertifikate selbst holt, hält er Credentials, mit denen sich die Zone umschreiben lässt — ein Schaden, der das Neuanlegen des Namespace überlebt. Die beiden möglichen Auflösungen stehen bei E4, entschieden ist keine.</li>
     <li><strong>Der Unraid-Host ist das Kronjuwel.</strong> WebGUI niemals exponieren, kein Passwort-Login für Root, Array-Verschlüsselung erwägen.</li>
     <li><strong>Bruteforce über <code>/remote.php/*</code> bleibt möglich.</strong> Der WebDAV-Pfad trägt großzügiges Rate Limiting und eine bis auf Virtual Patching abgeschaltete WAF, akzeptiert aber Basic-Auth mit den regulären Passwörtern. Bewusst in Kauf genommen, um den Sync nicht zu brechen; die Auflösung über Antwortcode-Staffelung und erzwungene App-Passwörter ist notiert, aber nicht umgesetzt.</li>
     <li><strong>Append-only Backup ist bislang eine Absicht, keine Kontrolle.</strong> Solange das Repository auf demselben Unraid-Host liegt, hat der schreibende Prozess auch Löschrecht. Der Ransomware-Schutz, der als „Unterschied zwischen Ärger und Totalverlust" beschrieben ist, greift erst mit einem Ziel, das Append-only erzwingt.</li>
-    <li><strong>Das LAN umgeht CrowdSec und die WAF.</strong> Die Verwaltungsadressen stehen auf der Edge in <code>clientTrustedIPs</code> — für den Plugin-Bouncer heißt das: keine Prüfung gegen die Sperrliste und keine AppSec. Steht dort wie im Standardfall das gesamte Heimnetz, gilt das für jedes Gerät darin, denn über Split-DNS erreichen LAN-Clients dieselben öffentlichen Namen. Das ist die Konsequenz daraus, das LAN als vertraute Zone zu führen, und es ist gewollt: Sonst sperrt ein Test aus dem eigenen Netz den eigenen Zugang. Der Preis ist, dass ein übernommenes Gerät im Heimnetz — ein Fernseher, ein Telefon — die zentrale Abwehrschicht nicht vor sich hat. Wer das nicht will, trägt dort einzelne Adressen statt des Netzes ein.</li>
+    <li><strong>Das LAN umgeht CrowdSec und die WAF.</strong> Die Verwaltungsadressen stehen im Bouncer in <code>clientTrustedIPs</code> — für den Plugin-Bouncer heißt das: keine Prüfung gegen die Sperrliste und keine AppSec. Steht dort wie im Standardfall das gesamte Heimnetz, gilt das für jedes Gerät darin, denn über Split-DNS erreichen LAN-Clients dieselben öffentlichen Namen. Das ist die Konsequenz daraus, das LAN als vertraute Zone zu führen, und es ist gewollt: Sonst sperrt ein Test aus dem eigenen Netz den eigenen Zugang. Der Preis ist, dass ein übernommenes Gerät im Heimnetz — ein Fernseher, ein Telefon — die zentrale Abwehrschicht nicht vor sich hat. Wer das nicht will, trägt dort einzelne Adressen statt des Netzes ein.</li>
     <li><strong>Kein Fernzugriff auf private Dienste.</strong> Bewusster Verzicht statt eines VPN-Endpunkts, der nicht filtern kann (E8) — aber ein realer Funktionsverlust, der bei Bedarf sauber nachgeholt werden muss und nicht schnell nebenbei.</li>
     <li><strong>Knappes RAM-Budget.</strong> Ohne Monitoring-Stack tragfähig, mit nicht.</li>
   </ul>
@@ -605,12 +613,13 @@ footer{border-top:1px solid var(--rule);padding:28px 0 56px;font-size:13.5px;col
 <section id="naechste-schritte">
   <h2>Nächste Schritte</h2>
   <ul>
-    <li>nftables-Regelwerk der Edge-VM ausformulieren, mit Schwerpunkt auf den Egress-Beschränkungen als IP-Sets.</li>
-    <li>Traefik-Konfiguration der Edge-VM inklusive AppSec-Anbindung, pfadabhängigem Regelzuschnitt und hartem Überschreiben der <code>X-Forwarded-*</code>-Header. Abnahme: Request mit gefälschtem <code>X-Forwarded-For</code> muss im Log mit der echten Peer-IP auftauchen.</li>
-    <li>ACME-DNS-Instanz aufsetzen, <code>_acme-challenge</code>-CNAMEs delegieren und prüfen, dass die Edge-Credentials die produktive Zone nicht schreiben können.</li>
-    <li>Kyverno-Policy für <code>ingressClassName: public</code> schreiben und die Bindung von <code>ingress-public</code> an die DMZ-Adresse verifizieren (<code>ss -lntp</code>, Verbindungsversuch aus dem LAN muss scheitern).</li>
-    <li>Talos <code>machineconfig</code> mit Netzwerkregeln und auf das LAN eingeschränktem API-Zugang.</li>
-    <li>Interne CA aufsetzen, die mTLS-Strecke zwischen Edge und Ingress testen und die 24-h-Erneuerung des Client-Zertifikats über mindestens zwei Zyklen beobachten.</li>
+    <li><strong>Talos-Ingress-Firewall</strong> als Machine-Config-Patch, mit <code>admin_sources</code> in <code>vm/talos</code>. Muss stehen, bevor die Fritzbox etwas weiterleitet. Abnahme: <code>talosctl get nftableschains</code> ist nicht mehr leer, und ein Portscan von einem Nicht-Admin-Host findet 50000, 6443 und 10250 geschlossen.</li>
+    <li><strong>LB-IPAM und L2-Announcements</strong> in Cilium einschalten und <em>zuerst</em> mit einem Wegwerf-Dienst verifizieren, dass die Announcements über <code>macvtap</code> durchgehen. Erst danach <code>ingress-internal</code> von <code>hostPort</code> auf LoadBalancer umstellen.</li>
+    <li><code>ingress-public</code> bauen: eigener Namespace, eigenes RBAC mit expliziter Namespace-Liste, eigene Adresse, eigener ACME-Speicher, NetworkPolicies mit Default-Deny.</li>
+    <li>Verarbeitungskette am öffentlichen Entrypoint ausformulieren — <code>sniStrict</code> ohne Default-Zertifikat, Verwerfen der Client-<code>X-Forwarded-*</code>-Header, AppSec-Anbindung, pfadabhängiger Regelzuschnitt. Abnahme: Request mit gefälschtem <code>X-Forwarded-For</code> muss im Log mit der echten Peer-IP auftauchen, ein fremder Hostname im TLS-Handshake enden.</li>
+    <li><strong>Entscheiden, wo der DNS-Provider-Token liegt</strong> (E4): ACME-DNS-Delegation oder cert-manager, der das fertige Secret liefert.</li>
+    <li>Kyverno-Policy für <code>ingressClassName: public</code> schreiben — vor dem ersten öffentlichen Dienst, nicht danach.</li>
+    <li>CrowdSec im Cluster: LAPI und Agent in einem eigenen Namespace, Bouncer als Plugin im öffentlichen Ingress, lesender Key.</li>
     <li>NFS-Exporte pro Dienst zuschneiden, Squash-Optionen setzen und das Storage-Netz vom Node-Netz trennen.</li>
     <li><strong>Backup-Ziel entscheiden</strong>, das Append-only tatsächlich erzwingt (<code>rest-server --append-only</code> oder Object-Lock), und einen Restore-Test durchführen — ein ungetestetes Backup ist eine Annahme.</li>
     <li>CrowdSec zwei Wochen im Beobachtungsmodus fahren, den Notzugang auf einen separaten, nicht öffentlich erreichbaren Listener legen, danach den Bouncer scharfschalten.</li>
