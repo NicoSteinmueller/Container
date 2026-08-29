@@ -121,11 +121,38 @@ hubble:
       method: cronJob
 
 #
-# Kein LoadBalancer-IPAM und keine L2-Announcements: Der Node hat ein Bein mit
-# fester Adresse, Dienste von außen erreicht man später über hostPort. Ein
-# Service-Typ LoadBalancer wäre eine zweite Zuordnungsebene, die im Fehlerfall
-# erklärt werden müsste.
+# LoadBalancer-IPAM und L2-Announcements. Damit bekommen die Ingress-Controller
+# je eine eigene LAN-Adresse, statt sich über hostPort die Node-Adresse zu
+# teilen - und ohne hostPort entfällt hostNetwork, und damit der Sysctl
+# `net.ipv4.ip_unprivileged_port_start=0`. Die Adressbereiche selbst stehen
+# nicht hier, sondern als CiliumLoadBalancerIPPool in
+# k8s/flux/clusters/talos-cp1/lb-ipam.yaml.
 #
+# LB-IPAM (die Vergabe) braucht kein Flag - es genügt, dass ein IPPool
+# existiert. Eingeschaltet wird hier nur die *Ankündigung* im Netz.
+#
+# `l2announcements.enabled` setzt zweierlei, und beides wird gebraucht: das
+# Agent-Flag `enable-l2-announcements` und die RBAC-Regeln auf
+# `coordination.k8s.io/leases`. Wer nur das Flag setzt - etwa per
+# `kubectl patch cm cilium-config` -, bekommt einen Agent, der ankündigen will
+# und nicht darf: eine Endlosschleife aus
+# `leases.coordination.k8s.io ... is forbidden` im Log und keine einzige
+# Ankündigung. Der Weg führt deshalb über diese Werte, nicht über die
+# ConfigMap.
+#
+# Dass Gratuitous ARP für eine Zusatzadresse über das macvtap-Interface des
+# Nodes durchgeht, ist nachgemessen: Vom Unraid-Host aus trägt die
+# LB-Adresse dieselbe MAC wie die Node-Adresse. Vorgehen in
+# k8s/INBETRIEBNAHME.md, Schritt 4.
+#
+l2announcements:
+  enabled: true
+
+# Die L2-Announcements arbeiten mit Leases; die Cilium-Doku empfiehlt dafür ein
+# höheres Client-Limit, sonst drosselt der Agent sich selbst.
+k8sClientRateLimit:
+  qps: 20
+  burst: 40
 
 # Ressourcen: Reservierung statt Limit. Ein gedrosseltes CNI ist ein schwer zu
 # diagnostizierender Fehler im gesamten Cluster.

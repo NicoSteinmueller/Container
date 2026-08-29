@@ -1,0 +1,92 @@
+#
+# Die LAN-Adressen des Clusters: welche es gibt (IPPool) und wie das Netz von
+# ihnen erfaehrt (L2AnnouncementPolicy).
+#
+# Warum ueberhaupt LoadBalancer statt hostPort: Der Node hat ein Bein. Solange
+# sich alle Controller die eine Node-Adresse teilen, kann es nur *einen*
+# Ingress auf Port 443 geben - und der Weg dorthin fuehrt ueber hostPort, damit
+# ueber hostNetwork und damit ueber den Sysctl
+# `net.ipv4.ip_unprivileged_port_start=0`, weil Traefik als UID 65532 sonst
+# Port 443 nicht binden darf. Mit je einer eigenen LB-Adresse faellt diese
+# ganze Kette weg: Der Pod bindet 8443 in seinem eigenen Netz, wo er kein
+# Privileg braucht.
+#
+# Zwei Teile, die man auseinanderhalten muss:
+#
+#   LB-IPAM    - die *Vergabe* einer Adresse an einen Service. Braucht kein
+#                Flag; es genuegt, dass ein IPPool existiert.
+#   L2-Announce- die *Ankuendigung* dieser Adresse im Netz per Gratuitous ARP.
+#                Braucht `l2announcements.enabled: true` in den Cilium-Werten
+#                (vm/talos/values/cilium.yaml.tftpl) - dort haengen neben dem
+#                Agent-Flag auch die RBAC-Regeln auf coordination.k8s.io/leases
+#                dran. Ohne sie will der Agent ankuendigen und darf nicht.
+#
+# Ist eine Adresse vergeben, aber nicht angekuendigt, sieht der Service gesund
+# aus - `EXTERNAL-IP` steht da - und ist trotzdem nicht erreichbar. Die
+# Gegenprobe dafuer ist die Lease, nicht der Service:
+#
+#   kubectl -n kube-system get lease | grep l2announce
+#
+---
+#
+# Der Adressbereich. Beide Adressen muessen ausserhalb des Fritzbox-DHCP-
+# Bereichs liegen und duerfen nicht mit `lan_ip` aus vm/talos kollidieren:
+#
+#   192.168.178.230  Node selbst (Talos-API, Kubelet, kube-apiserver)
+#   192.168.178.231  ingress-internal - nur LAN
+#   192.168.178.232  ingress-public   - Internet, siehe INBETRIEBNAHME Schritt 8
+#
+# .232 steht hier schon drin, obwohl es ingress-public noch nicht gibt. Das ist
+# ungefaehrlich: Ein Pool vergibt nur an Services, die eine Adresse anfordern.
+# Anders als bei einer IngressClass ohne Controller entsteht daraus keine Falle.
+#
+# Welcher Service welche Adresse bekommt, entscheidet nicht dieser Pool,
+# sondern die Annotation `lbipam.cilium.io/ips` am Service. Ohne sie waere die
+# Zuordnung die Reihenfolge der Vergabe - und ein Neustart koennte die beiden
+# Ingress-Adressen tauschen, mitten in einer bestehenden Portfreigabe.
+#
+# apiVersion: v2 ist hier die Storage-Version. v2alpha1 wird noch bedient,
+# quittiert das Apply aber mit einer Deprecation-Warnung.
+#
+apiVersion: cilium.io/v2
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: lan
+spec:
+  blocks:
+    - start: "192.168.178.231"
+      stop: "192.168.178.232"
+---
+#
+# Die Ankuendigung. Ohne sie kennt kein Geraet im LAN die MAC zu diesen
+# Adressen, und der ARP-Request bleibt unbeantwortet.
+#
+# Der Node haengt per macvtap an bond0 des Unraid-Hosts; die Ankuendigung ist
+# Gratuitous ARP fuer zusaetzliche Adressen unter *derselben* MAC. Dass das
+# durchgeht, war die offene Frage der ganzen Umstellung und ist nachgemessen -
+# vom Unraid-Host aus traegt .231 dieselbe MAC wie .230. Vorgehen und
+# Fallstricke in k8s/INBETRIEBNAHME.md, Schritt 4.
+#
+# Kein serviceSelector: In diesem Cluster soll jeder Service vom Typ
+# LoadBalancer auch angekuendigt werden. Ein Selektor waere eine zweite Stelle,
+# an der ein neuer Dienst eingetragen werden muss - und die Sorte Fehler, die
+# sich als "EXTERNAL-IP da, trotzdem nicht erreichbar" zeigt.
+#
+# externalIPs bleibt aus: `spec.externalIPs` an einem Service ist eine
+# Adressuebernahme ohne Vergabe - niemand prueft, ob die Adresse frei ist. Was
+# angekuendigt wird, soll aus dem Pool oben stammen.
+#
+# apiVersion: Anders als beim IPPool gibt es hier (Cilium 1.20.1) *kein* v2 -
+# v2alpha1 ist die Storage-Version. Beim Cilium-Update mitpruefen.
+#
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: lan
+spec:
+  # Der LAN-Anschluss des Nodes, als Regex. Name gegenpruefen mit
+  #   talosctl -n 192.168.178.230 get links
+  interfaces:
+    - ^enp1s0$
+  loadBalancerIPs: true
+  externalIPs: false

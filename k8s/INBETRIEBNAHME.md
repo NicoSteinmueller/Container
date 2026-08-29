@@ -413,9 +413,14 @@ nmap -Pn -p 50000,6443,10250 192.168.178.230          # von einem Nicht-Admin-Ho
 
 ## 4. Cilium: LB-IPAM und L2-Announcements
 
-Die Voraussetzung ist erfüllt — `kubeProxyReplacement: true` steht bereits in
+**Gemessen und bestaetigt — die Umstellung ist gangbar.** Was hier lange als
+offene Frage stand, ist beantwortet: Gratuitous ARP fuer eine Zusatzadresse
+traegt ueber das macvtap-Interface des Nodes. Der Beweis steht unten unter
+Gegenprobe.
+
+Die Voraussetzung war erfuellt — `kubeProxyReplacement: true` steht in
 [../vm/talos/values/cilium.yaml.tftpl](../vm/talos/values/cilium.yaml.tftpl),
-Cilium läuft als v1.20.1. Es fehlen drei Zeilen in denselben Werten:
+Cilium laeuft als v1.20.1. Dazugekommen sind in denselben Werten:
 
 ```yaml
 l2announcements:
@@ -431,50 +436,104 @@ k8sClientRateLimit:
 Cilium liegt als Inline-Manifest in der Machine-Config, das ist also ein
 `tools/tf apply` in `vm/talos` und kein Flux-Commit.
 
-Dazu ein neues Flux-Manifest `flux/clusters/talos-cp1/lb-ipam.yaml`:
+> **Und damit ist es noch nicht im Cluster.** Talos schreibt geaenderte
+> Inline-Manifeste nicht auf bereits bestehende Objekte durch: `tofu plan`
+> sagt danach `No changes`, `talosctl get manifests` zeigt `99-cilium` mit
+> erhoehter `VERSION` — und die ConfigMap im Cluster hat den neuen Wert
+> trotzdem nicht. Der Nachtrag von Hand steht in
+> [../vm/talos/README.md](../vm/talos/README.md) unter *Eine Wertaenderung ist
+> mit `tofu apply` nicht im Cluster*. Gegenprobe hier:
+>
+> ```bash
+> kubectl -n kube-system get cm cilium-config \
+>   -o jsonpath='{.data.enable-l2-announcements}{"\n"}'        # true
+> kubectl get clusterrole cilium -o yaml | grep -A3 coordination  # leases
+> ```
 
-```yaml
-apiVersion: cilium.io/v2alpha1
-kind: CiliumLoadBalancerIPPool
-metadata:
-  name: lan
-spec:
-  blocks:
-    - start: "192.168.178.231"
-      stop: "192.168.178.232"
----
-apiVersion: cilium.io/v2alpha1
-kind: CiliumL2AnnouncementPolicy
-metadata:
-  name: lan
-spec:
-  # Der LAN-Anschluss des Nodes. Name gegenprüfen mit
-  #   talosctl -n 192.168.178.230 get links
-  interfaces:
-    - enp1s0
-  loadBalancerIPs: true
-  externalIPs: false
-```
+> **Nicht per `kubectl patch cm cilium-config` abkuerzen.** Der Wert
+> `l2announcements.enabled` setzt zweierlei: das Agent-Flag
+> `enable-l2-announcements` **und** die RBAC-Regeln auf
+> `coordination.k8s.io/leases`. Wer nur das Flag in der ConfigMap setzt,
+> bekommt einen Agent, der ankuendigen will und nicht darf — im Log eine
+> Endlosschleife aus
+> `leases.coordination.k8s.io "cilium-l2announce-..." is forbidden`, nach
+> aussen ein Service mit `EXTERNAL-IP`, den niemand erreicht.
 
-**Vor allem anderen verifizieren — und zwar mit einem Wegwerf-Dienst, nicht mit
-dem Ingress.** Der Node hängt per `macvtap` an `bond0`; die Announcements sind
-Gratuitous ARP für zusätzliche Adressen unter derselben MAC. Das sollte
-durchgehen, aber „sollte" ist hier das operative Wort:
+Dazu das Flux-Manifest
+[flux/clusters/talos-cp1/lb-ipam.yaml](flux/clusters/talos-cp1/lb-ipam.yaml):
+der `CiliumLoadBalancerIPPool` mit `.231`–`.232` und die
+`CiliumL2AnnouncementPolicy` auf `enp1s0`. Begruendungen stehen als Kommentare
+in der Datei; zwei Dinge, die beim Abschreiben aus der Cilium-Doku auffallen:
+
+- **Die beiden CRs haben verschiedene apiVersions.** Beim
+  `CiliumLoadBalancerIPPool` ist `cilium.io/v2` die Storage-Version, `v2alpha1`
+  quittiert das Apply mit einer Deprecation-Warnung. Die
+  `CiliumL2AnnouncementPolicy` kennt in 1.20.1 **kein** `v2` und bleibt bei
+  `v2alpha1`. Beim Cilium-Update mitpruefen.
+- **Welcher Service welche Adresse bekommt, entscheidet der Pool nicht.** Das
+  regelt die Annotation `lbipam.cilium.io/ips` am Service (Schritt 5). Ohne sie
+  waere die Zuordnung die Reihenfolge der Vergabe — und ein Neustart koennte
+  die beiden Ingress-Adressen tauschen, mitten in einer bestehenden
+  Portfreigabe.
+
+### Gegenprobe — mit einem Wegwerf-Dienst, und vom richtigen Rechner aus
+
+Zwei Fallen stecken in dieser Messung, und beide liefern ein **falsches
+Negativ**: Man misst nichts, glaubt aber, die Ankuendigung sei kaputt.
+
+**Nicht `whoami` nehmen.** Dessen Namespace traegt `whoami-default-deny` plus
+eine Regel, die ausschliesslich `traefik-internal` auf Port 80 zulaesst. Ein
+`curl` direkt auf die LB-Adresse wird von der NetworkPolicy verworfen — auch
+bei tadellos funktionierendem L2. Deshalb ein eigener Namespace ohne Policy.
+
+**Nicht von einem Rechner messen, dessen Weg ins LAN ueber einen Tunnel
+fuehrt.** Ein VPN-Interface zur Fritzbox ist `POINTOPOINT,NOARP` und hat oft
+die kleinere Metrik als das echte LAN-Interface — dann macht die Fritzbox das
+ARP, nicht der messende Rechner, und der Test sagt nichts ueber das Segment
+aus. Gegenprobe vorweg: `ip route get 192.168.178.230` muss ein echtes
+Ethernet-Interface nennen. Der Unraid-Host selbst ist der sichere Ort dafuer.
 
 ```bash
-kubectl -n whoami patch svc whoami --type merge \
-  -p '{"spec":{"type":"LoadBalancer"}}'
-kubectl -n whoami get svc whoami          # EXTERNAL-IP muss vergeben werden
-curl http://192.168.178.231              # von einem anderen LAN-Rechner
-ip -4 neigh show | grep 192.168.178.231  # MAC muss die des Nodes sein
+kubectl create namespace l2-test
+kubectl -n l2-test create deployment l2-test --image=traefik/whoami:v1.12.0 \
+  -- /whoami --port=8080
+kubectl -n l2-test expose deployment l2-test --type=LoadBalancer \
+  --port=80 --target-port=8080 \
+  --overrides='{"metadata":{"annotations":{"lbipam.cilium.io/ips":"192.168.178.231"}},"spec":{"externalTrafficPolicy":"Local"}}'
+
+kubectl -n l2-test get svc l2-test          # EXTERNAL-IP muss vergeben werden
+kubectl -n kube-system get lease | grep l2announce   # muss existieren
+
+# Vom Unraid-Host, nicht vom Arbeitsrechner:
+ssh root@192.168.178.3 'curl -s --max-time 8 http://192.168.178.231; \
+  ip neigh show 192.168.178.231'
+
+kubectl delete namespace l2-test
 ```
 
-Kommt hier nichts an, ist die ganze Umstellung blockiert — dann bleibt nur der
-Weg über `hostIP` mit `hostNetwork` (samt der Policy-Folge aus dem Zielbild)
-oder ein zweites virtuelles Interface. Erst wenn das hier funktioniert, weiter.
+Zwei Zeilen entscheiden. Die MAC zu `.231` muss **dieselbe** sein wie die zu
+`.230` — dann kuendigt der Node an, und macvtap laesst es durch:
 
-Danach den Patch zurücknehmen: `kubectl -n whoami patch svc whoami --type merge
--p '{"spec":{"type":"ClusterIP"}}'`.
+```
+192.168.178.231 dev vhost0 lladdr 52:54:00:7a:30:01 REACHABLE
+192.168.178.230 dev vhost0 lladdr 52:54:00:7a:30:01 STALE
+```
+
+Und im `whoami`-Ausgabeblock zeigt `RemoteAddr` die Adresse des *Aufrufers*
+(hier `192.168.178.3`), nicht die des Nodes. Das ist die Vorwegnahme von
+`externalTrafficPolicy: Local` aus Schritt 5: kein SNAT, die Client-Adresse
+ueberlebt.
+
+Fehlt die Lease, ist es RBAC (siehe Kasten oben), nicht das Netz:
+
+```bash
+kubectl -n kube-system logs ds/cilium | grep -i "l2announce\|forbidden" | tail
+```
+
+Kaeme hier wirklich nichts an, waere die ganze Umstellung blockiert — dann
+bliebe nur der Weg ueber `hostIP` mit `hostNetwork` (samt der Policy-Folge aus
+dem Zielbild) oder ein zweites virtuelles Interface. Dieser Fall ist mit der
+Messung oben ausgeschlossen.
 
 ## 5. `ingress-internal` auf LoadBalancer umstellen
 
