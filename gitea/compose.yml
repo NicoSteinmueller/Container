@@ -13,7 +13,7 @@ services:
     # Das rootless-Image, nicht das Standard-Image: Es läuft ohne s6-Overlay
     # als unprivilegierter Benutzer und bindet 3000/2222 statt 22 - damit
     # kommt es ohne NET_BIND_SERVICE aus und verträgt cap_drop: ALL.
-    image: gitea/gitea:1.27.2-rootless@sha256:c7953964c6e8fe532cf7fc3f3efdea1d0b161d7859c47e04f5e05489d494dea0
+    image: gitea/gitea:1.27.3-rootless@sha256:1c17ecaead42eb3b5391553d8708103a4beb0e86edf5b9ebc1eb269c318845f2
     container_name: gitea
 
     # ------------ Abhängigkeiten & Start -----------
