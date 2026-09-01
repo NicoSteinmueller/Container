@@ -585,6 +585,15 @@ Cilium-Identität `host` statt `world` — und damit greift die NetworkPolicy
 Datei beschreibt (Cilium wertet `ipBlock` nicht gegen `host` und `remote-node`
 aus). Zusätzlich sähe CrowdSec später überall dieselbe Quell-IP.
 
+**Ein Eintrag kommt hinzu, den man leicht übersieht:** `traefik-internal`
+gehört jetzt in `providers.kubernetesIngress.namespaces`. Mit dem Service setzt
+das Chart `ingressendpoint.publishedservice`, und Traefik trägt dessen Adresse
+in `status.loadBalancer` jedes Ingress ein — die ADDRESS-Spalte von `kubectl get
+ingress`. Dafür muss es den eigenen Service lesen dürfen, und der
+Ingress-Provider liest nur in den gelisteten Namespaces. Sonst im Log:
+`cannot get service traefik-internal/traefik-internal: namespace is not within
+watched namespaces`.
+
 Zwei Aufräumarbeiten, die jetzt möglich werden:
 
 - Der ausführliche Kommentarblock zu `hostPort`/`hostNetwork`/Sysctl ist
