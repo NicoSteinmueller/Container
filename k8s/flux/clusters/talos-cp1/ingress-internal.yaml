@@ -24,15 +24,18 @@
 #
 ---
 #
-# PodSecurity `privileged`, und das ist hier kein Schlendrian: Der Controller
-# belegt hostPort 80 und 443 auf dem Node, und PodSecurity zaehlt hostPorts
-# bereits ab `baseline` als Verstoss. Ein Ingress-Controller ohne die
-# Standard-Ports waere aber keiner.
+# PodSecurity `restricted`, und das war es nicht immer: Solange der Controller
+# die hostPorts 80 und 443 belegte, musste `enforce` auf `privileged` stehen -
+# PodSecurity zaehlt hostPorts bereits ab `baseline` als Verstoss. Mit dem
+# LoadBalancer faellt der hostPort weg, und mit ihm der einzige Grund fuer die
+# Ausnahme.
 #
-# `warn` und `audit` bleiben deshalb auf `baseline` stehen: Jede andere
-# Abweichung - privilegierte Container, Host-Namespaces, hostPath - taucht
-# weiterhin als Warnung auf. Nur der hostPort ist die Ausnahme, und der
-# Namespace enthaelt nichts als diesen Controller.
+# Erfuellt hat der Pod `restricted` ohnehin schon: UID 65532, runAsNonRoot,
+# allowPrivilegeEscalation: false, readOnlyRootFilesystem, alle Capabilities
+# gedroppt, seccomp RuntimeDefault - siehe die securityContext-Bloecke im
+# HelmRelease weiter unten. Hier wird also nichts erzwungen, was der
+# Controller nicht laengst tut; die Stufe schreibt nur fest, dass es so
+# bleibt.
 #
 apiVersion: v1
 kind: Namespace
@@ -40,9 +43,9 @@ metadata:
   name: traefik-internal
   labels:
     homelab.io/zone: internal
-    pod-security.kubernetes.io/enforce: privileged
-    pod-security.kubernetes.io/warn: baseline
-    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
 
 ---
 #
@@ -78,7 +81,7 @@ spec:
 #
 # Eingehend nur aus dem LAN.
 #
-# Der Grund: hostPort ist nicht der einzige Weg an diesen Pod. Jeder Pod im
+# Der Grund: Der LoadBalancer ist nicht der einzige Weg an diesen Pod. Jeder Pod im
 # Cluster koennte die Pod-Adresse direkt auf 8000/8443 ansprechen - und damit
 # jeden Router dieses Controllers benutzen, ohne je im LAN gewesen zu sein.
 # Der Ingress waere dann der Umweg, der die Policies der Anwendungen aushebelt:
@@ -100,9 +103,15 @@ spec:
 # Dass die ipBlock-Regel hier greift, ist nicht selbstverstaendlich und im
 # Repo schon einmal falsch verallgemeinert worden: Cilium wertet ipBlock nicht
 # gegen die reservierten Identitaeten `host` und `remote-node` aus. Ein
-# LAN-Client, dessen Paket ueber hostPort hereinkommt, traegt aber `world` -
-# und dagegen greift ipBlock sehr wohl (nachgemessen fuer NodePort, siehe
-# k8s/whoami/chart/templates/networkpolicy.yaml).
+# LAN-Client, dessen Paket ueber die LoadBalancer-Adresse hereinkommt, traegt
+# aber `world` - und dagegen greift ipBlock sehr wohl (nachgemessen fuer
+# NodePort, siehe k8s/whoami/chart/templates/networkpolicy.yaml).
+#
+# Dass das so bleibt, haengt an `externalTrafficPolicy: Local` im Service
+# weiter unten. Mit `Cluster` ersetzte SNAT die Client-Adresse durch die des
+# Nodes, das Paket traege `host` - und diese Policy liesse dann jeden durch,
+# statt nur das LAN. Die beiden Stellen gehoeren zusammen; wer die eine
+# aendert, aendert die andere mit.
 #
 # Die Health-Probes des Kubelets fallen nicht darunter: Sie kommen als `host`,
 # und Cilium laesst den lokalen Host per Voreinstellung zu Pods durch.
@@ -484,19 +493,23 @@ spec:
       replicas: 1
 
     #
-    # Recreate statt RollingUpdate - sonst blockiert sich jedes Upgrade
-    # selbst.
+    # Recreate statt RollingUpdate - der Grund ist ein anderer als frueher.
     #
-    # Der Scheduler behandelt hostPorts wie Node-Ports, und der Node hat nur
-    # einen Satz davon. Die Chart-Voreinstellung ist maxUnavailable: 0 /
-    # maxSurge: 1: Der neue Pod soll starten, BEVOR der alte geht - und bleibt
-    # dann Pending mit
+    # Frueher war es der Scheduler: Er behandelt hostPorts wie Node-Ports, der
+    # Node hat nur einen Satz davon, und der neue Pod sollte laut
+    # Chart-Voreinstellung (maxUnavailable: 0 / maxSurge: 1) vor dem alten
+    # starten. Er blieb dann Pending mit "didn't have free ports for the
+    # requested pod ports", waehrend der alte auf ihn wartete. Dieser Deadlock
+    # faellt mit dem hostPort weg.
     #
-    #   0/1 nodes are available: 1 node(s) didn't have free ports for the
-    #   requested pod ports
-    #
-    # waehrend der alte auf den neuen wartet. Ein Deadlock, der erst beim
-    # naechsten Upgrade auffaellt und wie ein Scheduling-Problem aussieht.
+    # Uebrig bleibt acme.json. Es liegt auf einem PVC mit accessMode
+    # ReadWriteOnce (persistence weiter unten), und local-path haelt das
+    # Volume auf genau diesem Node - zwei Pods duerfen es also gleichzeitig
+    # mounten, der Scheduler haelt sie nicht auf. Genau das ist das Problem:
+    # lego schreibt die Datei ohne Sperre. Zwei Traefik-Instanzen, die sich
+    # beim Rollout ueberlappen, koennen sie gegenseitig ueberschreiben - und
+    # dann ist das Wildcard weg und wird neu beantragt, mit den Rate Limits
+    # von Let's Encrypt im Ruecken.
     #
     # Der Preis ist eine kurze Luecke beim Rollout. Bei einem Ingress auf
     # einem Ein-Node-Cluster ist die ohnehin unvermeidbar.
@@ -523,10 +536,10 @@ spec:
           - ALL
 
     #
-    # hostPort statt hostNetwork - und das ist der Unterschied zum frueheren
-    # Plattform-Stack, deshalb ausfuehrlich:
+    # LoadBalancer statt hostPort - und das ist der Unterschied zu beiden
+    # frueheren Staenden, deshalb ausfuehrlich:
     #
-    # Damals liefen zwei Controller auf einem Node mit zwei Beinen (LAN und
+    # Zuerst liefen zwei Controller auf einem Node mit zwei Beinen (LAN und
     # DMZ). Beide brauchten 443, nebeneinander ging das nur ueber je eine
     # eigene Node-Adresse - also `hostIP`. Das Chart schreibt `hostIP` aber an
     # ZWEI Stellen: in den containerPort (gewollt) und in die
@@ -544,27 +557,32 @@ spec:
     # Capabilities ueber execve nur per File-Capability, und das Image hat
     # keine).
     #
-    # Heute hat der Node ein Bein und dieser Cluster einen Controller. Damit
-    # faellt der Grund fuer `hostIP` weg - und ohne `hostIP` faellt der Grund
-    # fuer hostNetwork weg, und ohne hostNetwork faellt der Sysctl weg:
-    # Traefik bindet 8000/8443 im eigenen Pod-Netz, wo es kein Privileg
-    # braucht, und Cilium bildet Node:80/443 darauf ab. Das kann es, weil
-    # kube-proxy durch Cilium ersetzt ist (vm/talos/values/cilium.yaml.tftpl,
-    # "Dienste von aussen erreicht man spaeter ueber hostPort").
+    # Dann, mit einem Bein und einem Controller, ging es ohne `hostIP` - und
+    # damit per hostPort statt hostNetwork: Traefik band 8000/8443 im eigenen
+    # Pod-Netz, wo es kein Privileg braucht, und Cilium bildete Node:80/443
+    # darauf ab. Der Sysctl fiel weg, die Node-Adresse blieb aber der einzige
+    # Weg herein - dieselbe .230, auf der auch Talos-API und kube-apiserver
+    # lauschen. Und der zweite Controller waere daran wieder haengen
+    # geblieben: Es gibt nur einen Satz hostPorts je Node.
     #
-    # Der Node hat derzeit nur die LAN-Adresse; ohne `hostIP` lauscht der
-    # hostPort auf allen Adressen des Nodes, was heute dasselbe ist. Sobald
-    # das DMZ-Bein und ingress-public zurueckkommen, ist es das nicht mehr -
-    # DANN ist die Stelle, an der `hostIP` und mit ihm hostNetwork und der
-    # Sysctl zurueckmuessen. Wer das hier liest, bevor er den zweiten
-    # Controller baut: Diese Datei ist die zu aendernde.
+    # Heute vergibt Cilium eigene LAN-Adressen (lb-ipam.yaml, Pool `lan`) und
+    # kuendigt sie per L2-Announcement an. Dieser Controller bekommt .231, der
+    # Node behaelt .230 fuer sich, und `ingress-public` fordert spaeter .232
+    # an, statt um denselben hostPort zu konkurrieren. Es faellt damit alles
+    # weg, was die frueheren Staende gekostet haben: kein `hostIP`, kein
+    # hostNetwork, kein hostPort, kein Sysctl - und der Namespace kann zurueck
+    # auf PodSecurity `restricted` (siehe oben).
+    #
+    # Moeglich ist das, weil kube-proxy durch Cilium ersetzt ist
+    # (vm/talos/values/cilium.yaml.tftpl) und Cilium den LB-Verkehr in eBPF
+    # verarbeitet.
     #
     ports:
       web:
         port: 8000
-        hostPort: 80
+        exposedPort: 80
         expose:
-          default: false
+          default: true
         # Nur zum Weiterleiten. Ein Passwortfeld auf einer unverschluesselten
         # Verbindung im eigenen LAN ist immer noch ein Passwortfeld auf einer
         # unverschluesselten Verbindung.
@@ -577,9 +595,9 @@ spec:
 
       websecure:
         port: 8443
-        hostPort: 443
+        exposedPort: 443
         expose:
-          default: false
+          default: true
         http:
           tls:
             enabled: true
@@ -607,13 +625,36 @@ spec:
           insecure: false
 
     #
-    # Kein Service: Erreicht wird der Controller ueber den hostPort, und ein
-    # Service, den niemand anspricht, ist ein Objekt, das beim Lesen erklaert
-    # werden muss. Folge davon: `kubectl get ingress` zeigt keine ADDRESS -
-    # das Chart traegt sie nur aus einem eigenen Service nach.
+    # Der Service ist der Weg herein. Typ LoadBalancer, und die Adresse kommt
+    # aus dem Pool `lan` (lb-ipam.yaml); die Annotation fordert eine bestimmte
+    # an, statt die Reihenfolge der Vergabe zu erraten - .231 ist die interne,
+    # .232 bleibt fuer ingress-public reserviert.
+    #
+    # `externalTrafficPolicy: Local` ist keine Feinheit, sondern das, woran
+    # die NetworkPolicy `allow-from-lan` weiter oben haengt: Nur damit bleibt
+    # die Client-Adresse erhalten, und das Paket traegt die Cilium-Identitaet
+    # `world`, gegen die ipBlock greift. Mit `Cluster` ersetzte SNAT sie durch
+    # die Node-Adresse - Identitaet `host` -, und die Policy liesse jeden
+    # durch. Ein spaeterer CrowdSec-Bouncer saehe ausserdem ueberall dieselbe
+    # Quelle.
+    #
+    # Der uebliche Preis von `Local` - Pakete, die auf einem Node ohne Pod
+    # landen, fallen - entfaellt hier: ein Node, ein Pod.
+    #
+    # `type` gehoert in diesem Chart (41.3.0) in den spec-Block, nicht neben
+    # `enabled`; die Werte darin werden unveraendert in die Service-Spec
+    # geschrieben (templates/service.yaml).
+    #
+    # Folge fuers Nachsehen: `kubectl get ingress` zeigt jetzt eine ADDRESS -
+    # das Chart traegt sie aus diesem Service nach.
     #
     service:
-      enabled: false
+      enabled: true
+      annotations:
+        lbipam.cilium.io/ips: "192.168.178.231"
+      spec:
+        type: LoadBalancer
+        externalTrafficPolicy: Local
 
     #
     # Das Zertifikat: ein Wildcard von Let's Encrypt, per DNS-01 ueber IONOS.
