@@ -12,10 +12,10 @@ Was bewusst *nicht* Teil der Inbetriebnahme ist, sondern später kommt, steht in
 > **Stand: dieses Dokument beschreibt mehr, als es derzeit gibt.**
 >
 > Die Schritte 0 bis 2 lassen sich heute abarbeiten: Unraid-Host, Talos-Node,
-> Flux. Storage, der **interne** Ingress und die LAN-Adressen (Schritt 4) sind
+> Flux. Storage, der **interne** Ingress, die LAN-Adressen (Schritt 4) und die
+> Umstellung von `ingress-internal` auf LoadBalancer (Schritt 5) sind
 > zurückgekommen, als Flux-Manifest statt als Terraform-Modul. Offen sind die
-> Ingress-Firewall (Schritt 3), die Umstellung von `ingress-internal` auf
-> LoadBalancer (Schritt 5) und der Rest des früheren Plattform-Stacks —
+> Ingress-Firewall (Schritt 3) und der Rest des früheren Plattform-Stacks —
 > `ingress-public`, Kyverno, CrowdSec. Der lag im Modul `k8s/platform`, ist
 > entfernt worden und soll stückweise als Flux-Manifest wiederkommen.
 >
@@ -320,19 +320,14 @@ Ingress mit Namespaces, NetworkPolicies und der IngressClass `internal`
 (`ingress-internal.yaml`) sowie die LAN-Adressen (`lb-ipam.yaml`, Schritt 4).
 Damit sind drei der früheren Sperren weg: PVCs binden, Dienste hängen unter
 Hostnamen statt an NodePorts, und ein Service vom Typ `LoadBalancer` bekommt
-eine Adresse, die im Netz auch angekündigt wird.
+eine Adresse, die im Netz auch angekündigt wird. Der interne Controller nimmt
+sie seit Schritt 5 auch in Anspruch — er hängt auf `.231` statt am hostPort.
 
 **Noch offen, und was daran hängt:**
 
 - **Keine Ingress-Firewall auf dem Node.** `talosctl get nftableschains` kommt
   leer zurück, `admin_sources` gibt es in `vm/talos` noch nicht. Das ist
   Schritt 3 und muss stehen, bevor die Fritzbox irgendetwas weiterleitet.
-- **`ingress-internal` hängt noch an `hostPort`.** Die Adressen selbst stehen
-  seit Schritt 4 bereit — Pool `lan` mit `.231`–`.232`, Ankündigung
-  nachgemessen —, aber der Controller fordert noch keine an. Das ist Schritt 5
-  und dort ein Zweizeiler; die Aufräumarbeiten daran (PodSecurity zurück auf
-  `restricted`, der gegenstandslose `hostPort`-Kommentarblock) stehen ebenfalls
-  dort.
 - **Kein `ingress-public`.** Die Klasse `public` existiert nicht, eine
   Portfreigabe führte ins Leere. Schritt 8.
 - **Kein Kyverno.** Die Regel auf `ingressClassName: public` gibt es damit
@@ -548,11 +543,12 @@ In [flux/clusters/talos-cp1/ingress-internal.yaml](flux/clusters/talos-cp1/ingre
 ```yaml
 service:
   enabled: true
-  type: LoadBalancer
   annotations:
     lbipam.cilium.io/ips: "192.168.178.231"
   spec:
-    # Feldname gegen die Chart-Version prüfen; in 41.x geht der spec-Block durch.
+    # `type` gehört in 41.3.0 in den spec-Block, nicht daneben: Das Chart
+    # kennt kein `service.type` mehr und schreibt spec unverändert durch.
+    type: LoadBalancer
     externalTrafficPolicy: Local
 
 ports:
@@ -572,9 +568,15 @@ ports:
     # tls-Block unverändert
 ```
 
-Zu entfernen: beide `hostPort`-Zeilen und der `updateStrategy: Recreate` — der
-Grund dafür (der Scheduler behandelt hostPorts wie NodePorts, der neue Pod
-bleibt Pending) fällt mit dem hostPort weg.
+Zu entfernen: beide `hostPort`-Zeilen.
+
+**`updateStrategy: Recreate` bleibt trotzdem stehen.** Sein bisheriger Grund
+fällt weg — der Scheduler behandelt hostPorts wie NodePorts, der neue Pod
+blieb Pending. Ein zweiter tritt an seine Stelle: `acme.json` liegt auf einem
+`ReadWriteOnce`-PVC, das local-path auf genau diesem Node hält. Zwei Pods
+dürfen es damit gleichzeitig mounten, und lego schreibt die Datei ohne Sperre —
+ein überlappender Rollout kann das Wildcard zerschreiben, mit den Rate Limits
+von Let's Encrypt im Rücken.
 
 **`externalTrafficPolicy: Local` ist keine Feinheit.** Ohne sie wird die
 Client-Adresse per SNAT auf die Node-Adresse ersetzt. Dann trägt das Paket die
@@ -594,8 +596,19 @@ Zwei Aufräumarbeiten, die jetzt möglich werden:
   Capabilities und `RuntimeDefault`-Seccomp. Auf `restricted` stellen und den
   Rollout beobachten.
 
-Abnahme: `https://dashboard.k8s.nico-steinmueller.de` löst weiter auf und
-antwortet — der DNS-Eintrag muss dabei von `.230` auf `.231` umgezogen werden.
+Abnahme:
+
+```bash
+kubectl -n traefik-internal get svc traefik-internal   # EXTERNAL-IP 192.168.178.231
+kubectl -n traefik-internal get pod                    # laeuft unter PodSecurity restricted
+curl -sI https://192.168.178.231 -k --resolve dashboard.k8s.nico-steinmueller.de:443:192.168.178.231 \
+     https://dashboard.k8s.nico-steinmueller.de
+```
+
+Dann `https://dashboard.k8s.nico-steinmueller.de` — löst weiter auf und
+antwortet, der DNS-Eintrag muss dabei von `.230` auf `.231` umgezogen werden.
+Zuletzt gegenprüfen, dass `.230` die Ports 80/443 **nicht** mehr bedient:
+`nmap -Pn -p 80,443 192.168.178.230`.
 
 ## 6. Dashboard und Metriken
 
