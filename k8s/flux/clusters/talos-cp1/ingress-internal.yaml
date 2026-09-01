@@ -784,7 +784,27 @@ spec:
         # Ingress in einem nicht gelisteten Namespace wird schlicht nicht
         # bedient, statt still bedient zu werden.
         #
+        # `traefik-internal` steht mit drin, obwohl dort kein Ingress liegt.
+        # Der Grund ist der LoadBalancer-Service: Sobald es einen gibt, setzt
+        # das Chart
+        #
+        #   --providers.kubernetesingress.ingressendpoint.publishedservice=
+        #     traefik-internal/traefik-internal
+        #
+        # und Traefik traegt dessen Adresse in `status.loadBalancer` jedes
+        # Ingress ein - das ist die ADDRESS-Spalte von `kubectl get ingress`.
+        # Dafuer muss es den eigenen Service lesen duerfen, und der
+        # Ingress-Provider liest nur in den hier gelisteten Namespaces:
+        #
+        #   ERR Error while updating ingress status
+        #       error="cannot get service traefik-internal/traefik-internal:
+        #              namespace is not within watched namespaces"
+        #
+        # Solange der Controller am hostPort hing, gab es keinen Service, das
+        # Chart setzte das Flag nicht, und der Eintrag fehlte folgenlos.
+        #
         namespaces:
+          - traefik-internal
           - headlamp
           - whoami
 
@@ -793,11 +813,11 @@ spec:
         allowCrossNamespace: false
         allowExternalNameServices: false
         #
-        # Hier steht der eigene Namespace mit drin, bei kubernetesIngress
-        # oben nicht: In traefik-internal liegen die IngressRoute des
-        # Dashboards und seine BasicAuth-Middleware - beides CRDs. Ohne
-        # diesen Eintrag legt Flux beide an, Traefik sieht sie nie, und das
-        # Dashboard antwortet mit 404 statt mit einem Passwortfeld.
+        # Der eigene Namespace steht hier aus einem eigenen Grund - nicht
+        # wegen des Service wie oben: In traefik-internal liegen die
+        # IngressRoute des Dashboards und seine BasicAuth-Middleware, beides
+        # CRDs. Ohne diesen Eintrag legt Flux beide an, Traefik sieht sie nie,
+        # und das Dashboard antwortet mit 404 statt mit einem Passwortfeld.
         #
         namespaces:
           - traefik-internal
