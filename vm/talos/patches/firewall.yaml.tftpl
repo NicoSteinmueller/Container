@@ -1,0 +1,138 @@
+#
+# Ingress-Firewall des Nodes.
+#
+# Sie schützt den Host, nicht den Cluster: Talos filtert damit ausschließlich
+# Verkehr an Host-Prozesse - apid, trustd, kube-apiserver, kubelet, etcd. Der
+# Verkehr zwischen Pods und Services läuft daran vorbei ("Talos Linux Ingress
+# Firewall doesn't affect the traffic between the Kubernetes pods/services"),
+# dafür sind die NetworkPolicies zuständig.
+#
+# Was Talos bei `ingress: block` von sich aus durchlässt und deshalb hier
+# nicht steht: loopback, siderolink und kubespan, bestehende Verbindungen
+# (conntrack "established, related") sowie ICMP mit 5 Paketen/s.
+#
+# Was damit ohne eigene Regel zufällt - und das ist der eigentliche Gewinn:
+# etcd auf 2379/2380 lauscht heute auf allen Adressen und ist aus dem ganzen
+# LAN erreichbar. Ein Node, ein etcd, kein Peer von außen: Die Voreinstellung
+# `block` genügt, es braucht keine Regel dagegen.
+#
+apiVersion: v1alpha1
+kind: NetworkDefaultActionConfig
+ingress: block
+
+---
+#
+# Die Talos-API. Ohne diese Regel ist der Node nur noch über die serielle
+# Konsole zu erreichen.
+#
+# trustd (50001) steht mit drin, obwohl es bei einem Node niemand anspricht -
+# es verteilt Zertifikate an beitretende Nodes. Der Tag, an dem ein zweiter
+# dazukommt, ist kein guter Tag, um diese Datei zu suchen.
+#
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: talos-api
+portSelector:
+  ports:
+    - 50000
+    - 50001
+  protocol: tcp
+ingress:
+%{ for src in admin_sources ~}
+  - subnet: ${src}
+%{ endfor ~}
+
+---
+#
+# Der kube-apiserver.
+#
+# `pod_subnet` muss mit dabei stehen: Pods erreichen die API über die
+# ClusterIP `kubernetes.default`, und Cilium leitet die auf die Node-Adresse
+# auf 6443 weiter - das Paket kommt also aus dem Pod-Netz an einem
+# Host-Prozess an und fällt damit unter diese Regel.
+#
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: kube-apiserver
+portSelector:
+  ports:
+    - 6443
+  protocol: tcp
+ingress:
+%{ for src in admin_sources ~}
+  - subnet: ${src}
+%{ endfor ~}
+  - subnet: ${pod_subnet}
+
+---
+#
+# Das Kubelet.
+#
+# `pod_subnet` ist hier kein Beiwerk: Der metrics-server spricht das Kubelet
+# aus dem Pod-Netz an. Ohne diese Zeile fällt `kubectl top` aus, und mit ihm
+# alles, was auf Metriken wartet - Headlamp zeigt dann leere Graphen statt
+# einer Fehlermeldung.
+#
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: kubelet
+portSelector:
+  ports:
+    - 10250
+  protocol: tcp
+ingress:
+  - subnet: ${pod_subnet}
+%{ for src in admin_sources ~}
+  - subnet: ${src}
+%{ endfor ~}
+
+---
+#
+# Cilium-Health.
+#
+# Der Agent prüft die Erreichbarkeit jedes Nodes über dessen LAN-Adresse auf
+# 4240 - auch bei einem einzigen Node, der sich damit selbst prüft. Das Paket
+# geht über das LAN-Bein hinaus und kommt dort wieder an, ist also kein
+# loopback und fällt unter die Regel.
+#
+# `lan_cidr` statt admin_sources: Quelle ist die Node-Adresse selbst, und die
+# gehört nicht zwangsläufig zu den Admin-Netzen.
+#
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: cilium-health
+portSelector:
+  ports:
+    - 4240
+  protocol: tcp
+ingress:
+  - subnet: ${lan_cidr}
+  - subnet: ${pod_subnet}
+
+---
+#
+# Die Ingress-Ports, bewusst für alle offen.
+#
+# Diese Regel sichert nichts ab, sie hält etwas offen. Der Grund ist eine
+# Unschärfe, die man sonst erst im Fehlerfall bemerkt: Cilium verarbeitet den
+# LoadBalancer-Verkehr in eBPF und kann Netfilter dabei umgehen. Ob die
+# Pakete an 192.168.178.231:443 diese Regelkette überhaupt sehen, ist damit
+# offen - und die Antwort darf keine Rolle spielen. Sehen sie sie nicht, ist
+# die Regel wirkungslos; sehen sie sie doch, wäre der interne Ingress ohne
+# sie tot.
+#
+# Deshalb steht hier kein Quellnetz. Wer diese Ports absichern will, tut das
+# in den NetworkPolicies - `allow-from-lan` in
+# k8s/flux/clusters/talos-cp1/ingress-internal.yaml ist die Stelle, nicht
+# diese. Verlass dich für die Ingress-Ports nicht auf diese Firewall.
+#
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: ingress-ports
+portSelector:
+  ports:
+    - 80
+    - 443
+  protocol: tcp
+ingress:
+  - subnet: 0.0.0.0/0

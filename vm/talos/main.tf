@@ -514,6 +514,25 @@ data "talos_machine_configuration" "controlplane" {
       service_subnet = var.service_subnet
     }),
 
+    #
+    # Ingress-Firewall. Eigene Dokumente wie das User-Volume, kein Merge in
+    # v1alpha1.Config.
+    #
+    # Ein Fehler hier sperrt die Talos-API aus. Terraform kann den
+    # try-Modus nicht (der Provider kennt nur auto/reboot/no_reboot/staged),
+    # deshalb gehoert ein Regelwechsel zuerst von Hand geprueft:
+    #
+    #   talosctl apply-config --mode=try --timeout=60s ...
+    #
+    # Talos nimmt die Aenderung dann nach einer Minute von selbst zurueck.
+    # Der Ablauf steht in README.md unter "Ingress-Firewall".
+    #
+    templatefile("${path.module}/patches/firewall.yaml.tftpl", {
+      admin_sources = var.admin_sources
+      pod_subnet    = var.pod_subnet
+      lan_cidr      = var.lan_cidr
+    }),
+
     # Cilium. Muss der letzte Patch sein - nicht technisch, sondern damit die
     # lesbaren Patches oben nicht hinter dem gerenderten Chart verschwinden.
     yamlencode({
