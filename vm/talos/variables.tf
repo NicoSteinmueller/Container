@@ -239,6 +239,36 @@ variable "maintenance_link" {
   default     = "enp1s0"
 }
 
+variable "admin_sources" {
+  description = <<-EOT
+    Netze, aus denen die Talos-API und der kube-apiserver erreichbar sein
+    sollen. Alles andere blockt die Ingress-Firewall des Nodes.
+
+    Hierher gehören die Adressen, von denen aus administriert wird - nicht das
+    ganze LAN, wenn es sich vermeiden lässt. Die Talos-API ist sonst nur durch
+    Client-Zertifikate geschützt, und der kube-apiserver nimmt jede Anfrage
+    entgegen, die er ablehnen will.
+
+    Eine leere Liste ist nicht erlaubt: Sie würde den Node bei der nächsten
+    Konfigurationsänderung unerreichbar machen.
+
+    Vor dem ersten Apply gegen die eigene Adresse prüfen:
+      ip -4 -br addr show scope global
+  EOT
+  type        = list(string)
+  default     = ["192.168.122.0/24"]
+
+  validation {
+    condition     = length(var.admin_sources) > 0
+    error_message = "admin_sources darf nicht leer sein - sonst ist die Talos-API von nirgends mehr erreichbar."
+  }
+
+  validation {
+    condition     = alltrue([for s in var.admin_sources : can(cidrhost(s, 0))])
+    error_message = "Jeder Eintrag in admin_sources muss ein CIDR sein, z. B. 192.168.1.2/32."
+  }
+}
+
 #
 # Cluster-Netz
 #

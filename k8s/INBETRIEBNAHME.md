@@ -14,8 +14,9 @@ Was bewusst *nicht* Teil der Inbetriebnahme ist, sondern später kommt, steht in
 > Die Schritte 0 bis 2 lassen sich heute abarbeiten: Unraid-Host, Talos-Node,
 > Flux. Storage, der **interne** Ingress, die LAN-Adressen (Schritt 4) und die
 > Umstellung von `ingress-internal` auf LoadBalancer (Schritt 5) sind
-> zurückgekommen, als Flux-Manifest statt als Terraform-Modul. Offen sind die
-> Ingress-Firewall (Schritt 3) und der Rest des früheren Plattform-Stacks —
+> zurückgekommen, als Flux-Manifest statt als Terraform-Modul; die
+> Ingress-Firewall (Schritt 3) steht ebenfalls. Offen ist der Rest des
+> früheren Plattform-Stacks —
 > `ingress-public`, Kyverno, CrowdSec. Der lag im Modul `k8s/platform`, ist
 > entfernt worden und soll stückweise als Flux-Manifest wiederkommen.
 >
@@ -325,9 +326,6 @@ sie seit Schritt 5 auch in Anspruch — er hängt auf `.231` statt am hostPort.
 
 **Noch offen, und was daran hängt:**
 
-- **Keine Ingress-Firewall auf dem Node.** `talosctl get nftableschains` kommt
-  leer zurück, `admin_sources` gibt es in `vm/talos` noch nicht. Das ist
-  Schritt 3 und muss stehen, bevor die Fritzbox irgendetwas weiterleitet.
 - **Kein `ingress-public`.** Die Klasse `public` existiert nicht, eine
   Portfreigabe führte ins Leere. Schritt 8.
 - **Kein Kyverno.** Die Regel auf `ingressClassName: public` gibt es damit
@@ -341,76 +339,61 @@ sie seit Schritt 5 auch in Anspruch — er hängt auf `.231` statt am hostPort.
 
 ## 3. Talos-Ingress-Firewall
 
-**Muss fertig sein, bevor die Fritzbox irgendetwas weiterleitet.** Heute ist die
-Talos-API LAN-weit erreichbar, geschützt nur durch Client-Zertifikate:
-`talosctl get nftableschains` kommt leer zurück, und
-[../vm/talos/variables.tf](../vm/talos/variables.tf) kennt keine `admin_sources`.
+**Muss fertig sein, bevor die Fritzbox irgendetwas weiterleitet.** Vorher war
+die Talos-API LAN-weit erreichbar, geschützt nur durch Client-Zertifikate — und
+etcd auf 2379/2380 gleich mit.
 
-Neue Variable in `vm/talos`, dazu ein Patch-Dokument. Talos nimmt dafür
-eigenständige Machine-Config-Dokumente:
+Die Regeln stehen in
+[../vm/talos/patches/firewall.yaml.tftpl](../vm/talos/patches/firewall.yaml.tftpl),
+wer durchdarf in `admin_sources`
+([../vm/talos/variables.tf](../vm/talos/variables.tf)). Talos nimmt dafür
+eigenständige Machine-Config-Dokumente; freigegeben sind:
 
-```yaml
-# vm/talos/patches/firewall.yaml.tftpl
-apiVersion: v1alpha1
-kind: NetworkDefaultActionConfig
-ingress: block
----
-apiVersion: v1alpha1
-kind: NetworkRuleConfig
-name: talos-api
-portSelector:
-  ports: [50000, 50001]
-  protocol: tcp
-ingress:
-%{ for src in admin_sources ~}
-  - subnet: ${src}
-%{ endfor ~}
----
-apiVersion: v1alpha1
-kind: NetworkRuleConfig
-name: kube-apiserver
-portSelector:
-  ports: [6443]
-  protocol: tcp
-ingress:
-%{ for src in admin_sources ~}
-  - subnet: ${src}
-%{ endfor ~}
-  - subnet: ${pod_subnet}
----
-apiVersion: v1alpha1
-kind: NetworkRuleConfig
-name: kubelet
-portSelector:
-  ports: [10250]
-  protocol: tcp
-ingress:
-  - subnet: ${pod_subnet}
-%{ for src in admin_sources ~}
-  - subnet: ${src}
-%{ endfor ~}
-```
+| Regel | Port | Von |
+|---|---|---|
+| `talos-api` | 50000, 50001 | `admin_sources` |
+| `kube-apiserver` | 6443 | `admin_sources` + `pod_subnet` |
+| `kubelet` | 10250 | `pod_subnet` + `admin_sources` |
+| `cilium-health` | 4240 | `lan_cidr` + `pod_subnet` |
+| `ingress-ports` | 80, 443 | überall — siehe unten |
 
-`pod_subnet` ist `10.244.0.0/16` — der metrics-server spricht das Kubelet aus
-dem Pod-Netz an, ohne diese Zeile fällt `kubectl top` aus.
+Alles andere fällt unter `ingress: block` und braucht keine eigene Regel — etcd
+und die Metrik-Endpunkte sind damit aus dem LAN verschwunden. Was Talos von
+sich aus durchlässt: loopback, bestehende Verbindungen, ICMP mit 5 Paketen/s.
 
-**Zwei Dinge vorher wissen:**
+`pod_subnet` ist `10.244.0.0/16`. Es steht bei `kube-apiserver`, weil Pods die
+API über die ClusterIP erreichen und Cilium die auf die Node-Adresse umlegt —
+und bei `kubelet`, weil der metrics-server es aus dem Pod-Netz anspricht; ohne
+diese Zeile fällt `kubectl top` aus.
 
-- **Ein falscher Regelsatz sperrt dich aus dem Node aus.** Der Rückweg ist die
-  serielle Konsole: `virsh -c qemu+ssh://root@192.168.178.3/system console
-  homelab-cp1`. Vor dem Apply `admin_sources` gegen die eigene Adresse prüfen.
-- **Ob die Regeln auch den LoadBalancer-Verkehr sehen, ist offen.** Cilium
-  verarbeitet LB-Verkehr in eBPF und kann Netfilter dabei umgehen; die Regeln
-  für `apid` und Kubelet greifen dagegen sicher, weil das gewöhnliche
-  Host-Prozesse sind. Das ist kein Problem — wir *wollen* den LB-Verkehr
-  durchlassen —, aber es heißt: **verlass dich für die Absicherung der
-  Ingress-Ports nicht auf diese Firewall**, dafür sind die NetworkPolicies
-  zuständig. Nachmessen nach dem Apply:
+**`ingress-ports` sichert nichts ab, es hält etwas offen.** Cilium verarbeitet
+LB-Verkehr in eBPF und kann Netfilter dabei umgehen; ob die Pakete an
+`192.168.178.231:443` diese Kette überhaupt sehen, ist offen. Die Regel sorgt
+dafür, dass die Antwort keine Rolle spielt. **Verlass dich für die
+Ingress-Ports nicht auf diese Firewall** — dafür sind die NetworkPolicies da.
+
+**Ein falscher Regelsatz sperrt dich aus.** Der Provider kennt den try-Modus
+nicht, `tofu apply` schreibt also endgültig. Jede Änderung deshalb zuerst mit
+`talosctl patch machineconfig --mode=try --timeout=150s` prüfen — Talos rollt
+nach dem Timeout von selbst zurück. Der Ablauf mit allen Gegenproben steht in
+[../vm/talos/README.md](../vm/talos/README.md) unter **Ingress-Firewall**.
+Letzter Rückweg ist die serielle Konsole:
+`virsh -c qemu+ssh://root@192.168.178.3/system console homelab-cp1`.
+
+Abnahme — im try-Fenster gemessen, von einer Adresse aus `admin_sources`:
 
 ```bash
-talosctl -n 192.168.178.230 get nftableschains        # darf nicht mehr leer sein
-nmap -Pn -p 50000,6443,10250 192.168.178.230          # von einem Nicht-Admin-Host
+talosctl -n 192.168.178.230 get nftableschains   # ingress/drop, prerouting/accept
 ```
+
+| Port | | |
+|---|---|---|
+| 50000, 6443, 10250 | offen | apid, kube-apiserver, Kubelet |
+| 2379, 2380 | geblockt | etcd — vorher LAN-weit erreichbar |
+| 4244, 9963 | geblockt | Hubble, Cilium-Metriken |
+
+Dazu muss weiterlaufen: `kubectl get node`, `kubectl top node`, der Ingress
+über `.231` und `cilium-health status`.
 
 ## 4. Cilium: LB-IPAM und L2-Announcements
 

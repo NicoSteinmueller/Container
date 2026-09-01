@@ -117,6 +117,63 @@ talosctl health
 kubectl get nodes -o wide
 ```
 
+## Ingress-Firewall
+
+Der Node blockt eingehenden Verkehr an seine eigenen Dienste, bis auf das,
+was [patches/firewall.yaml.tftpl](patches/firewall.yaml.tftpl) freigibt. Wer
+an Talos-API und kube-apiserver darf, steht in `admin_sources`.
+
+**Sie schützt den Host, nicht den Cluster.** Verkehr zwischen Pods und
+Services läuft daran vorbei — dafür sind die NetworkPolicies zuständig. Und
+ob die Regeln den LoadBalancer-Verkehr überhaupt sehen, ist offen: Cilium
+verarbeitet den in eBPF und kann Netfilter umgehen. Die Regel `ingress-ports`
+hält 80/443 deshalb bedingungslos offen — sie sichert nichts ab, sie sorgt
+dafür, dass die Antwort auf diese Frage keine Rolle spielt.
+
+Gemessen von einer Adresse aus `admin_sources`, während die Regeln standen:
+
+| Port | | |
+|---|---|---|
+| 50000, 6443, 10250 | offen | apid, kube-apiserver, Kubelet |
+| 2379, 2380 | geblockt | etcd — vorher LAN-weit erreichbar |
+| 4244, 9963, 9964 | geblockt | Hubble und Metrik-Endpunkte |
+
+### Regeln ändern: erst `try`, dann `apply`
+
+**Ein falscher Regelsatz sperrt dich aus der Talos-API aus.** Der Provider
+kennt den try-Modus nicht — `tofu apply` schreibt die Regeln also endgültig.
+Deshalb jede Änderung zuerst von Hand, mit automatischem Rückweg:
+
+```bash
+cd vm/talos
+export TALOSCONFIG=$PWD/talosconfig
+
+# Regeln so rendern, wie tofu sie schreiben würde
+tofu console <<<'templatefile("${path.module}/patches/firewall.yaml.tftpl", { admin_sources = var.admin_sources, pod_subnet = var.pod_subnet, lan_cidr = var.lan_cidr })'
+
+talosctl -n <lan_ip> patch machineconfig --dry-run  -p @firewall.yaml
+talosctl -n <lan_ip> patch machineconfig --mode=try --timeout=150s -p @firewall.yaml
+```
+
+Talos nimmt die Änderung nach Ablauf des Timeouts von selbst zurück. In dem
+Fenster nachmessen — die Kette muss stehen, und alles muss weiter antworten:
+
+```bash
+talosctl -n <lan_ip> get nftableschains     # darf nicht leer sein
+talosctl -n <lan_ip> version                # Talos-API
+kubectl get node                            # kube-apiserver
+kubectl top node                            # Kubelet aus dem Pod-Netz
+curl -sI https://<ein-dienst>               # Ingress über die LB-Adresse
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-health status
+```
+
+Erst wenn das durchläuft, `tofu apply`. Geht doch etwas schief und der
+Rückweg über die API ist zu: serielle Konsole.
+
+```bash
+virsh -c "$libvirt_uri" console homelab-cp1
+```
+
 ## Cilium
 
 Das Chart wird beim `apply` lokal mit `helm template` gerendert und als

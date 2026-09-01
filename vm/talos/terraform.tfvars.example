@@ -41,6 +41,13 @@ lan_gateway = "192.168.1.1"
 dns_servers = ["192.168.178.1"]
 ntp_servers = ["192.168.178.1"]
 
+# Wer die Talos-API und den kube-apiserver erreichen darf; alles andere blockt
+# die Ingress-Firewall. Einzeladressen statt des ganzen LAN, wo es geht - aber
+# mindestens einen zweiten Weg vorsehen, sonst ist der Rueckweg bei einer
+# gewechselten DHCP-Adresse die serielle Konsole. Vorher pruefen:
+#   ip -4 -br addr show scope global
+admin_sources = ["192.168.1.2/32", "192.168.1.3/32"]
+
 # --- Dimensionierung ---------------------------------------------------
 
 # 4 GB tragen den leeren Cluster. Vor jeder Erhöhung `free -m` auf dem Host:
