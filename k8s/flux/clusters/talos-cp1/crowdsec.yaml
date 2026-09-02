@@ -1,0 +1,260 @@
+#
+# CrowdSec im Cluster - LAPI und Agent.
+#
+# Der Agent liest die Zugriffslogs von ingress-public, wertet sie gegen die
+# Szenarien des Hub aus und meldet Treffer an die LAPI. Der Bouncer sitzt im
+# Traefik von ingress-public als Plugin und fragt dort nach, bevor er eine
+# Anfrage durchlaesst. Drei Teile, drei Orte - das ist der Unterschied zum
+# Docker-Stand auf dem Host, wo alles in einem compose-Netz lag.
+#
+# Was hier bewusst NICHT steht:
+#
+#   - Kein AppSec. Der Docker-Stand hat eine zweite Middleware dafuer
+#     (crowdsec-appsec, Port 7422). Sie kommt, wenn der erste echte Dienst
+#     oeffentlich steht - an whoami gibt es nichts zu schuetzen, was eine
+#     WAF-Regel finden koennte, und eine Middleware, die nie ausloest, ist
+#     eine, deren Ausfall niemand bemerkt.
+#   - Keine Console-Registrierung (TODO `ENROLL_KEY`). Der Cluster meldet sich
+#     nicht bei crowdsec.net an; die Blocklisten des Hub kommen auch ohne.
+#   - Kein Dashboard (Metabase). Es will eine eigene Datenbank und einen
+#     eigenen Ingress, und `cscli decisions list` beantwortet dieselbe Frage.
+#
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: crowdsec
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://crowdsecurity.github.io/helm-charts
+
+---
+#
+# PodSecurity `privileged`, und anders als beim frueheren hostPort des
+# internen Ingress ist das hier kein Uebergang, sondern dauerhaft:
+#
+# Der Agent laeuft als DaemonSet und liest die Container-Logs des Nodes unter
+# /var/log/pods. Das ist ein hostPath, und hostPath-Volumes zaehlen schon ab
+# `baseline` als Verstoss. Einen anderen Weg an die Logs gibt es nicht -
+# Traefik schreibt sie nach stdout, und was von dort im Cluster ankommt,
+# liegt auf dem Node.
+#
+# `warn` und `audit` bleiben auf `baseline`: Jede andere Abweichung -
+# privilegierte Container, Host-Namespaces - taucht weiterhin als Warnung
+# auf. Nur der hostPath ist die Ausnahme.
+#
+# Die LAPI selbst braucht davon nichts. Sie in einen eigenen, strengeren
+# Namespace zu legen waere moeglich - dann muesste die Agent-zu-LAPI-
+# Verbindung aber ueber eine Namespace-Grenze und durch zwei weitere
+# NetworkPolicies. Ein Namespace, in dem nur CrowdSec liegt, ist die
+# ehrlichere Grenze.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: crowdsec
+  labels:
+    homelab.io/zone: internal
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/audit: baseline
+
+---
+#
+# Eingehend nur von ingress-public - und das ist die eine Regel, auf die es
+# ankommt.
+#
+# Die LAPI hat keine Authentifizierung ausser dem Bouncer-Schluessel, und
+# `cscli` spricht sie ueber dieselbe Adresse an. Wer sie erreicht, kann
+# Entscheidungen abfragen und mit dem passenden Schluessel auch welche
+# eintragen. Im Cluster soll genau ein Pod das duerfen.
+#
+# Der Agent steht im selben Namespace und faellt damit nicht unter diese
+# Regel - podSelector greift auf beide, aber Verkehr aus demselben Namespace
+# muss trotzdem erlaubt werden, sonst erreicht der Agent seine eigene LAPI
+# nicht. Deshalb die zweite `from`-Zeile.
+#
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: crowdsec
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-lapi-from-ingress-public
+  namespace: crowdsec
+spec:
+  podSelector:
+    #
+    # `k8s-app`, nicht `app.kubernetes.io/name` - das Chart setzt die alte
+    # Schreibweise. Ein Selektor, der hier danebengreift, faellt nicht auf:
+    # Die Policy waere gueltig, wuerde auf keinen Pod passen, und das
+    # Default-Deny darueber bliebe die einzige Regel - die LAPI waere aus
+    # dem Cluster nicht erreichbar. Gegenprobe:
+    #
+    #   kubectl -n crowdsec get pod -l k8s-app=crowdsec,type=lapi
+    #
+    matchLabels:
+      k8s-app: crowdsec
+      type: lapi
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik-public
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: crowdsec
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+#
+# Kein Egress-Default-Deny, und das ist hier eine Entscheidung: Der Agent
+# muss die Kubernetes-API nicht erreichen, die LAPI aber sehr wohl den Hub
+# auf hub-cdn.crowdsec.net - sonst gibt es keine Szenarien und keine
+# Blocklisten. Das ist Verkehr ins Internet, den man nur ueber einen Namen
+# beschreiben kann, und NetworkPolicies kennen keine Namen.
+#
+
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: crowdsec
+  namespace: flux-system
+spec:
+  interval: 10m
+  releaseName: crowdsec
+  targetNamespace: crowdsec
+  storageNamespace: crowdsec
+  chart:
+    spec:
+      chart: crowdsec
+      version: "0.24.0"
+      sourceRef:
+        kind: HelmRepository
+        name: crowdsec
+        namespace: flux-system
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    lapi:
+      replicas: 1
+
+      env:
+        #
+        # Der Bouncer meldet sich mit diesem Schluessel an. Der Name nach
+        # BOUNCER_KEY_ ist der Name, unter dem `cscli bouncers list` ihn
+        # spaeter zeigt - er ist frei, aber er sollte sagen, wer da fragt.
+        #
+        # Das Einstiegsskript des Images registriert den Bouncer damit beim
+        # Start selbst; ohne diese Zeile muesste man ihn von Hand mit
+        # `cscli bouncers add` anlegen und den erzeugten Schluessel danach
+        # in zwei Manifeste tragen.
+        #
+        - name: BOUNCER_KEY_traefik-public
+          valueFrom:
+            secretKeyRef:
+              name: crowdsec-bouncer-key
+              key: traefik-public
+
+      #
+      # Zwei Volumes, und beide werden gebraucht:
+      #
+      #   data    die SQLite-Datenbank mit Entscheidungen und Alarmen. Ohne
+      #           sie faengt CrowdSec nach jedem Neustart bei null an - eine
+      #           Sperre ueberlebte den naechsten Pod-Wechsel nicht.
+      #   config  die Zugangsdaten, mit denen sich der Agent bei der LAPI
+      #           anmeldet, und die registrierten Bouncer-Schluessel.
+      #
+      persistentVolume:
+        data:
+          enabled: true
+          storageClassName: local-path
+          accessModes:
+            - ReadWriteOnce
+          size: 1Gi
+        config:
+          enabled: true
+          storageClassName: local-path
+          accessModes:
+            - ReadWriteOnce
+          size: 128Mi
+
+      strategy:
+        #
+        # Recreate aus demselben Grund wie bei ingress-internal: Beide PVCs
+        # sind ReadWriteOnce auf local-path, das Volume liegt auf diesem
+        # einen Node, und zwei Pods duerften es gleichzeitig mounten. Eine
+        # SQLite-Datei mit zwei Schreibern ist eine kaputte SQLite-Datei.
+        #
+        type: Recreate
+
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 384Mi
+
+    agent:
+      env:
+        #
+        # Die Sammlungen aus dem Hub. `COLLECTIONS` ist eine Variable des
+        # crowdsec-Images, keine des Charts - `config:` weiter unten im
+        # Chart nimmt nur eigene Parser und Szenarien, keine Hub-Namen.
+        #
+        #   traefik                 die Parser fuer das Zugriffslog. Ohne
+        #                           sie sieht der Agent Zeilen, aber keine
+        #                           Ereignisse.
+        #   http-cve                bekannte Exploits gegen Webanwendungen
+        #   base-http-scenarios     Bruteforce, Scanner, Pfad-Raten
+        #
+        - name: COLLECTIONS
+          value: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/base-http-scenarios"
+
+      #
+      # Welche Logs der Agent liest. `program: traefik` waehlt den Parser
+      # aus der Collection oben - ohne diese Zeile landen die Zeilen im
+      # Agent, aber kein Parser fuehlt sich zustaendig, und es entsteht nie
+      # ein Alarm.
+      #
+      # Nur ingress-public. Der interne Controller steht nicht drin, und das
+      # ist Absicht: Seine Clients sind das Heimnetz. Eine IP-Sperre gegen
+      # ein Geraet im eigenen LAN ist ein Selbstschuss, und die
+      # Fehlalarm-Rate waere hoch - Backup-Jobs und Sync-Clients sehen fuer
+      # einen Scanner-Detektor aus wie Scanner.
+      #
+      acquisition:
+        - namespace: traefik-public
+          podName: traefik-public-*
+          program: traefik
+
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 384Mi
+
+    #
+    # Kein Dashboard, keine Console-Anmeldung - siehe Kopf der Datei.
+    #
+    dashboard:
+      enabled: false

@@ -23,6 +23,42 @@ ingress:
   # Kein tls-Block nötig — siehe oben.
 
 networkPolicy:
-  # Ohne diese Zeile greift nur das Default-Deny des Charts, und der
-  # Controller käme nicht an whoami heran.
-  ingressControllerNamespace: traefik-internal
+  # Ohne diese Zeilen greift nur das Default-Deny des Charts, und die
+  # Controller kämen nicht an whoami heran. Seit ingress-public sind es zwei.
+  ingressControllerNamespaces:
+    - traefik-internal
+    - traefik-public
+
+#
+# Der öffentliche Weg - whoami ist der Testdienst, an dem sich zeigen soll,
+# dass er trägt, bevor Immich und Nextcloud daran hängen.
+#
+# Der Name steht im öffentlichen DNS, anders als `whoami.k8s....`, und muss
+# dort auf die WAN-Adresse zeigen, sobald die Fritzbox weiterleitet
+# (Schritt 11). Bis dahin ist er nur über die LB-Adresse .232 erreichbar -
+# im LAN also per Split-DNS oder `curl --resolve`.
+#
+# Kein tls-Block: Das Zertifikat holt ingress-public selbst per DNS-01,
+# je Name. Das braucht keinen A-Record und funktioniert deshalb schon,
+# bevor die Portfreigabe steht.
+#
+ingressPublic:
+  enabled: true
+  className: public
+  host: whoami.nico-steinmueller.de
+
+#
+# Und damit wird der Namespace `public`.
+#
+# Das ist keine Kosmetik. Die Kyverno-Regel aus Schritt 9 der Inbetriebnahme
+# soll `ingressClassName: public` nur in Namespaces mit
+# `homelab.io/zone: public` zulassen - bliebe der Wert hier auf `internal`,
+# wäre whoami genau der Fall, den die Regel fangen soll, und sie ließe sich
+# nicht einführen, ohne den Testdienst mitzunehmen.
+#
+# whoami hängt an beiden Controllern, hat also beide Zonen. Die Zuordnung
+# nimmt trotzdem die stärkere: Ein Namespace mit einem einzigen öffentlichen
+# Ingress ist öffentlich, und die Regel muss die Zone gegen die riskantere
+# Seite auslegen, nicht gegen die häufigere.
+#
+zone: public

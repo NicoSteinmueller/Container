@@ -11,15 +11,22 @@ spec:
     - Ingress
     - Egress
 
-{{- if .Values.networkPolicy.ingressControllerNamespace }}
+{{- with .Values.networkPolicy.ingressControllerNamespaces }}
 ---
-# Erlaubt eingehenden Traffic ausschließlich vom Ingress-Controller der
-# jeweiligen Umgebung (values-<env>.yaml, networkPolicy.ingressControllerNamespace).
+# Erlaubt eingehenden Traffic ausschließlich von den Ingress-Controllern der
+# jeweiligen Umgebung (values-<env>.yaml,
+# networkPolicy.ingressControllerNamespaces).
+#
+# Eine Liste, kein Einzelwert: whoami hängt seit ingress-public an zwei
+# Controllern - traefik-internal für den LAN-Namen, traefik-public für den
+# öffentlichen. Beide brauchen denselben Weg an denselben Port, und eine
+# zweite Policy daneben wäre eine Regel, die man beim Lesen erst gegen die
+# erste halten muss.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: whoami-allow-ingress-from-controller
-  namespace: {{ .Values.namespace }}
+  namespace: {{ $.Values.namespace }}
 spec:
   podSelector:
     matchLabels:
@@ -28,9 +35,11 @@ spec:
     - Ingress
   ingress:
     - from:
+        {{- range . }}
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressControllerNamespace }}
+              kubernetes.io/metadata.name: {{ . }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: 80

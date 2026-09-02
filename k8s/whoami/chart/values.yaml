@@ -33,7 +33,7 @@ networkPolicy:
   # Namespace des zuständigen Ingress-Controllers, von dem eingehender
   # Traffic erlaubt wird. Leer = niemand darf whoami ansprechen, auch nicht
   # der Ingress-Controller - der sichere Default ohne ingress.enabled.
-  ingressControllerNamespace: ""
+  ingressControllerNamespaces: []
 
 ingress:
   enabled: false
@@ -43,3 +43,14 @@ ingress:
   tls:
     enabled: false
     secretName: ""
+
+#
+# Der oeffentliche Ingress. Aus, und das ist die richtige Vorgabe: Ein
+# Standardwert, der einen Dienst ins Internet stellt, ist der falsche - er
+# wirkt in jeder Umgebung, in der ihn niemand ausdruecklich abgeschaltet hat.
+#
+ingressPublic:
+  enabled: false
+  className: ""
+  host: ""
+  annotations: {}
