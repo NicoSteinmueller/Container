@@ -216,6 +216,37 @@ spec:
             - port: "443"
               protocol: TCP
 
+    #
+    # Die beiden oeffentlichen Resolver aus dem dnsChallenge-Block, auf 53.
+    #
+    # Sie stehen hier getrennt und nicht im Block darueber, weil sie eine
+    # andere Frage beantworten: Die 443er-Regel ist "der Controller darf ins
+    # Internet"; diese ist "er darf zwei benannte Resolver fragen, ob sein
+    # TXT-Record schon da ist". lego fragt sie direkt und nicht ueber
+    # kube-dns - der interne Resolver saehe die eigene, noch nicht
+    # propagierte Antwort und meldete zu frueh gruen.
+    #
+    # Ohne diese Regel bleibt die DNS-01-Challenge in
+    # "waiting for record propagation" haengen, bis lego nach 15 Minuten
+    # aufgibt. Im Log von Traefik sieht das nach einem Problem bei IONOS
+    # aus; im Cluster steht es als
+    #
+    #   xx drop (Policy denied) ... identity 2629->world:
+    #     10.244.0.34:57611 -> 1.1.1.1:53 udp
+    #
+    # Gegenprobe: kubectl -n kube-system exec ds/cilium -c cilium-agent
+    #             -- cilium monitor --type drop
+    #
+    - toCIDR:
+        - 1.1.1.1/32
+        - 8.8.8.8/32
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
 ---
 #
 # RBAC von Hand, aus demselben Grund wie beim internen Controller:
@@ -776,7 +807,21 @@ spec:
             # und dieser Controller sieht es nie.
             #
             certResolver: letsencrypt
-            options: traefik-public-default@kubernetescrd
+            #
+            # Kein `options:`-Verweis, und das ist kein Vergessen: Eine
+            # TLSOption mit dem Namen `default` ist bei Traefik der
+            # Sonderfall - sie gilt fuer jeden Router, der nichts anderes
+            # nennt, und laesst sich gerade deshalb NICHT ueber ihren Namen
+            # ansprechen. Der naheliegende Verweis
+            # `traefik-public-default@kubernetescrd` geht ins Leere:
+            #
+            #   ERR building router handler:
+            #       unknown TLS options: traefik-public-default@kubernetescrd
+            #
+            # Und weil der Router dann gar nicht gebaut wird, endet jede
+            # Verbindung im Handshake - was mit `sniStrict` genau so
+            # aussieht, als tue die Einstellung ihre Arbeit.
+            #
 
         forwardedHeaders:
           #
