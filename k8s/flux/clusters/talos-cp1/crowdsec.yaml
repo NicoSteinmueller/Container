@@ -163,16 +163,32 @@ spec:
         # BOUNCER_KEY_ ist der Name, unter dem `cscli bouncers list` ihn
         # spaeter zeigt - er ist frei, aber er sollte sagen, wer da fragt.
         #
-        # Das Einstiegsskript des Images registriert den Bouncer damit beim
+        # Das Einstiegsskript des Charts registriert den Bouncer damit beim
         # Start selbst; ohne diese Zeile muesste man ihn von Hand mit
         # `cscli bouncers add` anlegen und den erzeugten Schluessel danach
         # in zwei Manifeste tragen.
         #
-        - name: BOUNCER_KEY_traefik-public
+        # UNTERSTRICH, kein Bindestrich - und das ist die Stelle, an der man
+        # eine Stunde verliert. Das Skript iteriert mit
+        #
+        #   for BOUNCER in $(compgen -A variable | grep -i BOUNCER_KEY)
+        #
+        # ueber die SHELL-Variablen, nicht ueber die Umgebung. Bash legt fuer
+        # BOUNCER_KEY_traefik-public gar keine Shell-Variable an, weil der
+        # Bindestrich im Namen nicht erlaubt ist: `env` zeigt sie, `compgen`
+        # nicht. Die Schleife laeuft ins Leere, kein Bouncer wird angelegt,
+        # und der Fehler zeigt sich erst weit weg davon - als 403 auf
+        # /v1/usage-metrics im Traefik-Log, waehrend hier alles gruen ist.
+        #
+        # Gegenprobe nach jeder Aenderung an diesem Namen:
+        #
+        #   kubectl -n crowdsec exec deploy/crowdsec-lapi -- cscli bouncers list
+        #
+        - name: BOUNCER_KEY_traefik_public
           valueFrom:
             secretKeyRef:
               name: crowdsec-bouncer-key
-              key: traefik-public
+              key: traefik_public
 
       #
       # Zwei Volumes, und beide werden gebraucht:

@@ -479,7 +479,7 @@ spec:
       crowdsecMode: live
       crowdsecLapiScheme: http
       crowdsecLapiHost: crowdsec-service.crowdsec.svc.cluster.local:8080
-      crowdsecLapiKeyFile: /crowdsec/traefik-public
+      crowdsecLapiKeyFile: /crowdsec/traefik_public
       clientTrustedIPs:
         - 192.168.178.0/24
       logLevel: INFO
@@ -697,8 +697,9 @@ spec:
       #
       # Der LAPI-Schluessel als Datei, nicht als Wert im Manifest. Der Pfad
       # entspricht `crowdsecLapiKeyFile` in der Middleware oben - der
-      # Schluessel im Secret heisst `traefik-public`, also liegt er unter
-      # /crowdsec/traefik-public.
+      # Schluessel im Secret heisst `traefik_public`, also liegt er unter
+      # /crowdsec/traefik_public. Der Unterstrich ist Absicht, die
+      # Begruendung steht in crowdsec.yaml beim BOUNCER_KEY_.
       #
       additionalVolumes:
         - name: crowdsec-key
