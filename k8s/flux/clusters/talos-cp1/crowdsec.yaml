@@ -246,10 +246,38 @@ spec:
           value: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/base-http-scenarios"
 
       #
-      # Welche Logs der Agent liest. `program: traefik` waehlt den Parser
-      # aus der Collection oben - ohne diese Zeile landen die Zeilen im
-      # Agent, aber kein Parser fuehlt sich zustaendig, und es entsteht nie
-      # ein Alarm.
+      # Welche Logs der Agent liest.
+      #
+      # `additionalAcquisition` und nicht das bequemere `acquisition:` -
+      # und das ist hier der Unterschied zwischen "laeuft" und "laeuft
+      # scheinbar". Die Kurzform des Charts schreibt `type: docker` fest:
+      #
+      #   labels:
+      #     type: docker
+      #     program: traefik
+      #
+      # Talos benutzt aber containerd, und das schreibt Container-Logs im
+      # CRI-Format - eine Zeile ist
+      #
+      #   2026-09-02T20:45:03.456066818Z stdout F {"ClientAddr":...}
+      #
+      # und nicht Dockers JSON-Datei-Format. Die beiden Entpacker im Hub
+      # unterscheiden sich genau an diesem Label:
+      #
+      #   crowdsecurity/docker-logs   filter: type == 'docker'
+      #   crowdsecurity/cri-logs      filter: type == 'containerd'
+      #
+      # Mit `docker` greift keiner von beiden, der CRI-Rahmen bleibt stehen,
+      # und `traefik-logs` bekommt eine Zeile, die kein JSON ist. Das faellt
+      # nirgends als Fehler auf: Der Agent laeuft, liest, meldet sich gesund
+      # - und `cscli metrics` zeigt "Lines parsed" durchgehend leer.
+      #
+      #   kubectl -n crowdsec exec ds/crowdsec-agent -c crowdsec-agent \
+      #     -- cscli metrics | grep traefik-logs
+      #
+      # `poll_without_inotify` dazu: /var/log/containers/*.log sind
+      # Symlinks, und der Agent warnt selbst, dass er eine Rotation dahinter
+      # per inotify nicht mitbekommt.
       #
       # Nur ingress-public. Der interne Controller steht nicht drin, und das
       # ist Absicht: Seine Clients sind das Heimnetz. Eine IP-Sperre gegen
@@ -257,10 +285,14 @@ spec:
       # Fehlalarm-Rate waere hoch - Backup-Jobs und Sync-Clients sehen fuer
       # einen Scanner-Detektor aus wie Scanner.
       #
-      acquisition:
-        - namespace: traefik-public
-          podName: traefik-public-*
-          program: traefik
+      additionalAcquisition:
+        - source: file
+          filenames:
+            - /var/log/containers/traefik-public-*_traefik-public_*.log
+          poll_without_inotify: true
+          labels:
+            type: containerd
+            program: traefik
 
       resources:
         requests:
