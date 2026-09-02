@@ -150,11 +150,14 @@ spec:
 #   toEndpoints crowdsec      die LAPI, die der Bouncer fragt
 #   toEndpoints whoami        der einzige bediente Dienst - BAUSTELLE, hier
 #                             kommen immich und nextcloud dazu
-#   toCIDRSet 0.0.0.0/0       Let's Encrypt und die IONOS-API fuer die
-#     except RFC1918          DNS-01-Challenge. Das ist der Preis dafuer,
-#                             dass dieser Controller seine Zertifikate
-#                             selbst holt - aber die privaten Netze sind
-#                             ausgenommen, das Heimnetz also weiterhin zu.
+#   toCIDRSet 0.0.0.0/0       443 fuer Let's Encrypt und die IONOS-API, 53
+#     except RFC1918          fuer die Propagationspruefung der
+#                             DNS-01-Challenge - lego fragt dafuer die
+#                             autoritativen Nameserver der Zone direkt, und
+#                             deren Adressen kennt man vorher nicht. Das ist
+#                             der Preis dafuer, dass dieser Controller seine
+#                             Zertifikate selbst holt; die privaten Netze
+#                             sind ausgenommen, das Heimnetz also zu.
 #
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -202,7 +205,32 @@ spec:
               protocol: TCP
 
     #
-    # ACME und die IONOS-API. Alles ausser den privaten Netzen.
+    # ACME, die IONOS-API und die DNS-01-Propagationspruefung. Alles ausser
+    # den privaten Netzen.
+    #
+    # 443 ist der offensichtliche Teil: Let's Encrypt und die IONOS-API.
+    #
+    # 53 ist der Teil, den man zweimal falsch macht. lego prueft nicht ueber
+    # die Resolver aus dem dnsChallenge-Block, sondern ermittelt mit ihnen
+    # nur die AUTORITATIVEN Nameserver der Zone - und fragt danach die
+    # direkt:
+    #
+    #   xx drop (Policy denied) identity 2629->world:
+    #     10.244.0.12:60156 -> 185.132.33.96:53 udp    (ns1096.ui-dns.biz)
+    #
+    # Eine Regel auf 1.1.1.1 und 8.8.8.8 reicht deshalb nicht, und die vier
+    # ui-dns-Adressen fest einzutragen waere schlimmer: Sie wechseln, und
+    # der Ausfall zeigt sich erst in 60 Tagen bei der Erneuerung, als
+    # "waiting for record propagation" bis zum Timeout - ohne dass irgendwo
+    # ein Fehler steht.
+    #
+    # Der Preis ist DNS ins offene Netz. Er ist derselbe wie bei 443: Das
+    # Heimnetz bleibt ueber `except` ausgenommen, und wer diesen Controller
+    # uebernimmt, hat mit 443 ohnehin den bequemeren Weg hinaus.
+    #
+    # Gegenprobe bei Verdacht:
+    #   kubectl -n kube-system exec ds/cilium -c cilium-agent \
+    #     -- cilium monitor --type drop | grep :53
     #
     - toCIDRSet:
         - cidr: 0.0.0.0/0
@@ -215,37 +243,11 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
-
-    #
-    # Die beiden oeffentlichen Resolver aus dem dnsChallenge-Block, auf 53.
-    #
-    # Sie stehen hier getrennt und nicht im Block darueber, weil sie eine
-    # andere Frage beantworten: Die 443er-Regel ist "der Controller darf ins
-    # Internet"; diese ist "er darf zwei benannte Resolver fragen, ob sein
-    # TXT-Record schon da ist". lego fragt sie direkt und nicht ueber
-    # kube-dns - der interne Resolver saehe die eigene, noch nicht
-    # propagierte Antwort und meldete zu frueh gruen.
-    #
-    # Ohne diese Regel bleibt die DNS-01-Challenge in
-    # "waiting for record propagation" haengen, bis lego nach 15 Minuten
-    # aufgibt. Im Log von Traefik sieht das nach einem Problem bei IONOS
-    # aus; im Cluster steht es als
-    #
-    #   xx drop (Policy denied) ... identity 2629->world:
-    #     10.244.0.34:57611 -> 1.1.1.1:53 udp
-    #
-    # Gegenprobe: kubectl -n kube-system exec ds/cilium -c cilium-agent
-    #             -- cilium monitor --type drop
-    #
-    - toCIDR:
-        - 1.1.1.1/32
-        - 8.8.8.8/32
-      toPorts:
-        - ports:
             - port: "53"
               protocol: UDP
             - port: "53"
               protocol: TCP
+
 
 ---
 #
