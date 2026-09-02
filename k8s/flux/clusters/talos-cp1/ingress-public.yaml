@@ -477,7 +477,7 @@ metadata:
 spec:
   plugin:
     crowdsec-bouncer:
-      enabled: "true"
+      enabled: true
       crowdsecMode: live
       crowdsecLapiScheme: http
       crowdsecLapiHost: crowdsec-service.crowdsec.svc.cluster.local:8080
