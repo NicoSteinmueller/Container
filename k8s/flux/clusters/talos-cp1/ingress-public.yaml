@@ -1,0 +1,976 @@
+#
+# ingress-public - der zweite Ingress-Controller, der aus dem Internet
+# erreichbar sein soll.
+#
+# Er ist ein eigener Controller und nicht ein zweiter Entrypoint des
+# internen: eigener Namespace, eigene Adresse, eigene RBAC, eigener
+# Zertifikatsspeicher. Die Trennung laeuft ueber Namespace und RBAC.
+#
+# Die Vertrauensgrenze ist hier das offene Internet. Entsprechend sitzt vor
+# jedem Router eine Kette: CrowdSec-Bouncer, gefaelschte Herkunftsheader
+# abschneiden, HSTS, Ratelimit. Beim internen Controller gibt es das nicht,
+# und das ist kein Versehen - wer im LAN steht, hat ohnehin mehr Wege als
+# diesen.
+#
+# ---------------------------------------------------------------------------
+# Der Stand: whoami ist der einzige Dienst hier drin.
+#
+# Immich und Nextcloud laufen weiterhin als Container auf dem Unraid-Host.
+# Sie gehoeren nach Schritt 7 der Inbetriebnahme in den Cluster, und erst
+# danach in die Namespace-Liste weiter unten. whoami steht hier als
+# Testdienst, an dem sich der Weg von aussen zeigen laesst, bevor etwas
+# daran haengt, das Daten hat.
+#
+# Zwei Stellen sind deshalb ausdruecklich als Baustelle markiert und beim
+# Migrieren nachzuziehen:
+#
+#   providers.kubernetesIngress.namespaces  (und kubernetesCRD.namespaces)
+#   die RoleBindings weiter unten
+#   die Egress-Regel allow-to-served-namespaces
+# ---------------------------------------------------------------------------
+#
+# Was noch fehlt und bewusst nicht hier steht:
+#
+#   - Kyverno. Die Regel "ingressClassName: public nur in Namespaces mit
+#     homelab.io/zone=public" gibt es noch nicht. Mit diesem Controller wird
+#     sie tragend statt ergaenzend - Schritt 9.
+#   - AppSec. Der CrowdSec-Bouncer fragt hier nur die LAPI nach bekannten
+#     Angreifern; die WAF-Regeln des Docker-Stands kommen mit dem ersten
+#     Dienst, an dem sie etwas zu pruefen haben (siehe crowdsec.yaml).
+#   - Die Portfreigabe in der Fritzbox. Das ist Schritt 11, und sie kommt
+#     zuletzt.
+#
+---
+#
+# PodSecurity `restricted`, ohne Ausnahme.
+#
+# Der exponierteste Pod des Clusters laeuft damit unter der
+# strengsten Stufe, die Kubernetes kennt - das ist die richtige Reihenfolge.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: traefik-public
+  labels:
+    homelab.io/zone: public
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+
+---
+#
+# Die IngressClass `public`.
+#
+# Sie entsteht erst jetzt, mit dem Controller - eine Klasse ohne Controller
+# waere eine Falle gewesen: Ein Ingress mit `ingressClassName: public` waere
+# angenommen und nie bedient worden. Aus demselben Grund legt
+# ingress-internal.yaml nur `internal` an.
+#
+# Wie dort wird sie hier angelegt und nicht vom Chart, weil der Controller
+# mit namespaced RBAC keine clusterweiten Objekte anlegt. Und wie dort ohne
+# `is-default-class`: Ein Ingress ohne Klassennamen soll nirgends landen,
+# schon gar nicht im Internet.
+#
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: public
+  labels:
+    homelab.io/zone: public
+  annotations:
+    homelab.io/beschreibung: >-
+      Aus dem Internet erreichbar. Alles hinter dieser Klasse ist oeffentlich.
+spec:
+  controller: traefik.io/ingress-controller
+
+---
+#
+# Eingehend aus aller Welt - und anders als beim internen Controller ist das
+# hier die Absicht, nicht die Luecke.
+#
+# `allow-from-lan` drueben schneidet mit einem ipBlock auf das Heimnetz zu.
+# Hier gibt es kein Quellnetz: Der Controller soll von ueberall erreichbar
+# sein. Was ihn schuetzt, ist die Kette am Entrypoint (CrowdSec, Ratelimit)
+# und die Tatsache, dass er nur eine Handvoll Namespaces ueberhaupt kennt.
+#
+# Das Default-Deny bleibt trotzdem stehen, und es ist nicht wirkungslos: Es
+# begrenzt die Ports. Ohne es waere auch der Ping-Endpoint auf 9000 und der
+# Metrik-Port aus dem ganzen Cluster erreichbar.
+#
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: traefik-public
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-world
+  namespace: traefik-public
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 8443
+
+---
+#
+# Ausgehend: eine CiliumNetworkPolicy, keine gewoehnliche.
+#
+# Der Grund steht im Kommentar von ingress-internal.yaml und gilt hier
+# genauso: Cilium wertet `ipBlock` nicht gegen die reservierten Identitaeten
+# `host` und `remote-node` aus. Der kube-apiserver liegt hinter einer
+# ClusterIP, deren Backend die Node-Adresse ist - also `host`. Mit einer
+# gewoehnlichen NetworkPolicy laesst sich "die API ja, das LAN nein" nicht
+# schreiben, und deshalb hat der interne Controller gar keine Egress-Regel.
+#
+# Hier ist das keine Option. Ein Controller, der aus dem Internet erreichbar
+# ist, darf im Fall der Faelle nicht ins Heimnetz greifen koennen. Cilium
+# kann die Unterscheidung, also wird sie hier gemacht:
+#
+#   toEntities host           der kube-apiserver. Nur der Node selbst, nicht
+#                             das LAN - das ist bei Cilium eine andere
+#                             Identitaet (`world`). Rueckendeckung dafuer
+#                             gibt die Talos-Ingress-Firewall: Sie laesst aus
+#                             dem Pod-Netz nur 6443, 10250 und 4240 an den
+#                             Host (vm/talos/patches/firewall.yaml.tftpl).
+#   toEndpoints kube-dns      ohne Namensaufloesung kein ACME und kein
+#                             Backend
+#   toEndpoints crowdsec      die LAPI, die der Bouncer fragt
+#   toEndpoints whoami        der einzige bediente Dienst - BAUSTELLE, hier
+#                             kommen immich und nextcloud dazu
+#   toCIDRSet 0.0.0.0/0       Let's Encrypt und die IONOS-API fuer die
+#     except RFC1918          DNS-01-Challenge. Das ist der Preis dafuer,
+#                             dass dieser Controller seine Zertifikate
+#                             selbst holt - aber die privaten Netze sind
+#                             ausgenommen, das Heimnetz also weiterhin zu.
+#
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: traefik-public-egress
+  namespace: traefik-public
+spec:
+  endpointSelector: {}
+  egress:
+    # kube-apiserver ueber die ClusterIP, Backend ist der Node.
+    - toEntities:
+        - host
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: crowdsec
+            k8s-app: crowdsec
+            type: lapi
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
+    #
+    # BAUSTELLE: die bedienten Dienste. Heute nur whoami; mit Schritt 7
+    # kommen immich und nextcloud dazu, jeder als eigener Block.
+    #
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: whoami
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+
+    #
+    # ACME und die IONOS-API. Alles ausser den privaten Netzen.
+    #
+    - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+            - 169.254.0.0/16
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+---
+#
+# RBAC von Hand, aus demselben Grund wie beim internen Controller:
+# `rbac.namespaced: true` setzt im Chart zugleich
+# --providers.kubernetesingress.disableClusterScopeResources=true, und damit
+# prueft Traefik `spec.ingressClassName` gegen eine leere Liste - der Ingress
+# faellt lautlos durch. Die ausfuehrliche Herleitung steht in
+# ingress-internal.yaml; hier nur das Ergebnis.
+#
+# Der Unterschied zu drueben ist die Namespace-Liste der RoleBindings, und
+# sie ist hier die eigentliche Sicherheitsgrenze: Traefik liest Secrets,
+# Services und Ingresses nur dort, wo eine RoleBinding steht. Ein
+# `ingressClassName: public` in einem Namespace ohne RoleBinding bleibt
+# wirkungslos - deshalb kann ein einzelner Fehler im Manifest eines internen
+# Dienstes ihn nicht exponieren.
+#
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traefik-public-cluster
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingressclasses
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traefik-public-namespaced
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingresses/status
+    verbs:
+      - update
+  - apiGroups:
+      - traefik.io
+    resources:
+      - ingressroutes
+      - ingressroutetcps
+      - ingressrouteudps
+      - middlewares
+      - middlewaretcps
+      - tlsoptions
+      - tlsstores
+      - traefikservices
+      - serverstransports
+      - serverstransporttcps
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: traefik-public-cluster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-public-cluster
+subjects:
+  - kind: ServiceAccount
+    name: traefik-public
+    namespace: traefik-public
+
+---
+#
+# Der eigene Namespace: hier liegen die Middlewares und die TLSOption,
+# beides CRDs, und der Service, dessen Adresse in den Ingress-Status geht.
+#
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: traefik-public-namespaced
+  namespace: traefik-public
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-public-namespaced
+subjects:
+  - kind: ServiceAccount
+    name: traefik-public
+    namespace: traefik-public
+
+---
+#
+# BAUSTELLE: je oeffentlichem Dienst eine RoleBinding. Heute nur whoami.
+#
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: traefik-public-namespaced
+  namespace: whoami
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-public-namespaced
+subjects:
+  - kind: ServiceAccount
+    name: traefik-public
+    namespace: traefik-public
+
+---
+#
+# TLS: streng, und ohne Auffangzertifikat.
+#
+# `sniStrict: true` zusammen mit einem fehlenden `defaultCertificate` ist die
+# eine Einstellung, die diesen Controller von einem gewoehnlichen
+# unterscheidet: Wer eine Verbindung mit einem Namen aufbaut, fuer den es
+# kein Zertifikat gibt, bekommt einen Handshake-Fehler - und nicht ein
+# selbstsigniertes Traefik-Zertifikat und danach eine Antwort.
+#
+# Das ist gegen Scanner gerichtet, die auf der IP-Adresse landen und
+# irgendeinen Namen vorlegen. Sie kommen bis zum Handshake und nicht weiter;
+# in den Logs steht kein einziger HTTP-Request, den ein Ratelimit oder ein
+# Bouncer erst noch bewerten muesste.
+#
+# Der Name `default` ist nicht frei gewaehlt: Traefik nimmt die TLSOption
+# `default` im eigenen Namespace fuer jeden Entrypoint, der keine andere
+# nennt.
+#
+apiVersion: traefik.io/v1alpha1
+kind: TLSOption
+metadata:
+  name: default
+  namespace: traefik-public
+spec:
+  minVersion: VersionTLS12
+  sniStrict: true
+  cipherSuites:
+    - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+    - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+    - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
+    - TLS_AES_128_GCM_SHA256
+    - TLS_AES_256_GCM_SHA384
+    - TLS_CHACHA20_POLY1305_SHA256
+  curvePreferences:
+    - CurveP521
+    - CurveP384
+
+---
+#
+# Der CrowdSec-Bouncer.
+#
+# Er fragt vor jeder Anfrage die LAPI, ob die Quelladresse gesperrt ist.
+# `crowdsecMode: live` heisst: jede Anfrage einzeln, ohne lokalen Cache -
+# eine Sperre wirkt sofort statt beim naechsten Abgleich. Bei den
+# Anfragezahlen eines Heimservers kostet das nichts.
+#
+# Der Schluessel steht NICHT hier. `crowdsecLapiKeyFile` liest ihn aus einer
+# Datei, und die kommt als projiziertes Secret in den Pod (volumes weiter
+# unten). Das Feld `crowdsecLapiKey` waere die Alternative - dann stuende das
+# Geheimnis im Klartext in diesem Manifest, und dieses Repo geht nach
+# GitHub.
+#
+# `clientTrustedIPs`: das Heimnetz. Wer von dort kommt, wird nicht gesperrt.
+# Der Grund ist der gleiche wie bei der Acquisition in crowdsec.yaml - ein
+# Sync-Client aus dem eigenen LAN sieht fuer einen Scanner-Detektor aus wie
+# ein Scanner, und eine Sperre gegen das eigene Handy ist teurer als der
+# Angriff, den sie verhindert.
+#
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: crowdsec
+  namespace: traefik-public
+spec:
+  plugin:
+    crowdsec-bouncer:
+      enabled: "true"
+      crowdsecMode: live
+      crowdsecLapiScheme: http
+      crowdsecLapiHost: crowdsec-service.crowdsec.svc.cluster.local:8080
+      crowdsecLapiKeyFile: /crowdsec/traefik-public
+      clientTrustedIPs:
+        - 192.168.178.0/24
+      logLevel: INFO
+
+---
+#
+# Gefaelschte Herkunftsheader abschneiden.
+#
+# Vor diesem Controller steht kein Proxy. Ein X-Forwarded-For, das ein
+# Client selbst mitschickt, ist damit immer eine Behauptung - und eine, die
+# teuer waere: CrowdSec und die Zugriffslogs der Anwendungen wuerden sie als
+# echte Herkunft uebernehmen. Ein Angreifer koennte sich damit als eigene
+# LAN-Adresse ausgeben und liefe unter `clientTrustedIPs` durch.
+#
+# `forwardedHeaders.trustedIPs: []` im Chart weiter unten sorgt schon dafuer,
+# dass Traefik selbst nichts davon glaubt. Diese Middleware ist die zweite
+# Haelfte: Sie loescht die Header, bevor sie das Backend erreichen.
+#
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-client-forwarded
+  namespace: traefik-public
+spec:
+  headers:
+    customRequestHeaders:
+      X-Forwarded-For: ""
+      X-Forwarded-Host: ""
+      X-Forwarded-Proto: ""
+      X-Forwarded-Port: ""
+      X-Forwarded-Server: ""
+      X-Real-Ip: ""
+
+---
+#
+# HSTS und die uebrigen Kopfzeilen. Uebernommen aus dem Docker-Stand
+# (traefik/compose.yml, secure-headers), mit einer Auslassung:
+#
+# `sslRedirect` steht nicht drin. Es ist in Traefik v3 wirkungslos, und die
+# Weiterleitung passiert ohnehin schon am Entrypoint `web`.
+#
+# `stsPreload` ist eine Einbahnstrasse: Wer die Domain in die Preload-Liste
+# der Browser eintraegt, kommt dort auf Monate nicht wieder heraus, und jede
+# Subdomain ohne gueltiges Zertifikat ist dann unerreichbar. Der Header steht
+# hier, der Eintrag in die Liste ist damit noch nicht gemacht - das bleibt
+# eine bewusste Handlung.
+#
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: secure-headers
+  namespace: traefik-public
+spec:
+  headers:
+    frameDeny: true
+    browserXssFilter: true
+    contentTypeNosniff: true
+    forceSTSHeader: true
+    stsIncludeSubdomains: true
+    stsPreload: true
+    stsSeconds: 31536000
+    referrerPolicy: strict-origin-when-cross-origin
+    customFrameOptionsValue: SAMEORIGIN
+
+---
+#
+# Ratelimit, Stufe 1 von 3: die allgemeine.
+#
+# 100 Anfragen je 30 Sekunden im Mittel, Spitze 50 - dieselben Werte wie im
+# Docker-Stand. Sie haengt in der Kette am Entrypoint und gilt damit fuer
+# alles.
+#
+# `sourceCriterion` ist ausdruecklich gesetzt, obwohl es der Vorgabe
+# entspricht: Die Zaehlung geht ueber die echte Quelladresse. Mit
+# `requestHeaderName: X-Forwarded-For` waere sie durch eine Kopfzeile
+# steuerbar, die der Client selbst schreibt - und das Ratelimit damit
+# umgehbar.
+#
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit
+  namespace: traefik-public
+spec:
+  rateLimit:
+    average: 100
+    burst: 50
+    period: 30s
+    sourceCriterion:
+      ipStrategy:
+        depth: 0
+
+---
+#
+# Stufe 2: Anmeldemasken.
+#
+# 10 Versuche je Minute. Sie gehoert an die Login-Pfade der echten Dienste
+# und haengt deshalb NICHT in der Kette am Entrypoint - sie wird je Router
+# angezogen, wenn es einen gibt.
+#
+#   nextcloud   /login
+#   immich      /auth/login, /api/auth/login
+#
+# Sie steht hier trotzdem schon, und das ist Absicht: Der Ort, an dem die
+# Werte begruendet stehen, soll derselbe sein wie der der uebrigen Kette.
+# Wer den ersten Dienst migriert, findet sie hier statt sie zu erfinden.
+#
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit-auth
+  namespace: traefik-public
+spec:
+  rateLimit:
+    average: 10
+    burst: 5
+    period: 1m
+    sourceCriterion:
+      ipStrategy:
+        depth: 0
+
+---
+#
+# Stufe 3: Sync-Clients.
+#
+# Immich und die Nextcloud-Clients laden im Pulk hoch - hunderte Anfragen in
+# Sekunden, von einer Adresse. Unter Stufe 1 waere das ein Angriff. Diese
+# Stufe ersetzt sie an den Sync-Pfaden, statt sie zu ergaenzen: Ein Router
+# zieht entweder `rate-limit` oder `rate-limit-sync`, nie beide.
+#
+# Wie Stufe 2 heute ohne Anwendungsfall - siehe dort.
+#
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: rate-limit-sync
+  namespace: traefik-public
+spec:
+  rateLimit:
+    average: 2000
+    burst: 500
+    period: 1m
+    sourceCriterion:
+      ipStrategy:
+        depth: 0
+
+---
+#
+# Die Kette, in dieser Reihenfolge - und die Reihenfolge ist der Punkt:
+#
+#   1. crowdsec                  Bekannte Angreifer fliegen raus, bevor
+#                                irgendetwas anderes Arbeit hat.
+#   2. strip-client-forwarded    Erst danach duerfen Header angefasst
+#                                werden. Andersherum saehe CrowdSec eine
+#                                bereits bereinigte Anfrage - richtig -,
+#                                aber die Reihenfolge waere Zufall statt
+#                                Absicht.
+#   3. secure-headers            Antwort-Kopfzeilen, Richtung Client.
+#   4. rate-limit                Zuletzt: Was bis hierher kommt, ist
+#                                weder gesperrt noch gefaelscht, und darf
+#                                dann in normaler Frequenz durch.
+#
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: public-chain
+  namespace: traefik-public
+spec:
+  chain:
+    middlewares:
+      - name: crowdsec
+      - name: strip-client-forwarded
+      - name: secure-headers
+      - name: rate-limit
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: traefik-public
+  namespace: traefik-public
+automountServiceAccountToken: false
+
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: traefik-public
+  namespace: flux-system
+spec:
+  interval: 10m
+  releaseName: traefik-public
+  targetNamespace: traefik-public
+  storageNamespace: traefik-public
+  chart:
+    spec:
+      chart: traefik
+      version: "41.3.0"
+      sourceRef:
+        kind: HelmRepository
+        name: traefik
+        namespace: flux-system
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    deployment:
+      kind: Deployment
+      replicas: 1
+
+      #
+      # Der LAPI-Schluessel als Datei, nicht als Wert im Manifest. Der Pfad
+      # entspricht `crowdsecLapiKeyFile` in der Middleware oben - der
+      # Schluessel im Secret heisst `traefik-public`, also liegt er unter
+      # /crowdsec/traefik-public.
+      #
+      additionalVolumes:
+        - name: crowdsec-key
+          secret:
+            secretName: crowdsec-bouncer-key
+            defaultMode: 0400
+
+    #
+    # Recreate, wie beim internen Controller und aus demselben Grund:
+    # acme.json liegt auf einem ReadWriteOnce-PVC, das local-path auf diesem
+    # Node haelt. Zwei Pods duerften es gleichzeitig mounten, und lego
+    # schreibt ohne Sperre.
+    #
+    updateStrategy:
+      type: Recreate
+      rollingUpdate: null
+
+    podSecurityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      runAsNonRoot: true
+      fsGroup: 65532
+      seccompProfile:
+        type: RuntimeDefault
+
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+
+    #
+    # Das Plugin. Traefik laedt es beim Start von plugins.traefik.io und legt
+    # es unter /plugins-storage ab - das Chart haengt dafuer von selbst ein
+    # emptyDir ein, trotz readOnlyRootFilesystem.
+    #
+    # Die Version ist festgenagelt. Ein Plugin, das sich beim Neustart selbst
+    # aktualisiert, ist Code aus dem Internet im Anfragepfad des
+    # exponiertesten Pods - dieselbe Version wie im Docker-Stand
+    # (traefik/compose.yml).
+    #
+    # `abortOnPluginFailure` steht auf true, und das ist die unbequeme, aber
+    # richtige Wahl: Faellt der Download aus, startet Traefik nicht, statt
+    # ohne Bouncer zu starten. Ein oeffentlicher Ingress ohne CrowdSec, der
+    # aussieht wie einer mit, ist schlimmer als einer, der steht.
+    #
+    experimental:
+      abortOnPluginFailure: true
+      plugins:
+        crowdsec-bouncer:
+          moduleName: github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
+          version: v1.6.0
+
+    additionalVolumeMounts:
+      - name: crowdsec-key
+        mountPath: /crowdsec
+        readOnly: true
+
+    ports:
+      web:
+        port: 8000
+        exposedPort: 80
+        expose:
+          default: true
+        #
+        # Nur zum Weiterleiten. Auf einem oeffentlichen Ingress ist das
+        # keine Bequemlichkeit, sondern die Bedingung dafuer, dass HSTS
+        # ueberhaupt greifen kann: Der Header kommt erst ueber HTTPS an.
+        #
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
+              permanent: true
+
+      websecure:
+        port: 8443
+        exposedPort: 443
+        expose:
+          default: true
+        http:
+          #
+          # Die Kette gilt fuer jeden Router auf diesem Entrypoint. Ein
+          # Ingress kann sie nicht vergessen - und genau darum haengt sie
+          # hier und nicht an den einzelnen Ingress-Objekten.
+          #
+          # Der Suffix @kubernetescrd ist Pflicht: Traefik loest den Namen
+          # sonst gegen den Datei-Provider auf und findet nichts.
+          #
+          middlewares:
+            - traefik-public-public-chain@kubernetescrd
+          tls:
+            enabled: true
+            #
+            # Kein `domains`-Block und damit kein Wildcard. Traefik fordert
+            # je Router ein Zertifikat fuer dessen Host an.
+            #
+            # Der Unterschied zum internen Controller ist Absicht: Drueben
+            # verbirgt ein Wildcard die Dienstnamen vor den
+            # Certificate-Transparency-Logs. Hier gaebe es nichts zu
+            # verbergen - die Namen stehen im oeffentlichen DNS, sonst
+            # koennte sie niemand aufrufen. Dafuer bleibt das interne
+            # Wildcard da, wo es hingehoert: im Namespace traefik-internal,
+            # und dieser Controller sieht es nie.
+            #
+            certResolver: letsencrypt
+            options: traefik-public-default@kubernetescrd
+
+        forwardedHeaders:
+          #
+          # Vor diesem Controller steht kein Proxy - kein Cloudflare, keine
+          # Edge-VM, nichts. Jeder X-Forwarded-For ist damit vom Client
+          # selbst geschrieben. Leere Liste heisst: keiner davon wird
+          # geglaubt.
+          #
+          trustedIPs: []
+          insecure: false
+
+    #
+    # Die Adresse: .232 aus dem Pool `lan` (lb-ipam.yaml). .231 gehoert dem
+    # internen Controller.
+    #
+    # `externalTrafficPolicy: Local` ist hier noch wichtiger als drueben:
+    # Ohne sie ersetzte SNAT die Client-Adresse durch die des Nodes, und
+    # CrowdSec saehe jede Anfrage der Welt unter derselben Quelle. Es wuerde
+    # dann entweder nie sperren oder alle auf einmal.
+    #
+    service:
+      enabled: true
+      annotations:
+        lbipam.cilium.io/ips: "192.168.178.232"
+      spec:
+        type: LoadBalancer
+        externalTrafficPolicy: Local
+
+    #
+    # Zertifikate: Let's Encrypt per DNS-01 ueber IONOS, je Name.
+    #
+    # Warum DNS-01 und nicht HTTP-01, obwohl der Controller ab Schritt 11
+    # aus dem Internet erreichbar ist: HTTP-01 setzt voraus, dass die
+    # Portfreigabe steht. Sie ist aber der letzte Schritt, und ein
+    # Zertifikat, das man erst nach dem Oeffnen der Firewall bekommt, macht
+    # die Reihenfolge unmoeglich - man muesste ungeschuetzt aufmachen, um
+    # das Zertifikat zu holen, das den Schutz erst herstellt.
+    #
+    # OFFEN, und das gehoert hier ausdruecklich hingeschrieben: Dieser
+    # Controller haelt damit einen IONOS-Key, der die ganze Zone
+    # nico-steinmueller.de umschreiben kann - MX und die oeffentlichen
+    # A-Records eingeschlossen. Er ist der exponierteste Pod des Clusters.
+    # Das ist die Entscheidung E4 aus dem Sicherheitskonzept, und sie ist
+    # nicht getroffen. Die beiden Auswege:
+    #
+    #   - acme-dns-Delegation: _acme-challenge.nico-steinmueller.de als
+    #     CNAME auf einen acme-dns-Server, der nur diesen einen TXT-Record
+    #     kennt. Der Key hier kann dann nichts anderes mehr.
+    #   - cert-manager holt die Zertifikate und legt sie als Secret ab;
+    #     dieser Controller liest nur noch. Braucht einen IONOS-Webhook
+    #     eines Drittanbieters, der den Key dann seinerseits haelt.
+    #
+    certificatesResolvers:
+      letsencrypt:
+        acme:
+          email: nico.steinmueller@gmx.net
+          storage: /data/acme.json
+          #
+          # PRODUKTIV. Zum Staging-Verzeichnis zurueck ist dieselbe Zeile:
+          #
+          #   https://acme-staging-v02.api.letsencrypt.org/directory
+          #
+          # Und wie drueben: Beim Wechsel in BEIDE Richtungen muss acme.json
+          # weg, sonst behaelt Traefik das alte Zertifikat und die alte
+          # Konto-URI.
+          #
+          #   kubectl -n traefik-public exec deploy/traefik-public \
+          #     -- rm -f /data/acme.json
+          #   kubectl -n traefik-public rollout restart deploy/traefik-public
+          #
+          caServer: https://acme-v02.api.letsencrypt.org/directory
+          keyType: EC256
+          dnsChallenge:
+            provider: ionos
+            resolvers:
+              - 1.1.1.1:53
+              - 8.8.8.8:53
+            propagation:
+              delayBeforeChecks: 30s
+
+    env:
+      - name: IONOS_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: traefik-ionos
+            key: IONOS_API_KEY
+
+    #
+    # Eigener Speicher, eigenes acme.json. Der interne Controller hat sein
+    # eigenes - kein gemeinsames Volume, kein gemeinsames Konto, und damit
+    # kein Weg von hier an das Wildcard `*.k8s.nico-steinmueller.de`.
+    #
+    persistence:
+      enabled: true
+      name: data
+      accessMode: ReadWriteOnce
+      size: 128Mi
+      storageClass: local-path
+      path: /data
+
+    rbac:
+      enabled: false
+
+    serviceAccount:
+      name: traefik-public
+
+    ingressClass:
+      enabled: false
+
+    providers:
+      kubernetesIngress:
+        enabled: true
+        ingressClass: public
+        allowExternalNameServices: false
+        #
+        # BAUSTELLE - und zugleich die Sicherheitsgrenze dieses Controllers.
+        #
+        # Was hier nicht steht, wird nicht bedient. Ein Ingress mit
+        # `ingressClassName: public` in einem anderen Namespace bleibt
+        # wirkungslos, auch wenn ihn jemand versehentlich so schreibt.
+        # Deshalb ist diese Liste kurz und wird es bleiben.
+        #
+        # `traefik-public` selbst steht mit drin, damit Traefik seinen
+        # eigenen Service lesen und dessen Adresse in den Ingress-Status
+        # schreiben kann - dieselbe Sache, die beim internen Controller erst
+        # nachtraeglich aufgefallen ist (ADDRESS-Spalte von
+        # `kubectl get ingress`).
+        #
+        # Mit Schritt 7 kommen hier immich und nextcloud dazu, und an drei
+        # weiteren Stellen: kubernetesCRD.namespaces unten, eine RoleBinding
+        # oben, ein toEndpoints-Block in der CiliumNetworkPolicy.
+        #
+        namespaces:
+          - traefik-public
+          - whoami
+
+      kubernetesCRD:
+        enabled: true
+        allowCrossNamespace: false
+        allowExternalNameServices: false
+        #
+        # Der eigene Namespace ist hier zwingend: Die Kette am Entrypoint,
+        # die TLSOption und die vier Middlewares sind alle CRDs und liegen
+        # dort. Ohne diesen Eintrag legt Flux sie an, Traefik sieht sie nie -
+        # und der Entrypoint verweist auf eine Middleware, die es fuer ihn
+        # nicht gibt.
+        #
+        namespaces:
+          - traefik-public
+          - whoami
+
+      kubernetesGateway:
+        enabled: false
+
+    #
+    # Kein Dashboard.
+    #
+    # Der interne Controller hat eines, hinter BasicAuth. Hier nicht: Es
+    # zeigt jeden Router, jeden Service und jede Middleware - eine Landkarte
+    # des Aufbaus, und zwar genau des Teils, der aus dem Internet erreichbar
+    # ist. Wer sie braucht, sieht dasselbe drueben oder per
+    # `kubectl -n traefik-public exec ... traefik healthcheck`.
+    #
+    ingressRoute:
+      dashboard:
+        enabled: false
+      healthcheck:
+        enabled: false
+
+    #
+    # Zugriffslog nach stdout, im JSON-Format - das ist die Eingabe fuer den
+    # CrowdSec-Agent (crowdsec.yaml, acquisition). Ohne dieses Log gibt es
+    # nichts zu parsen, und der Bouncer haette nie etwas zu sperren.
+    #
+    # `ClientHost` bleibt drin, das ist die Adresse, um die es geht.
+    # Kopfzeilen werden nicht mitgeschrieben: In Authorization und Cookie
+    # stehen Zugangsdaten, und ein Log, das man nicht weitergeben kann, ist
+    # eines, das niemand ansieht.
+    #
+    log:
+      level: INFO
+
+    accessLog:
+      enabled: true
+      format: json
+      fields:
+        general:
+          defaultmode: keep
+        headers:
+          defaultmode: drop
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 256Mi

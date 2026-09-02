@@ -9,13 +9,13 @@ Als Helm-Chart (`chart/`) statt Kustomize – der Grund ist derselbe wie beim Do
 | Datei | Zweck |
 |---|---|
 | `Chart.yaml` | Metadaten (Name, Version). |
-| `values.yaml` | Sichere Voreinstellung: kein Ingress, `networkPolicy.ingressControllerNamespace` leer – niemand darf whoami ansprechen, solange keine Umgebung das gezielt öffnet. |
+| `values.yaml` | Sichere Voreinstellung: kein Ingress, kein öffentlicher Ingress, `networkPolicy.ingressControllerNamespaces` leer – niemand darf whoami ansprechen, solange keine Umgebung das gezielt öffnet. |
 | `values-minikube.yaml` | Lokales Testsetup: NGINX-Ingress, Host `whoami.k8s.local`, kein TLS. |
 | `values-prod.yaml` | Produktiv-Cluster (talos-cp1). `service.type: ClusterIP` plus Ingress über `ingressClassName: internal`, Host `whoami.k8s.nico-steinmueller.de`. TLS noch aus: Traefik liefert bis zur internen CA sein selbstsigniertes Zertifikat aus. |
 | `templates/namespace.yaml` | Eigener Namespace `whoami`, Labels `pod-security.kubernetes.io/enforce: restricted` und `homelab.io/zone` (aus `zone`, siehe Template-Kommentar). |
 | `templates/deployment.yaml` | Workload: Image `traefik/whoami:v1.12.0`, per Digest gepinnt, Security-Context (read-only Filesystem, non-root 1000:1000, alle Capabilities gedroppt, Seccomp `RuntimeDefault`), Liveness-/Readiness-Probes. |
 | `templates/service.yaml` | DNS-Name `whoami.whoami.svc.cluster.local`. `service.type`/`service.nodePort` steuern `ClusterIP` (Default) vs. `NodePort`. |
-| `templates/networkpolicy.yaml` | Default-Deny + Egress nur zu CoreDNS. Ingress erlaubt entweder nur vom `networkPolicy.ingressControllerNamespace` (Ingress-Betrieb) oder – bei `service.type: NodePort` – ohne Quellen-Einschränkung auf Port 80. Eine `ipBlock`-Beschränkung wäre technisch möglich (die frühere Begründung, Cilium werte ipBlock bei NodePort-Traffic nicht aus, war aus dem Egress-Fall übertragen und ist widerlegt – siehe Template-Kommentar); sie bleibt bei diesem Testdienst bewusst weg. |
+| `templates/networkpolicy.yaml` | Default-Deny + Egress nur zu CoreDNS. Ingress erlaubt entweder nur aus den `networkPolicy.ingressControllerNamespaces` (Ingress-Betrieb; seit ingress-public eine Liste, weil whoami an beiden Controllern hängt) oder – bei `service.type: NodePort` – ohne Quellen-Einschränkung auf Port 80. Eine `ipBlock`-Beschränkung wäre technisch möglich (die frühere Begründung, Cilium werte ipBlock bei NodePort-Traffic nicht aus, war aus dem Egress-Fall übertragen und ist widerlegt – siehe Template-Kommentar); sie bleibt bei diesem Testdienst bewusst weg. |
 | `templates/ingress.yaml` | Nur gerendert, wenn `ingress.enabled: true`. |
 
 ## Warum kein Ingress-Controller-Wert fest im Chart steht

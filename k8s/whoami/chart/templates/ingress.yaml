@@ -28,3 +28,39 @@ spec:
                 port:
                   name: http
 {{- end }}
+
+{{- if .Values.ingressPublic.enabled }}
+---
+#
+# Der oeffentliche Weg. Eigenes Objekt statt eines zweiten Hosts im Ingress
+# oben, und das ist der Punkt: Die beiden Controller lesen jeder nur die
+# Ingresses ihrer eigenen Klasse. Ein Objekt mit zwei Hosts muesste einer
+# Klasse gehoeren - und der andere Name waere dann unbedient.
+#
+# Kein tls-Block, wie beim internen: Das Zertifikat haengt am Entrypoint von
+# ingress-public. Anders als drueben ist es dort kein Wildcard, sondern eines
+# je Name - Traefik fordert es fuer diesen Host an, sobald der Router steht.
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: whoami-public
+  namespace: {{ .Values.namespace }}
+  {{- with .Values.ingressPublic.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingressPublic.className }}
+  rules:
+    - host: {{ .Values.ingressPublic.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: whoami
+                port:
+                  name: http
+{{- end }}

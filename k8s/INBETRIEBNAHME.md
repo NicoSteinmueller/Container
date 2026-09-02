@@ -15,10 +15,11 @@ Was bewusst *nicht* Teil der Inbetriebnahme ist, sondern später kommt, steht in
 > Flux. Storage, der **interne** Ingress, die LAN-Adressen (Schritt 4) und die
 > Umstellung von `ingress-internal` auf LoadBalancer (Schritt 5) sind
 > zurückgekommen, als Flux-Manifest statt als Terraform-Modul; die
-> Ingress-Firewall (Schritt 3) steht ebenfalls. Offen ist der Rest des
-> früheren Plattform-Stacks —
-> `ingress-public`, Kyverno, CrowdSec. Der lag im Modul `k8s/platform`, ist
-> entfernt worden und soll stückweise als Flux-Manifest wiederkommen.
+> Ingress-Firewall (Schritt 3) steht ebenfalls, und mit `ingress-public`
+> (Schritt 8) und CrowdSec (Schritt 10) auch der öffentliche Weg — bedient
+> wird darüber bisher nur whoami. Offen sind Kyverno (Schritt 9) und die
+> Anwendungen selbst (Schritt 7): Immich und Nextcloud laufen weiter als
+> Container auf dem Host.
 >
 > Die betroffenen Schritte bleiben trotzdem hier stehen. Sie beschreiben, was
 > der Wiederaufbau zu leisten hat, und die Begründungen darin sind mit dem Code
@@ -326,14 +327,12 @@ sie seit Schritt 5 auch in Anspruch — er hängt auf `.231` statt am hostPort.
 
 **Noch offen, und was daran hängt:**
 
-- **Kein `ingress-public`.** Die Klasse `public` existiert nicht, eine
-  Portfreigabe führte ins Leere. Schritt 8.
-- **Kein Kyverno.** Die Regel auf `ingressClassName: public` gibt es damit
-  nicht. Solange die Klasse `public` gar nicht existiert, fehlt ihr auch der
-  Anwendungsfall — mit ihr wird die Regel tragend, siehe Schritt 9. Die
-  Reloader-Annotation, die Kyverno ebenfalls setzte, wird nicht mehr gebraucht
-  (siehe [flux/README.md](flux/README.md), Abschnitt Rotation).
-- **Kein CrowdSec.** Weder LAPI noch Agent noch Bouncer. Schritt 10.
+- **Kein Kyverno**, und das ist jetzt die dringlichste Lücke: Seit Schritt 8
+  existiert die Klasse `public`, und damit hat die Regel ihren Anwendungsfall.
+  Sie ist die einzige zweite Sperre gegen „privater Dienst versehentlich
+  öffentlich" — siehe Schritt 9. Die Reloader-Annotation, die Kyverno ebenfalls
+  setzte, wird nicht mehr gebraucht (siehe [flux/README.md](flux/README.md),
+  Abschnitt Rotation).
 - **Kein CSR-Genehmiger.** `kubelet_server_certs` in `vm/talos` muss aus
   bleiben, sonst bricht der Apply dort ab.
 
@@ -718,48 +717,87 @@ Bis dahin ist er der Rückweg.
 
 ## 8. `ingress-public` bauen
 
-Neues Manifest `flux/clusters/talos-cp1/ingress-public.yaml`, gebaut wie
-`ingress-internal`, mit fünf Unterschieden:
+Steht als [flux/clusters/talos-cp1/ingress-public.yaml](flux/clusters/talos-cp1/ingress-public.yaml),
+gebaut wie `ingress-internal`, mit fünf Unterschieden:
 
-1. **Eigener Namespace** `traefik-public`, eigene ClusterRole
-   `traefik-public-namespaced`, eigene RoleBindings. Kein gemeinsames Objekt mit
-   dem internen Controller.
+1. **Eigener Namespace** `traefik-public`, eigene ClusterRoles
+   `traefik-public-cluster` und `traefik-public-namespaced`, eigene
+   RoleBindings, eigener ServiceAccount. Kein gemeinsames Objekt mit dem
+   internen Controller. PodSecurity `restricted` ohne Ausnahme.
 2. **Eigene Adresse:** `lbipam.cilium.io/ips: "192.168.178.232"`,
-   `externalTrafficPolicy: Local`.
-3. **Die Namespace-Liste ist die Sicherheitsgrenze.** `rbac.namespaced: true`
-   mit `providers.kubernetesIngress.namespaces` und
-   `providers.kubernetesCRD.namespaces` auf genau die öffentlichen Dienste —
-   anfangs `immich` und `nextcloud`, sonst nichts. Ein `ingressClassName:
-   public` in einem nicht aufgeführten Namespace bleibt wirkungslos. Diese Liste
-   ist der Grund, warum ein einzelner Fehler im Manifest eines internen Dienstes
-   ihn nicht exponiert.
+   `externalTrafficPolicy: Local`. Letzteres hier nicht nur wegen der
+   NetworkPolicies — ohne die echte Client-Adresse sähe CrowdSec jede Anfrage
+   der Welt unter derselben Quelle und würde entweder nie sperren oder alle
+   auf einmal.
+3. **Die Namespace-Liste ist die Sicherheitsgrenze.** `rbac.enabled: false`
+   mit RoleBindings nur dort, wo bedient wird, dazu
+   `providers.kubernetesIngress.namespaces` und `kubernetesCRD.namespaces`.
+   Heute `traefik-public` und `whoami` — Immich und Nextcloud kommen mit
+   Schritt 7 dazu, und zwar an **vier** Stellen: beide Namespace-Listen, eine
+   RoleBinding und ein `toEndpoints`-Block in der CiliumNetworkPolicy. Die
+   Stellen sind im Manifest als BAUSTELLE markiert.
 4. **Kein Zugriff auf das interne Wildcard.** Eigener `certResolver`, eigener
-   PVC für den ACME-Speicher, Zertifikate je Name über DNS-01 für die
-   öffentliche Zone. Das Wildcard `*.k8s.nico-steinmueller.de` bleibt im
-   Namespace `traefik-internal` und wird dort nicht herausgereicht — E10
-   sinngemäß. **Offen dabei:** Der Controller hält damit einen
-   DNS-Provider-Token in der exponierten Zone. Die beiden möglichen
-   Auflösungen — ACME-DNS-Delegation oder ein von cert-manager geliefertes
-   Secret — stehen im [Sicherheitskonzept](homelab-sicherheitskonzept.html)
-   unter E4; entschieden ist keine.
-5. **Die Verarbeitungskette am Entrypoint `websecure`**, als dynamische
-   Konfiguration: `sniStrict: true` ohne `defaultCertificate` (fremde Namen
-   enden im Handshake), `strip-client-forwarded` gegen gefälschte
-   Herkunftsheader, `forwardedHeaders.trustedIPs: []` (vor diesem Controller
-   steht kein Proxy), HSTS, und die drei Ratelimit-Stufen. Der laufende
-   Docker-Stand in [../traefik/](../traefik/) ist dafür die Vorlage.
+   PVC, eigenes `acme.json`, Zertifikate je Name statt Wildcard — die
+   öffentlichen Namen stehen ohnehin im DNS, es gibt nichts vor den
+   Certificate-Transparency-Logs zu verbergen. DNS-01 und nicht HTTP-01, weil
+   HTTP-01 die Portfreigabe voraussetzen würde und die zuletzt kommt.
+   **Offen dabei:** Der Controller hält damit einen IONOS-Key, der die ganze
+   Zone umschreiben kann, im exponiertesten Pod des Clusters. Das ist E4, und
+   entschieden ist nichts — der Key liegt deshalb als eigenes Secret
+   (`traefik-ionos-public.sops.yaml`), damit er sich vom internen trennen
+   lässt, sobald eine acme-dns-Delegation kommt.
+5. **Die Kette am Entrypoint `websecure`**, als CRDs im eigenen Namespace:
+   `sniStrict: true` ohne `defaultCertificate` (fremde Namen enden im
+   Handshake, ohne je einen HTTP-Request zu erzeugen), dann in dieser
+   Reihenfolge `crowdsec` → `strip-client-forwarded` → `secure-headers` →
+   `rate-limit`. Dazu `forwardedHeaders.trustedIPs: []`. Die beiden anderen
+   Ratelimit-Stufen (`rate-limit-auth`, `rate-limit-sync`) stehen bereit, aber
+   nicht in der Kette — sie gehören je Router an die Login- und Sync-Pfade der
+   echten Dienste.
 
 NetworkPolicies im neuen Namespace:
 
 ```
 default-deny-ingress          wie im internen Namespace
-allow-from-world              ingress auf 8000/8443 ohne ipBlock-Einschränkung
-allow-to-served-namespaces    egress nur zu immich/nextcloud und kube-dns
-allow-to-crowdsec-lapi        egress auf die LAPI, Port und Namespace benannt
+allow-from-world              ingress auf 8000/8443 ohne ipBlock
+traefik-public-egress         CiliumNetworkPolicy, siehe unten
 ```
 
-Und je öffentlichem Dienst — wie beim internen Controller — eine
-NetworkPolicy im Ziel-Namespace, die `traefik-public` hereinlässt.
+**Die Egress-Regel ist eine CiliumNetworkPolicy, keine gewöhnliche** — und das
+ist der Unterschied zum internen Controller, der gar keine hat. Der Grund ist
+derselbe, aus dem es dort keine gibt: Cilium wertet `ipBlock` nicht gegen die
+Identität `host` aus, und der kube-apiserver ist genau das. Cilium kann die
+Unterscheidung über `toEntities`, also:
+
+| | |
+|---|---|
+| `toEntities: host` | kube-apiserver — der Node, nicht das LAN |
+| `toEndpoints` | kube-dns, die CrowdSec-LAPI, `whoami` |
+| `toCIDRSet 0.0.0.0/0` **except RFC1918** | Let's Encrypt und IONOS, aber nicht das Heimnetz |
+
+Rückendeckung für die erste Zeile gibt die Firewall aus Schritt 3: Aus dem
+Pod-Netz lässt sie an den Host nur 6443, 10250 und 4240.
+
+Und je öffentlichem Dienst — wie beim internen Controller — eine NetworkPolicy
+im Ziel-Namespace, die `traefik-public` hereinlässt. Bei whoami ist das
+dieselbe Regel wie für den internen: `networkPolicy.ingressControllerNamespaces`
+ist seitdem eine Liste.
+
+**whoami ist der Testdienst.** Er hängt jetzt an beiden Controllern —
+`whoami.k8s.nico-steinmueller.de` intern, `whoami.nico-steinmueller.de`
+öffentlich — und sein Namespace trägt deshalb `homelab.io/zone: public`.
+Ein Namespace mit einem einzigen öffentlichen Ingress ist öffentlich; die
+Kyverno-Regel aus Schritt 9 muss die Zone gegen die riskantere Seite auslegen.
+
+Solange die Fritzbox nichts weiterleitet, ist der öffentliche Name nur über
+`.232` erreichbar — im LAN also per Split-DNS oder:
+
+```bash
+curl -sI https://whoami.nico-steinmueller.de \
+     --resolve whoami.nico-steinmueller.de:443:192.168.178.232
+```
+
+Das Zertifikat kommt trotzdem: DNS-01 braucht keinen A-Record.
 
 ## 9. Kyverno — tragend, nicht ergänzend
 
@@ -768,33 +806,57 @@ versehentlich öffentlich": die Namespace-Liste aus Schritt 8. **Kyverno gehört
 deshalb vor den ersten öffentlichen Dienst, nicht danach.**
 
 Regel: `ingressClassName: public` nur in Namespaces mit dem Label
-`exposure: public`. Damit muss ein Versehen an zwei Stellen gleichzeitig
+`homelab.io/zone: public`. Damit muss ein Versehen an zwei Stellen gleichzeitig
 passieren — Label am Namespace **und** Eintrag in der Namespace-Liste —, und
 beide stehen in Git und sind im Review sichtbar.
+
+Der Labelname ist `homelab.io/zone` und nicht `exposure`, wie hier früher
+stand: Die Namespaces tragen ihn längst, `traefik-internal` mit `internal`,
+`traefik-public` und `whoami` mit `public`. Eine Regel auf ein zweites Label,
+das nur sie selbst kennt, wäre eine Regel, die man beim Anlegen des nächsten
+Namespace vergisst.
 
 Die Reloader-Annotation, die Kyverno früher ebenfalls setzte, wird nicht mehr
 gebraucht; siehe [flux/README.md](flux/README.md), Abschnitt Rotation.
 
 ## 10. CrowdSec im Cluster
 
-Alle Bausteine sind aus dem Docker-Stand übernehmbar; die Collection-Liste steht
-fertig in [../traefik/compose.yml](../traefik/compose.yml).
+Steht als [flux/clusters/talos-cp1/crowdsec.yaml](flux/clusters/talos-cp1/crowdsec.yaml),
+Chart `crowdsec/crowdsec` 0.24.0.
 
-- **LAPI in einem eigenen Namespace** `crowdsec`, **nicht** in `traefik-public`.
-  Das ist E7 eine Ebene tiefer: Die exponierte Komponente darf Entscheidungen
-  nicht löschen. Der Bouncer-Key ist lesend, die NetworkPolicy der LAPI lässt
-  nur `traefik-public` auf den einen Port.
-- **Agent** liest die Traefik-Logs von `ingress-public`, plus die Logs der
-  Anwendungen dort, wo sie entstehen.
-- **AppSec-Listener** mit `crowdsecurity/appsec-virtual-patching`,
-  `appsec-crs` und der Nextcloud-Exclusion — zwei Listener: Virtual Patching
-  plus CRS für die strengen Pfade, Virtual Patching allein für
-  `/remote.php/*`.
-- **Bouncer** als Traefik-Plugin-Middleware am öffentlichen Entrypoint.
-  `clientTrustedIPs` auf das LAN, sonst sperrt ein Test von zu Hause den eigenen
-  Zugang. Die Folge davon ist bekannt und gewollt: LAN-Clients haben die
-  Abwehrschicht nicht vor sich, siehe „Restrisiken" im
+- **LAPI in einem eigenen Namespace** `crowdsec`, **nicht** in
+  `traefik-public`. Das ist E7 eine Ebene tiefer: Die exponierte Komponente
+  darf Entscheidungen nicht löschen. Die NetworkPolicy der LAPI lässt nur
+  `traefik-public` und den eigenen Agent auf Port 8080. Zwei PVCs — die
+  SQLite-Datenbank mit den Entscheidungen und die Bouncer-Registrierung —,
+  beide `ReadWriteOnce` auf local-path, deshalb `strategy: Recreate`.
+- **Agent** als DaemonSet, liest die Zugriffslogs von `ingress-public` über
+  `acquisition` mit `program: traefik`. **Nur** die von `ingress-public`: Die
+  Clients des internen Controllers sind das Heimnetz, und ein Backup-Job sieht
+  für einen Scanner-Detektor aus wie ein Scanner. Collections über die
+  Umgebungsvariable `COLLECTIONS` — `traefik`, `http-cve`,
+  `base-http-scenarios`.
+- **Bouncer** als Traefik-Plugin-Middleware (v1.6.0, festgenagelt) in der Kette
+  am öffentlichen Entrypoint, `crowdsecMode: live`. Der Schlüssel steht nicht
+  im Manifest: `crowdsecLapiKeyFile` liest ihn aus einem gemounteten Secret.
+  `clientTrustedIPs` auf das LAN, sonst sperrt ein Test von zu Hause den
+  eigenen Zugang. Die Folge davon ist bekannt und gewollt: LAN-Clients haben
+  die Abwehrschicht nicht vor sich, siehe „Restrisiken" im
   [Sicherheitskonzept](homelab-sicherheitskonzept.html).
+- **`abortOnPluginFailure: true`.** Lädt das Plugin nicht, startet Traefik
+  nicht. Ein öffentlicher Ingress ohne Bouncer, der aussieht wie einer mit,
+  ist schlimmer als einer, der steht.
+
+Der Schlüssel liegt SOPS-verschlüsselt als `crowdsec-bouncer-key.sops.yaml` in
+`homelab-secrets`, in **zwei** Namespaces: die LAPI registriert den Bouncer
+beim Start damit selbst (`BOUNCER_KEY_traefik-public`), der Bouncer schickt ihn
+mit.
+
+**Noch nicht dabei:** der AppSec-Listener. Er kommt mit dem ersten echten
+Dienst — an whoami gibt es nichts, was eine WAF-Regel finden könnte, und eine
+Middleware, die nie auslöst, ist eine, deren Ausfall niemand bemerkt. Dazu
+gehören dann `crowdsecurity/appsec-virtual-patching`, `appsec-crs` und die
+Nextcloud-Exclusion für `/remote.php/*`.
 
 **Der Bouncer sperrt zunächst nicht.** Ein bis zwei Wochen Beobachtungsmodus,
 dann Schritt 12.
