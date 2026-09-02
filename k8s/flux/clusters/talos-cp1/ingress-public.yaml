@@ -488,35 +488,6 @@ spec:
 
 ---
 #
-# Gefaelschte Herkunftsheader abschneiden.
-#
-# Vor diesem Controller steht kein Proxy. Ein X-Forwarded-For, das ein
-# Client selbst mitschickt, ist damit immer eine Behauptung - und eine, die
-# teuer waere: CrowdSec und die Zugriffslogs der Anwendungen wuerden sie als
-# echte Herkunft uebernehmen. Ein Angreifer koennte sich damit als eigene
-# LAN-Adresse ausgeben und liefe unter `clientTrustedIPs` durch.
-#
-# `forwardedHeaders.trustedIPs: []` im Chart weiter unten sorgt schon dafuer,
-# dass Traefik selbst nichts davon glaubt. Diese Middleware ist die zweite
-# Haelfte: Sie loescht die Header, bevor sie das Backend erreichen.
-#
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: strip-client-forwarded
-  namespace: traefik-public
-spec:
-  headers:
-    customRequestHeaders:
-      X-Forwarded-For: ""
-      X-Forwarded-Host: ""
-      X-Forwarded-Proto: ""
-      X-Forwarded-Port: ""
-      X-Forwarded-Server: ""
-      X-Real-Ip: ""
-
----
-#
 # HSTS und die uebrigen Kopfzeilen. Uebernommen aus dem Docker-Stand
 # (traefik/compose.yml, secure-headers), mit einer Auslassung:
 #
@@ -632,17 +603,11 @@ spec:
 #
 # Die Kette, in dieser Reihenfolge - und die Reihenfolge ist der Punkt:
 #
-#   1. crowdsec                  Bekannte Angreifer fliegen raus, bevor
-#                                irgendetwas anderes Arbeit hat.
-#   2. strip-client-forwarded    Erst danach duerfen Header angefasst
-#                                werden. Andersherum saehe CrowdSec eine
-#                                bereits bereinigte Anfrage - richtig -,
-#                                aber die Reihenfolge waere Zufall statt
-#                                Absicht.
-#   3. secure-headers            Antwort-Kopfzeilen, Richtung Client.
-#   4. rate-limit                Zuletzt: Was bis hierher kommt, ist
-#                                weder gesperrt noch gefaelscht, und darf
-#                                dann in normaler Frequenz durch.
+#   1. crowdsec         Bekannte Angreifer fliegen raus, bevor irgendetwas
+#                       anderes Arbeit hat.
+#   2. secure-headers   Antwort-Kopfzeilen, Richtung Client.
+#   3. rate-limit       Zuletzt: Was bis hierher kommt, ist nicht gesperrt
+#                       und darf in normaler Frequenz durch.
 #
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -653,7 +618,6 @@ spec:
   chain:
     middlewares:
       - name: crowdsec
-      - name: strip-client-forwarded
       - name: secure-headers
       - name: rate-limit
 
@@ -832,6 +796,11 @@ spec:
           # Edge-VM, nichts. Jeder X-Forwarded-For ist damit vom Client
           # selbst geschrieben. Leere Liste heisst: keiner davon wird
           # geglaubt.
+          #
+          # Und das ist die ganze Abwehr gegen gefaelschte Herkunftsheader,
+          # nicht die halbe: Traefik uebernimmt sie nicht, es UEBERSCHREIBT
+          # sie - X-Forwarded-For, -Host, -Proto, -Port, -Server und
+          # X-Real-Ip tragen beim Backend die gemessenen Werte.
           #
           trustedIPs: []
           insecure: false
