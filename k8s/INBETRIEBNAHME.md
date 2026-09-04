@@ -16,10 +16,11 @@ Was bewusst *nicht* Teil der Inbetriebnahme ist, sondern später kommt, steht in
 > Umstellung von `ingress-internal` auf LoadBalancer (Schritt 5) sind
 > zurückgekommen, als Flux-Manifest statt als Terraform-Modul; die
 > Ingress-Firewall (Schritt 3) steht ebenfalls, und mit `ingress-public`
-> (Schritt 8), CrowdSec (Schritt 10) und die Kyverno-Regel (Schritt 9) auch
-> der öffentliche Weg — bedient wird darüber bisher nur whoami. Offen sind
-> die Anwendungen selbst (Schritt 7): Immich und Nextcloud laufen weiter als
-> Container auf dem Host.
+> (Schritt 8) und CrowdSec (Schritt 10) auch der öffentliche Weg — bedient
+> wird darüber bisher nur whoami. Offen sind die Anwendungen selbst
+> (Schritt 7): Immich und Nextcloud laufen weiter als Container auf dem Host.
+> Kyverno (Schritt 9) war da und ist wieder draußen — der Cluster hat es
+> nicht getragen; der Abschnitt sagt, was gemessen wurde.
 >
 > Die betroffenen Schritte bleiben trotzdem hier stehen. Sie beschreiben, was
 > der Wiederaufbau zu leisten hat, und die Begründungen darin sind mit dem Code
@@ -326,12 +327,15 @@ eine Adresse, die im Netz auch angekündigt wird. Der interne Controller nimmt
 sie seit Schritt 5 auch in Anspruch — er hängt auf `.231` statt am hostPort.
 
 **Zurückgekommen sind inzwischen auch** die Ingress-Firewall (Schritt 3),
-`ingress-public` mit der Klasse `public` (Schritt 8), CrowdSec (Schritt 10)
-und die Kyverno-Regel darauf (Schritt 9). Was der frühere Plattform-Stack
-konnte, kann der Cluster damit wieder — bedient wird über den öffentlichen
-Weg bisher nur whoami.
+`ingress-public` mit der Klasse `public` (Schritt 8) und CrowdSec
+(Schritt 10). Was der frühere Plattform-Stack konnte, kann der Cluster damit
+weitgehend wieder — bedient wird über den öffentlichen Weg bisher nur whoami.
 
 **Noch offen:**
+
+- **Keine zweite Sperre gegen „versehentlich öffentlich".** Kyverno war
+  installiert und musste wieder weichen (Schritt 9). Es bleibt die
+  Namespace-Liste aus Schritt 8, und die ist allein.
 
 - **Kein CSR-Genehmiger.** `kubelet_server_certs` in `vm/talos` muss aus
   bleiben, sonst bricht der Apply dort ab.
@@ -803,17 +807,45 @@ curl -sI https://whoami.nico-steinmueller.de \
 
 Das Zertifikat kommt trotzdem: DNS-01 braucht keinen A-Record.
 
-## 9. Kyverno — tragend, nicht ergänzend
+## 9. Kyverno — versucht, wieder ausgebaut
 
-Steht als [flux/clusters/talos-cp1/kyverno.yaml](flux/clusters/talos-cp1/kyverno.yaml)
-(Chart `kyverno/kyverno` 3.9.0) und
-[flux/policies/public-ingress.yaml](flux/policies/public-ingress.yaml) — zwei
-Dateien, aus einem Grund, der weiter unten steht.
+> **Stand 04.09.2026: Kyverno läuft nicht.** Es war rund 40 Minuten
+> installiert und hat den Cluster in einen Flap-Zyklus gebracht; die
+> Manifeste liegen jetzt unter
+> [flux/kyverno-geparkt/](flux/kyverno-geparkt/README.md), außerhalb jedes
+> Sync-Pfads. Was gemessen wurde und was die Alternative ist, steht im
+> README dort. Der Rest dieses Abschnitts beschreibt die Regel, weil sie
+> inhaltlich richtig war und unverändert weiterverwendbar ist — nur eben
+> nicht über Kyverno.
 
 Ohne die Regel gibt es nur **eine** Sperre gegen „privater Dienst versehentlich
-öffentlich": die Namespace-Liste aus Schritt 8. **Kyverno gehört deshalb vor
-den ersten öffentlichen Dienst, nicht danach** — heute trägt genau ein Ingress
-die Klasse `public` (whoami), und an dem hängt nichts.
+öffentlich": die Namespace-Liste aus Schritt 8. **Sie gehört deshalb vor den
+ersten öffentlichen Dienst, nicht danach** — heute trägt genau ein Ingress die
+Klasse `public` (whoami), und an dem hängt nichts. Genau deshalb war jetzt der
+richtige Moment für den Versuch: Der Ausfall traf einen Cluster, an dem nichts
+Wichtiges hing.
+
+**Was der Versuch gekostet hat.** Nicht Kyvernos Pod — der blieb bei 68 Mi und
+17–38 m CPU, wie geplant. Teuer waren die **20 CRDs**, die das Chart mitbringt:
+`kube-apiserver` bei 1108 Mi, und etcd, das 264 Stunden ohne einen einzigen
+Health-Check-Ausfall gelaufen war, riss innerhalb von 20 Minuten zweimal
+(`context deadline exceeded`). Von da an: API-Server unerreichbar → alle
+Leader-Leases und Liveness-Probes gleichzeitig im Timeout → Restart-Sturm über
+kube-scheduler, kube-controller-manager, cilium-operator, die Flux-Controller
+und traefik-internal → mehr Last auf etcd.
+
+**Die Lehre für das RAM-Budget:** Gerechnet wurde mit dem Pod. Bezahlt wurde
+für die CRDs — der API-Server muss für jede OpenAPI v2/v3 aufbauen, und der
+Admission-Controller öffnet für jede Policy-Art einen eigenen Watch gegen etcd.
+Bei einem Chart mit vielen CRDs ist der Node-Speicher die falsche Rechengröße;
+die richtige ist, was der Control Plane an Schema- und Watch-Last dazubekommt.
+
+**Der nächste Versuch, falls es einen gibt, geht anders.** Die naheliegende
+Antwort ist keine kleinere Kyverno-Installation, sondern gar keine: Dieselbe
+CEL-Bedingung läuft als native `ValidatingAdmissionPolicy` direkt im
+API-Server — ohne Pod, ohne CRDs, ohne Webhook-Roundtrip. Die API ist seit
+Kubernetes 1.30 stabil, der Cluster läuft auf 1.36. Beides steht im README
+unter `flux/kyverno-geparkt/`.
 
 Die Regel: `ingressClassName: public` nur in Namespaces mit dem Label
 `homelab.io/zone: public`. Damit muss ein Versehen an zwei Stellen gleichzeitig
@@ -878,9 +910,12 @@ kein Abgleich mehr, kein Prune, keine Drift-Korrektur. Ein Henne-Ei-Problem,
 das sich nicht von selbst löst: Jeder weitere Durchlauf scheitert an derselben
 Stelle.
 
-Deshalb jetzt zwei Kustomizations. Die zweite (`kyverno-policies`, definiert
-am Ende von `kyverno.yaml`) zeigt auf `k8s/flux/policies` und hängt per
-`dependsOn` an der Wurzel. Warum nicht ein Unterverzeichnis unter
+Die Lösung waren zwei Kustomizations. Die zweite (`kyverno-policies`,
+definiert am Ende von `kyverno.yaml`) zeigte auf ein eigenes Verzeichnis
+außerhalb von `clusters/` und hing per `dependsOn` an der Wurzel. Sie hat
+funktioniert — `flux-system` stand wieder auf `True`, `kyverno-policies`
+ebenfalls, die Policy auf `READY=true`. Warum nicht ein Unterverzeichnis
+unter
 `talos-cp1/`: kustomize-controller erzeugt seine `kustomization.yaml` aus
 einem **rekursiven** Verzeichnislauf und sammelte die Datei trotzdem wieder
 ein. Erst eine Ebene über `clusters/` ist sie wirklich draußen.
@@ -894,6 +929,11 @@ erste Versuch nach dem Start des Admission-Controllers geht durch. Der
 Unterschied zu vorher ist der ganze Punkt — betroffen ist eine Kustomization,
 nicht der Cluster.
 
+Dieses Muster gilt über Kyverno hinaus: **Jedes Chart, dessen CRDs eine
+CR im selben Repo tragen sollen, braucht diese Trennung.** Dass es hier am
+Ende nichts genützt hat, lag nicht an der Reihenfolge, sondern an der
+Kapazität.
+
 **Eine Falle in den Chart-Values, im Vorbeigehen:** `features.reporting` hat
 als einziger dieser Blöcke kein `enabled`, sondern eine Liste von Regelarten
 (`validate`, `mutate`, `mutateExisting`, `imageVerify`, `generate`). Ein
@@ -902,12 +942,18 @@ Container behält `--enableReporting=validate,mutate,…`. Helm meldet unbekannt
 Schlüssel nicht; sichtbar wird so etwas nur mit `helm template` und einem Blick
 in die `args`.
 
-Abnahme:
+Abnahme (nicht mehr durchführbar, Kyverno ist ausgebaut — die Befehle stehen
+hier, weil sie beim nächsten Anlauf dieselben wären):
 
 ```bash
 # beide gruen - flux-system sofort, kyverno-policies nach dem ersten Retry
 kubectl -n flux-system get kustomizations
 kubectl -n kyverno get pods
+
+# und der Blick, der beim ersten Versuch gefehlt hat:
+talosctl service etcd          # Health-Check-Ausfaelle?
+kubectl top pod -n kube-system kube-apiserver-talos-cp1
+kubectl get crd | wc -l
 
 # muss abgelehnt werden (--dry-run=server ruft den Webhook trotzdem auf -
 # und laesst, falls die Regel doch nicht greift, keinen echten oeffentlichen
@@ -1004,8 +1050,10 @@ nmap -Pn -p 50000,6443,10250 192.168.178.230
 # Ein interner Dienst lässt sich nicht öffentlich schalten
 kubectl -n headlamp patch ingress headlamp --type merge \
   -p '{"spec":{"ingressClassName":"public"}}'
-#   -> Kyverno lehnt ab; und selbst wenn nicht, bedient ingress-public
-#      den Namespace headlamp nicht. Danach zurückpatchen.
+#   -> ingress-public bedient den Namespace headlamp nicht, der Ingress
+#      bleibt also wirkungslos. Das ist seit dem Ausbau von Kyverno
+#      (Schritt 9) die EINZIGE Sperre - der Patch geht durch. Danach
+#      zurückpatchen.
 ```
 
 ## 12. Scharfschalten (nach 1-2 Wochen)
