@@ -16,11 +16,10 @@ Was bewusst *nicht* Teil der Inbetriebnahme ist, sondern später kommt, steht in
 > Umstellung von `ingress-internal` auf LoadBalancer (Schritt 5) sind
 > zurückgekommen, als Flux-Manifest statt als Terraform-Modul; die
 > Ingress-Firewall (Schritt 3) steht ebenfalls, und mit `ingress-public`
-> (Schritt 8) und CrowdSec (Schritt 10) auch der öffentliche Weg — bedient
-> wird darüber bisher nur whoami. Offen sind die Anwendungen selbst
-> (Schritt 7): Immich und Nextcloud laufen weiter als Container auf dem Host.
-> Kyverno (Schritt 9) war da und ist wieder draußen — der Cluster hat es
-> nicht getragen; der Abschnitt sagt, was gemessen wurde.
+> (Schritt 8), CrowdSec (Schritt 10) und der Regel gegen „versehentlich
+> öffentlich" (Schritt 9) auch der öffentliche Weg — bedient wird darüber
+> bisher nur whoami. Offen sind die Anwendungen selbst (Schritt 7): Immich
+> und Nextcloud laufen weiter als Container auf dem Host.
 >
 > Die betroffenen Schritte bleiben trotzdem hier stehen. Sie beschreiben, was
 > der Wiederaufbau zu leisten hat, und die Begründungen darin sind mit dem Code
@@ -327,15 +326,13 @@ eine Adresse, die im Netz auch angekündigt wird. Der interne Controller nimmt
 sie seit Schritt 5 auch in Anspruch — er hängt auf `.231` statt am hostPort.
 
 **Zurückgekommen sind inzwischen auch** die Ingress-Firewall (Schritt 3),
-`ingress-public` mit der Klasse `public` (Schritt 8) und CrowdSec
-(Schritt 10). Was der frühere Plattform-Stack konnte, kann der Cluster damit
-weitgehend wieder — bedient wird über den öffentlichen Weg bisher nur whoami.
+`ingress-public` mit der Klasse `public` (Schritt 8), CrowdSec (Schritt 10)
+und die Regel gegen „versehentlich öffentlich" (Schritt 9) — letztere nicht
+über Kyverno, sondern als native `ValidatingAdmissionPolicy`. Was der frühere
+Plattform-Stack konnte, kann der Cluster damit wieder; bedient wird über den
+öffentlichen Weg bisher nur whoami.
 
 **Noch offen:**
-
-- **Keine zweite Sperre gegen „versehentlich öffentlich".** Kyverno war
-  installiert und musste wieder weichen (Schritt 9). Es bleibt die
-  Namespace-Liste aus Schritt 8, und die ist allein.
 
 - **Kein CSR-Genehmiger.** `kubelet_server_certs` in `vm/talos` muss aus
   bleiben, sonst bricht der Apply dort ab.
@@ -795,7 +792,7 @@ ist seitdem eine Liste.
 `whoami.k8s.nico-steinmueller.de` intern, `whoami.nico-steinmueller.de`
 öffentlich — und sein Namespace trägt deshalb `homelab.io/zone: public`.
 Ein Namespace mit einem einzigen öffentlichen Ingress ist öffentlich; die
-Kyverno-Regel aus Schritt 9 muss die Zone gegen die riskantere Seite auslegen.
+Regel aus Schritt 9 muss die Zone gegen die riskantere Seite auslegen.
 
 Solange die Fritzbox nichts weiterleitet, ist der öffentliche Name nur über
 `.232` erreichbar — im LAN also per Split-DNS oder:
@@ -807,16 +804,20 @@ curl -sI https://whoami.nico-steinmueller.de \
 
 Das Zertifikat kommt trotzdem: DNS-01 braucht keinen A-Record.
 
-## 9. Kyverno — versucht, wieder ausgebaut
+## 9. Die Regel gegen „versehentlich öffentlich"
 
-> **Stand 04.09.2026: Kyverno läuft nicht.** Es war rund 40 Minuten
-> installiert und hat den Cluster in einen Flap-Zyklus gebracht; die
-> Manifeste liegen jetzt unter
+Steht als
+[flux/clusters/talos-cp1/public-ingress-policy.yaml](flux/clusters/talos-cp1/public-ingress-policy.yaml)
+— eine native `ValidatingAdmissionPolicy` samt Binding, zwei Objekte, kein
+Controller.
+
+> **Der Weg dahin führte über Kyverno, und das ging schief.** Kyverno war am
+> 04.09.2026 rund 40 Minuten installiert und hat den Cluster in einen
+> Flap-Zyklus gebracht. Die Regel selbst war dabei korrekt — das Chart
+> darunter war zu teuer. Die Manifeste liegen als Beleg unter
 > [flux/kyverno-geparkt/](flux/kyverno-geparkt/README.md), außerhalb jedes
-> Sync-Pfads. Was gemessen wurde und was die Alternative ist, steht im
-> README dort. Der Rest dieses Abschnitts beschreibt die Regel, weil sie
-> inhaltlich richtig war und unverändert weiterverwendbar ist — nur eben
-> nicht über Kyverno.
+> Sync-Pfads. Was gemessen wurde, steht unten; es ist die nützlichste Lehre
+> dieses Schritts.
 
 Ohne die Regel gibt es nur **eine** Sperre gegen „privater Dienst versehentlich
 öffentlich": die Namespace-Liste aus Schritt 8. **Sie gehört deshalb vor den
@@ -840,12 +841,35 @@ Admission-Controller öffnet für jede Policy-Art einen eigenen Watch gegen etcd
 Bei einem Chart mit vielen CRDs ist der Node-Speicher die falsche Rechengröße;
 die richtige ist, was der Control Plane an Schema- und Watch-Last dazubekommt.
 
-**Der nächste Versuch, falls es einen gibt, geht anders.** Die naheliegende
-Antwort ist keine kleinere Kyverno-Installation, sondern gar keine: Dieselbe
-CEL-Bedingung läuft als native `ValidatingAdmissionPolicy` direkt im
+**Die zweite Lehre, und die überlebt Kyverno:** Erschossen wurden nicht die
+Speicherfresser, sondern die Pods ohne Requests. Talos' OOM-Controller nimmt
+sich `BestEffort` zuerst, und das waren `cilium-envoy` und `cilium-operator` —
+sechs SIGKILLs in 25 Minuten auf ihre cgroups:
+
+```
+[talos] OOM controller triggered {"controller": "runtime.OOMController"}
+[talos] Sending SIGKILL to cgroup {"cgroup": ".../kubepods/besteffort/pod15ba7d9c-..."}
+```
+
+Der Cilium-Agent, mit 100m/256Mi der größte der drei, blieb unbehelligt: Er
+hatte Requests. Die beiden anderen hatten keine, weil das Chart keine
+Vorgabe mitbringt und die Values in `vm/talos/values/cilium.yaml.tftpl` nur
+den Agent bedachten. Ein abgeräumter `cilium-operator` verliert seine
+Leader-Lease und startet neu — was bei knappem Speicher genau die Last macht,
+die den nächsten Kill auslöst.
+
+Das ist inzwischen korrigiert (`operator.resources` und `envoy.resources` in
+denselben Values, gemessener Bedarf 21m/61Mi und 8m/42Mi). Die Regel dahinter
+gilt für jeden Dienst, der noch kommt: **Ein Pod ohne Requests ist kein
+sparsamer Pod, sondern ein Pod, der bei der ersten Knappheit stirbt.**
+
+**Die Antwort war keine kleinere Kyverno-Installation, sondern gar keine.**
+Dieselbe CEL-Bedingung läuft als native `ValidatingAdmissionPolicy` direkt im
 API-Server — ohne Pod, ohne CRDs, ohne Webhook-Roundtrip. Die API ist seit
-Kubernetes 1.30 stabil, der Cluster läuft auf 1.36. Beides steht im README
-unter `flux/kyverno-geparkt/`.
+Kubernetes 1.30 stabil, und `kubectl api-resources --api-group=admissionregistration.k8s.io`
+zeigt auf diesem Cluster **beide** Policy-Arten in `v1`, die validierende wie
+die mutierende. Damit fällt auch das letzte Argument für einen Policy-Engine
+im Cluster weg: Mutation war lange das, was nur Kyverno konnte.
 
 Die Regel: `ingressClassName: public` nur in Namespaces mit dem Label
 `homelab.io/zone: public`. Damit muss ein Versehen an zwei Stellen gleichzeitig
@@ -856,16 +880,14 @@ Der Labelname ist `homelab.io/zone` und nicht `exposure`, wie hier früher
 stand: Die Namespaces tragen ihn längst, `traefik-internal` mit `internal`,
 `traefik-public` und `whoami` mit `public`.
 
-**Nur der Admission-Controller.** Das Chart bringt vier; `background`,
-`cleanup` und `reports` sind aus. Der Node stand beim Einbau bei 76 % Speicher
-und 73 % Requests, und Schritt 7 will davon noch etwas übrig lassen. Der Preis,
-benannt: keine PolicyReports (ein Verstoß zeigt sich als abgelehnte Anfrage,
-bei Flux als Fehler in der Kustomization), und keine aus der Regel erzeugte
-native ValidatingAdmissionPolicy — die macht der background-Controller.
+**Policy und Binding sind zwei Objekte, und das ist kein Umweg.** Die Policy
+beschreibt die Bedingung, das Binding schaltet sie scharf. Dieselbe Policy
+lässt sich damit erst mit `validationActions: [Audit]` beobachten und später
+auf `Deny` stellen, ohne sie anzufassen. Hier steht sie von Anfang an auf
+`Deny` — bei einem Cluster mit einem einzigen `public`-Ingress gibt es nichts
+zu beobachten.
 
-**`ValidatingPolicy` statt `ClusterPolicy`.** Seit Kyverno 1.19 ist das die
-stabile API (`policies.kyverno.io/v1`), und sie formuliert die Bedingung in
-CEL:
+Die Bedingung in CEL:
 
 ```
 object.spec.?ingressClassName.orValue("") != "public" ||
@@ -885,14 +907,17 @@ Zwei Feinheiten darin, die man sonst erst im Fehlerfall bemerkt:
   gar nicht erst erfassen und ihn damit durchlassen. Hier ist es umgekehrt
   gewollt: kein Label heißt nicht öffentlich.
 
-`failurePolicy: Fail`: Ist Kyverno unten, scheitern Änderungen an Ingresses,
-und Flux versucht es erneut. Der Webhook erfasst nur Ingresses — ein Ausfall
-hält also nicht den Cluster an, sondern genau die eine Ressourcenart.
+`failurePolicy: Fail` ist hier fast folgenlos, anders als bei einem Webhook:
+Es gibt keinen Pod, der ausfallen könnte. Die Einstellung greift nur noch,
+wenn die CEL-Auswertung selbst scheitert — und dann ist eine Ablehnung die
+richtige Antwort. Genau dieser Unterschied ist der Grund, warum die native
+Variante die ruhigere ist: Bei Kyverno war `Fail` eine Abwägung zwischen
+„Ingress-Änderungen scheitern, wenn der Controller unten ist" und „Regel still
+unwirksam". Ohne Controller gibt es die Abwägung nicht.
 
-**Die Regel liegt außerhalb von `clusters/talos-cp1`, und das ist der
-eigentliche Lerneffekt dieses Schritts.** Der erste Einbau hatte Chart und
-Regel in einer Datei im Wurzelverzeichnis — und legte damit den gesamten
-Cluster-Sync still:
+**Eine Falle, die die native Variante gar nicht erst hat — aber jedes Chart
+mit CRDs stellt sie.** Der erste Einbau hatte Chart und Regel in einer Datei
+im Wurzelverzeichnis und legte damit den gesamten Cluster-Sync still:
 
 ```
 kustomization/flux-system   READY=False
@@ -942,27 +967,26 @@ Container behält `--enableReporting=validate,mutate,…`. Helm meldet unbekannt
 Schlüssel nicht; sichtbar wird so etwas nur mit `helm template` und einem Blick
 in die `args`.
 
-Abnahme (nicht mehr durchführbar, Kyverno ist ausgebaut — die Befehle stehen
-hier, weil sie beim nächsten Anlauf dieselben wären):
+Abnahme:
 
 ```bash
-# beide gruen - flux-system sofort, kyverno-policies nach dem ersten Retry
-kubectl -n flux-system get kustomizations
-kubectl -n kyverno get pods
+# Policy und Binding sind da
+kubectl get validatingadmissionpolicy,validatingadmissionpolicybinding \
+  public-ingress-nur-in-public-namespaces
 
-# und der Blick, der beim ersten Versuch gefehlt hat:
-talosctl service etcd          # Health-Check-Ausfaelle?
-kubectl top pod -n kube-system kube-apiserver-talos-cp1
-kubectl get crd | wc -l
-
-# muss abgelehnt werden (--dry-run=server ruft den Webhook trotzdem auf -
-# und laesst, falls die Regel doch nicht greift, keinen echten oeffentlichen
+# muss abgelehnt werden (--dry-run=server wertet die Policy trotzdem aus -
+# und laesst, falls sie doch nicht greift, keinen echten oeffentlichen
 # Ingress in headlamp zurueck)
-kubectl -n headlamp create ingress test --class=public --rule="x.example/*=headlamp:80" --dry-run=server
+kubectl -n headlamp create ingress test --class=public \
+  --rule="x.example/*=headlamp:80" --dry-run=server
 
-# muss durchgehen
-kubectl -n whoami create ingress test --class=public --rule="x.example/*=whoami:80" --dry-run=server
-kubectl -n headlamp create ingress test --class=internal --rule="x.example/*=headlamp:80" --dry-run=server
+# muessen durchgehen
+kubectl -n whoami create ingress test --class=public \
+  --rule="x.example/*=whoami:80" --dry-run=server
+kubectl -n headlamp create ingress test --class=internal \
+  --rule="x.example/*=headlamp:80" --dry-run=server
+kubectl -n headlamp create ingress test \
+  --rule="x.example/*=headlamp:80" --dry-run=server   # ganz ohne Klasse
 ```
 
 Die Reloader-Annotation, die Kyverno früher ebenfalls setzte, wird nicht mehr
@@ -1050,10 +1074,8 @@ nmap -Pn -p 50000,6443,10250 192.168.178.230
 # Ein interner Dienst lässt sich nicht öffentlich schalten
 kubectl -n headlamp patch ingress headlamp --type merge \
   -p '{"spec":{"ingressClassName":"public"}}'
-#   -> ingress-public bedient den Namespace headlamp nicht, der Ingress
-#      bleibt also wirkungslos. Das ist seit dem Ausbau von Kyverno
-#      (Schritt 9) die EINZIGE Sperre - der Patch geht durch. Danach
-#      zurückpatchen.
+#   -> die ValidatingAdmissionPolicy aus Schritt 9 lehnt ab; und selbst wenn
+#      nicht, bedient ingress-public den Namespace headlamp nicht.
 ```
 
 ## 12. Scharfschalten (nach 1-2 Wochen)

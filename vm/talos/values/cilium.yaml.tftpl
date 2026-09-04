@@ -70,9 +70,20 @@ ipam:
 
 # Ein Node, ein Operator. Der Default (2 Replicas mit Anti-Affinity) ließe
 # einen Pod dauerhaft Pending.
+#
+# Die Requests sind nicht kosmetisch. Ohne sie ist der Operator `BestEffort`,
+# und `BestEffort` ist die Klasse, die Talos' OOM-Controller bei Speichernot
+# zuerst abräumt.
+# Der Operator verliert dabei seine Leader-Lease und startet neu, was bei
+# ohnehin knappem Speicher genau die Last erzeugt, die den nächsten Kill
+# auslöst. Gemessener Bedarf: 21m / 61Mi.
 operator:
   replicas: 1
   rollOutPods: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
 
 rollOutCiliumPods: true
 
@@ -87,6 +98,16 @@ rollOutCiliumPods: true
 # mehr auf dem Node, dafür überlebt der Proxy einen Neustart des Agents.
 #
 l7Proxy: true
+
+# Aus demselben Grund wie beim Operator oben: sonst `BestEffort`, und damit
+# erstes Opfer des OOM-Controllers. Beim Envoy wiegt das schwerer als beim
+# Operator - er sitzt im Datenpfad jeder L7-Policy. Gemessener Bedarf:
+# 8m / 42Mi.
+envoy:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 96Mi
 
 hubble:
   enabled: true
