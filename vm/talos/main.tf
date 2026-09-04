@@ -24,9 +24,11 @@ terraform {
     }
     #
     # Nur für `data "helm_template"`: Cilium wird lokal gerendert und als
-    # Inline-Manifest in die Machine-Config gelegt. Von hier aus wird kein
-    # Cluster angefasst - die eigentlichen Helm-Releases stehen als
-    # HelmRelease in k8s/flux.
+    # Inline-Manifest in die Machine-Config gelegt. Der Provider selbst fasst
+    # keinen Cluster an - die eigentlichen Helm-Releases stehen als
+    # HelmRelease in k8s/flux. (Das Modul spricht am Ende doch einmal mit dem
+    # Cluster, siehe terraform_data.cilium_manifest_sync - aber über
+    # talosctl, nicht über Helm.)
     #
     helm = {
       source  = "hashicorp/helm"
@@ -627,4 +629,51 @@ resource "local_sensitive_file" "talosconfig" {
   content         = data.talos_client_configuration.this.talos_config
   filename        = "${path.module}/talosconfig"
   file_permission = "0600"
+}
+
+# =====================================================================
+# Cilium-Manifest im Cluster nachziehen
+# =====================================================================
+
+#
+# Warum es diesen Block braucht, obwohl das Chart doch in der Machine-Config
+# steht: Talos legt Bootstrap-Manifeste beim Bootstrap an und fasst
+# bestehende Objekte danach nicht mehr an. Das war bis v1.13 ausdruecklich so
+# dokumentiert - fehlende Ressourcen anlegen, vorhandene unveraendert lassen,
+# nie loeschen. Seit v1.13 macht Talos inventory-gestuetztes Server-Side-Apply
+# und koennte es; verlassen kann man sich darauf nicht.
+#
+# `upgrade-k8s --to <bereits laufende Version>` ist der von Talos
+# vorgesehene Weg dafuer. Gleiche Version heisst kein Versionssprung, nur ein
+# Sync der Bootstrap-Manifeste.
+#
+# triggers_replace haengt an der gerenderten Zeichenkette, nicht an einer
+# Versionsnummer: Der Sync laeuft, wenn sich Chart-Version ODER Values
+# geaendert haben, und sonst nie. Beim allerersten Aufbau laeuft er einmal
+# ueberfluessig mit - Talos hat die Manifeste da gerade selbst angelegt. Das
+# kostet eine Minute und ist der Preis dafuer, hier keine Sonderregel zu
+# haben.
+#
+# Bewusst talosctl und nicht `kubectl apply` des gerenderten Manifests: Ein
+# Apply von aussen wuerde die Felder unter einem eigenen Field-Manager
+# uebernehmen und Talos beim naechsten Mal im Weg stehen.
+#
+resource "terraform_data" "cilium_manifest_sync" {
+  triggers_replace = [sha256(data.helm_template.cilium.manifest)]
+
+  provisioner "local-exec" {
+    command = join(" ", [
+      "talosctl --talosconfig ${local_sensitive_file.talosconfig.filename}",
+      "-n ${var.lan_ip}",
+      "upgrade-k8s --to ${var.kubernetes_version}",
+    ])
+  }
+
+  #
+  # Erst wenn der Cluster steht - upgrade-k8s spricht mit der API.
+  #
+  depends_on = [
+    data.talos_cluster_health.this,
+    local_sensitive_file.talosconfig,
+  ]
 }
