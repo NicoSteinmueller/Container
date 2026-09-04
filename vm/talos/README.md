@@ -55,6 +55,9 @@ blockiert so lange. 10–20 Minuten, überwiegend ISO-Download und zwei Reboots:
 6. `talos_machine_bootstrap` initialisiert etcd, Talos rollt das
    Cilium-Inline-Manifest aus
 7. Health-Check wartet auf einen gesunden Cluster
+8. `talosctl upgrade-k8s` zieht die Bootstrap-Manifeste nach — beim ersten
+   Aufbau überflüssig, weil Talos sie gerade selbst angelegt hat, aber
+   billiger als eine Sonderregel (siehe Cilium, „Eine Wertänderung")
 
 `kubeconfig` und `talosconfig` landen im Verzeichnis, beide in `.gitignore`.
 
@@ -199,7 +202,16 @@ Was daran hängt:
   neu und die Machine-Config wäre nie driftfrei.
 - Die Machine-Config wächst dadurch um rund 60 KB gerendertes YAML.
 
-### Eine Wertänderung ist mit `tofu apply` **nicht** im Cluster
+### Eine Wertänderung kommt nicht von allein im Cluster an
+
+> **Seit dem 04.09.2026 erledigt das `tofu apply` mit.**
+> `terraform_data.cilium_manifest_sync` in [main.tf](main.tf) hängt an der
+> Prüfsumme des gerenderten Charts und ruft bei Änderung
+> `talosctl upgrade-k8s --to <laufende Version>` — gleiche Version heißt kein
+> Versionssprung, nur ein Sync der Bootstrap-Manifeste. Der Rest dieses
+> Abschnitts beschreibt, was ohne diesen Block passiert, und bleibt stehen:
+> als Diagnose, wenn doch einmal etwas nicht ankommt, und weil die
+> Beobachtungen darin unabhängig davon gelten.
 
 Der wichtigste Fallstrick dieser Bauweise, und er meldet sich nicht von selbst:
 **Talos schreibt geänderte Inline-Manifeste nicht auf bereits bestehende
@@ -221,8 +233,19 @@ beim Einschalten von `l2announcements`: Flag und Leases-RBAC standen in der
 Machine-Config und fehlten im Cluster, und der Cilium-Pod war nicht einmal
 neu gestartet.
 
-Der Nachtrag ist ein Zweizeiler — der Inhalt kommt aus Talos selbst, ist also
-exakt das, was dort hinterlegt ist:
+**Seit Talos v1.13 wäre das eigentlich nicht mehr nötig:** Bootstrap-Manifeste
+laufen dort über inventory-gestütztes Server-Side-Apply, inklusive Pruning; die
+ConfigMap `kube-system/talos-bootstrap-manifests-inventory` ist der Beleg
+dafür. Verlassen kann man sich trotzdem nicht darauf. Am 04.09.2026, auf
+v1.13.7, blieben die neuen Requests für `cilium-operator` und `cilium-envoy`
+im Cluster aus, obwohl `Manifest 99-cilium` auf Version 2 stand und den
+richtigen Inhalt hatte. Ein Feldkonflikt war es nicht — `f:resources` gehörte
+laut `managedFields` niemandem. Der `ManifestApplyController` hatte in
+derselben Millisekunde gearbeitet, in der die Ressource aktualisiert wurde,
+22 ms lang, und lief danach nicht wieder.
+
+Der Nachtrag von Hand ist ein Zweizeiler — der Inhalt kommt aus Talos selbst,
+ist also exakt das, was dort hinterlegt ist:
 
 ```bash
 talosctl -n <node-ip> get manifests 99-cilium -o yaml \
@@ -240,7 +263,10 @@ Zwei Dinge, die dabei auffallen und in Ordnung sind:
 
 - `kubectl` warnt für jedes Objekt, dass die Annotation
   `last-applied-configuration` fehlt, und ergänzt sie. Erwartbar: Angelegt hat
-  die Objekte Talos, nicht `kubectl apply`.
+  die Objekte Talos, nicht `kubectl apply`. Genau deshalb geht die Automatik
+  oben über `talosctl` und nicht über diesen Zweizeiler — jedes `kubectl
+  apply` hinterlässt einen zweiten Field-Manager auf Objekten, die Talos
+  verwaltet.
 - Der Agent-Neustart unterbricht den Datapfad nicht spürbar — Cilium behält
   seine eBPF-Maps über einen Neustart hinweg.
 
