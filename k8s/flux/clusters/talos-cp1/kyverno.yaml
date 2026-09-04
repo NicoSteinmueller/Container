@@ -1,5 +1,5 @@
 #
-# Kyverno - und hier gibt es genau eine Regel.
+# Kyverno - und dafuer gibt es genau eine Regel.
 #
 # Sie beantwortet die Frage, die seit ingress-public offen ist: Was hindert
 # einen privaten Dienst daran, versehentlich oeffentlich zu werden?
@@ -7,9 +7,14 @@
 # Bisher gab es dagegen eine einzige Sperre - die Namespace-Liste in
 # ingress-public.yaml. Sie ist gut, aber sie ist eine: Ein Namespace zu viel
 # in dieser Liste, und ein interner Dienst haengt am oeffentlichen
-# Controller. Mit der Regel unten muessen es zwei Fehler gleichzeitig sein,
-# der Eintrag in der Liste UND das Label am Namespace, und beide stehen in
-# Git und sind im Review sichtbar.
+# Controller. Mit der Regel muessen es zwei Fehler gleichzeitig sein, der
+# Eintrag in der Liste UND das Label am Namespace, und beide stehen in Git
+# und sind im Review sichtbar.
+#
+# Die Regel steht nicht in dieser Datei, sondern in
+# k8s/flux/policies/public-ingress.yaml - sie braucht eine CRD, die erst das
+# Chart hier mitbringt. Die Begruendung steht bei der Kustomization ganz
+# unten.
 #
 # Deshalb kommt Kyverno vor dem ersten echten oeffentlichen Dienst und nicht
 # danach: Heute gibt es genau einen Ingress der Klasse `public` (whoami), an
@@ -127,6 +132,11 @@ spec:
     # niemand einsammelt und niemand aufraeumt. Das ist keine Kosmetik: Die
     # Objekte landen in etcd und wachsen mit jeder Anfrage.
     #
+    # `reporting` hat als einziger Block hier kein `enabled`, sondern eine
+    # Liste von Regelarten - der Schalter, den man dort erwartet, waere
+    # wirkungslos und der gerenderte Container behielte
+    # `--enableReporting=validate,mutate,...`. Deshalb jede Art einzeln.
+    #
     features:
       admissionReports:
         enabled: false
@@ -137,80 +147,51 @@ spec:
       validatingAdmissionPolicyReports:
         enabled: false
       reporting:
-        enabled: false
+        validate: false
+        mutate: false
+        mutateExisting: false
+        imageVerify: false
+        generate: false
       backgroundScan:
         enabled: false
 
 ---
 #
-# Die Regel.
+# Die Regeln selbst - k8s/flux/policies, eine eigene Kustomization.
 #
-# `ValidatingPolicy` statt der aelteren `ClusterPolicy`: Sie ist seit
-# Kyverno 1.19 die stabile API (policies.kyverno.io/v1) und formuliert die
-# Bedingung in CEL - derselben Sprache, in der eine native
-# ValidatingAdmissionPolicy sie spaeter erzwingen wuerde, falls der
-# background-Controller einmal dazukommt.
+# Warum getrennt: Die CRD `ValidatingPolicy` kommt aus dem Chart oben. Steht
+# eine Regel im selben Verzeichnis, prueft kustomize-controller sie im
+# selben Server-Side-Dry-Run wie die HelmRelease - und lehnt sie ab, weil
+# der API-Server die Art noch nicht kennt. Da ein gescheiterter Dry-Run die
+# ganze Stufe scheitern laesst, kaeme dann auch die HelmRelease nie an, die
+# die CRD gebracht haette. Genau das ist beim ersten Einbau passiert: Die
+# Wurzel-Kustomization stand rot und wendete fuer *keinen* Dienst mehr etwas
+# an.
 #
-# Gelesen: Ein Ingress ist zulaessig, wenn er NICHT die Klasse `public`
-# traegt, ODER wenn sein Namespace das Label homelab.io/zone=public hat.
+# `dependsOn: flux-system` ordnet, gibt aber keine Garantie: Die
+# Wurzel-Kustomization laeuft ohne `wait`, ist also fertig, sobald sie
+# angewendet hat - die HelmRelease installiert dann noch. Beim allerersten
+# Durchlauf steht diese Kustomization deshalb kurz auf `False` mit derselben
+# "no matches for kind"-Meldung. Das ist hier folgenlos und behebt sich
+# selbst: `retryInterval` versucht es im Minutentakt erneut, und beim ersten
+# Versuch nach dem Start des Admission-Controllers geht es durch. Der
+# Unterschied zu vorher ist, dass dieser Zustand nur eine Kustomization
+# betrifft und nicht den ganzen Cluster-Sync.
 #
-# `object.spec.?ingressClassName.orValue("")` statt eines direkten Zugriffs:
-# Das Feld ist optional. Ohne den Optional-Zugriff wuerde die Regel bei
-# jedem Ingress ohne Klassennamen mit einem CEL-Fehler abbrechen - und ein
-# Fehler in der Auswertung ist bei validationActions: [Deny] eine
-# Ablehnung. Ein Ingress ohne Klasse wird von keinem der beiden Controller
-# bedient (keine `is-default-class`), er ist also harmlos und soll
-# durchgehen.
-#
-# Das Label wird ueber `namespaceObject` gelesen, nicht ueber einen
-# Namespace-Selektor im Match: Der Selektor wuerde den Ingress bei fehlendem
-# Label gar nicht erst erfassen - und damit durchlassen. Hier ist es
-# umgekehrt gewollt: Kein Label heisst nicht oeffentlich.
-#
-apiVersion: policies.kyverno.io/v1
-kind: ValidatingPolicy
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
 metadata:
-  name: public-ingress-nur-in-public-namespaces
-  annotations:
-    homelab.io/beschreibung: >-
-      ingressClassName public nur in Namespaces mit homelab.io/zone=public.
+  name: kyverno-policies
+  namespace: flux-system
 spec:
-  #
-  # Fail, nicht Ignore. Ist Kyverno unten, scheitern Aenderungen an
-  # Ingresses - Flux versucht es beim naechsten Durchlauf erneut, und in der
-  # Zwischenzeit entsteht kein oeffentlicher Ingress an der Regel vorbei.
-  # Der umgekehrte Fall waere die stille Variante: Regel unwirksam, alles
-  # gruen.
-  #
-  # Der Webhook erfasst nur Ingresses. Ein Kyverno-Ausfall haelt also nicht
-  # den Cluster an, sondern genau die eine Ressourcenart, um die es geht.
-  #
-  failurePolicy: Fail
+  interval: 10m
+  retryInterval: 1m
+  path: k8s/flux/policies
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  dependsOn:
+    - name: flux-system
 
-  validationActions:
-    - Deny
-
-  matchConstraints:
-    resourceRules:
-      - apiGroups:
-          - networking.k8s.io
-        apiVersions:
-          - v1
-        operations:
-          - CREATE
-          - UPDATE
-        resources:
-          - ingresses
-
-  validations:
-    - expression: >-
-        object.spec.?ingressClassName.orValue("") != "public" ||
-        (has(namespaceObject.metadata.labels) &&
-        "homelab.io/zone" in namespaceObject.metadata.labels &&
-        namespaceObject.metadata.labels["homelab.io/zone"] == "public")
-      message: >-
-        ingressClassName "public" ist nur in Namespaces mit dem Label
-        homelab.io/zone=public erlaubt. Dieser Ingress waere aus dem Internet
-        erreichbar gewesen. Gewollt? Dann das Label am Namespace setzen UND
-        den Namespace in ingress-public.yaml eintragen - beides, sonst wird
-        er ohnehin nicht bedient.
