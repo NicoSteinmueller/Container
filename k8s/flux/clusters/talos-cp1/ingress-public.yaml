@@ -7,10 +7,15 @@
 # Zertifikatsspeicher. Die Trennung laeuft ueber Namespace und RBAC.
 #
 # Die Vertrauensgrenze ist hier das offene Internet. Entsprechend sitzt vor
-# jedem Router eine Kette: CrowdSec-Bouncer, gefaelschte Herkunftsheader
-# abschneiden, HSTS, Ratelimit. Beim internen Controller gibt es das nicht,
-# und das ist kein Versehen - wer im LAN steht, hat ohnehin mehr Wege als
-# diesen.
+# jedem Router eine Kette: CrowdSec-Bouncer, HSTS, Ratelimit. Beim internen
+# Controller gibt es das nicht, und das ist kein Versehen - wer im LAN steht,
+# hat ohnehin mehr Wege als diesen.
+#
+# Gefaelschte Herkunftsheader stehen nicht in der Kette, obwohl sie hierher
+# gehoerten: Dagegen wirkt `forwardedHeaders.trustedIPs: []` weiter unten,
+# und zwar vollstaendig - Traefik uebernimmt die X-Forwarded-*-Kopfzeilen
+# nicht, es ueberschreibt sie. Eine Middleware daneben nahm nur dem Backend
+# die richtigen Werte weg; die Begruendung steht dort.
 #
 # ---------------------------------------------------------------------------
 # Der Stand: whoami ist der einzige Dienst hier drin.
@@ -21,19 +26,17 @@
 # Testdienst, an dem sich der Weg von aussen zeigen laesst, bevor etwas
 # daran haengt, das Daten hat.
 #
-# Zwei Stellen sind deshalb ausdruecklich als Baustelle markiert und beim
+# Vier Stellen sind deshalb ausdruecklich als BAUSTELLE markiert und beim
 # Migrieren nachzuziehen:
 #
-#   providers.kubernetesIngress.namespaces  (und kubernetesCRD.namespaces)
-#   die RoleBindings weiter unten
-#   die Egress-Regel allow-to-served-namespaces
+#   providers.kubernetesIngress.namespaces
+#   providers.kubernetesCRD.namespaces
+#   eine RoleBinding je Dienst-Namespace, weiter unten
+#   ein toEndpoints-Block in der CiliumNetworkPolicy
 # ---------------------------------------------------------------------------
 #
 # Was noch fehlt und bewusst nicht hier steht:
 #
-#   - Kyverno. Die Regel "ingressClassName: public nur in Namespaces mit
-#     homelab.io/zone=public" gibt es noch nicht. Mit diesem Controller wird
-#     sie tragend statt ergaenzend - Schritt 9.
 #   - AppSec. Der CrowdSec-Bouncer fragt hier nur die LAPI nach bekannten
 #     Angreifern; die WAF-Regeln des Docker-Stands kommen mit dem ersten
 #     Dienst, an dem sie etwas zu pruefen haben (siehe crowdsec.yaml).

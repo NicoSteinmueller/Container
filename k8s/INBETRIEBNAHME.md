@@ -16,9 +16,9 @@ Was bewusst *nicht* Teil der Inbetriebnahme ist, sondern später kommt, steht in
 > Umstellung von `ingress-internal` auf LoadBalancer (Schritt 5) sind
 > zurückgekommen, als Flux-Manifest statt als Terraform-Modul; die
 > Ingress-Firewall (Schritt 3) steht ebenfalls, und mit `ingress-public`
-> (Schritt 8) und CrowdSec (Schritt 10) auch der öffentliche Weg — bedient
-> wird darüber bisher nur whoami. Offen sind Kyverno (Schritt 9) und die
-> Anwendungen selbst (Schritt 7): Immich und Nextcloud laufen weiter als
+> (Schritt 8), CrowdSec (Schritt 10) und die Kyverno-Regel (Schritt 9) auch
+> der öffentliche Weg — bedient wird darüber bisher nur whoami. Offen sind
+> die Anwendungen selbst (Schritt 7): Immich und Nextcloud laufen weiter als
 > Container auf dem Host.
 >
 > Die betroffenen Schritte bleiben trotzdem hier stehen. Sie beschreiben, was
@@ -325,16 +325,20 @@ Hostnamen statt an NodePorts, und ein Service vom Typ `LoadBalancer` bekommt
 eine Adresse, die im Netz auch angekündigt wird. Der interne Controller nimmt
 sie seit Schritt 5 auch in Anspruch — er hängt auf `.231` statt am hostPort.
 
-**Noch offen, und was daran hängt:**
+**Zurückgekommen sind inzwischen auch** die Ingress-Firewall (Schritt 3),
+`ingress-public` mit der Klasse `public` (Schritt 8), CrowdSec (Schritt 10)
+und die Kyverno-Regel darauf (Schritt 9). Was der frühere Plattform-Stack
+konnte, kann der Cluster damit wieder — bedient wird über den öffentlichen
+Weg bisher nur whoami.
 
-- **Kein Kyverno**, und das ist jetzt die dringlichste Lücke: Seit Schritt 8
-  existiert die Klasse `public`, und damit hat die Regel ihren Anwendungsfall.
-  Sie ist die einzige zweite Sperre gegen „privater Dienst versehentlich
-  öffentlich" — siehe Schritt 9. Die Reloader-Annotation, die Kyverno ebenfalls
-  setzte, wird nicht mehr gebraucht (siehe [flux/README.md](flux/README.md),
-  Abschnitt Rotation).
+**Noch offen:**
+
 - **Kein CSR-Genehmiger.** `kubelet_server_certs` in `vm/talos` muss aus
   bleiben, sonst bricht der Apply dort ab.
+- **Die Anwendungen.** Immich und Nextcloud laufen weiter als Container auf
+  dem Unraid-Host. Das ist Schritt 7, und daran hängt der Rest: die
+  Portfreigabe (Schritt 11) hat vorher nichts weiterzuleiten, was sie
+  rechtfertigt.
 
 ## 3. Talos-Ingress-Firewall
 
@@ -801,20 +805,66 @@ Das Zertifikat kommt trotzdem: DNS-01 braucht keinen A-Record.
 
 ## 9. Kyverno — tragend, nicht ergänzend
 
-Es gibt nur noch **eine** unabhängige Sperre gegen „privater Dienst
-versehentlich öffentlich": die Namespace-Liste aus Schritt 8. **Kyverno gehört
-deshalb vor den ersten öffentlichen Dienst, nicht danach.**
+Steht als [flux/clusters/talos-cp1/kyverno.yaml](flux/clusters/talos-cp1/kyverno.yaml),
+Chart `kyverno/kyverno` 3.9.0.
 
-Regel: `ingressClassName: public` nur in Namespaces mit dem Label
+Ohne die Regel gibt es nur **eine** Sperre gegen „privater Dienst versehentlich
+öffentlich": die Namespace-Liste aus Schritt 8. **Kyverno gehört deshalb vor
+den ersten öffentlichen Dienst, nicht danach** — heute trägt genau ein Ingress
+die Klasse `public` (whoami), und an dem hängt nichts.
+
+Die Regel: `ingressClassName: public` nur in Namespaces mit dem Label
 `homelab.io/zone: public`. Damit muss ein Versehen an zwei Stellen gleichzeitig
 passieren — Label am Namespace **und** Eintrag in der Namespace-Liste —, und
 beide stehen in Git und sind im Review sichtbar.
 
 Der Labelname ist `homelab.io/zone` und nicht `exposure`, wie hier früher
 stand: Die Namespaces tragen ihn längst, `traefik-internal` mit `internal`,
-`traefik-public` und `whoami` mit `public`. Eine Regel auf ein zweites Label,
-das nur sie selbst kennt, wäre eine Regel, die man beim Anlegen des nächsten
-Namespace vergisst.
+`traefik-public` und `whoami` mit `public`.
+
+**Nur der Admission-Controller.** Das Chart bringt vier; `background`,
+`cleanup` und `reports` sind aus. Der Node stand beim Einbau bei 76 % Speicher
+und 73 % Requests, und Schritt 7 will davon noch etwas übrig lassen. Der Preis,
+benannt: keine PolicyReports (ein Verstoß zeigt sich als abgelehnte Anfrage,
+bei Flux als Fehler in der Kustomization), und keine aus der Regel erzeugte
+native ValidatingAdmissionPolicy — die macht der background-Controller.
+
+**`ValidatingPolicy` statt `ClusterPolicy`.** Seit Kyverno 1.19 ist das die
+stabile API (`policies.kyverno.io/v1`), und sie formuliert die Bedingung in
+CEL:
+
+```
+object.spec.?ingressClassName.orValue("") != "public" ||
+(has(namespaceObject.metadata.labels) &&
+ "homelab.io/zone" in namespaceObject.metadata.labels &&
+ namespaceObject.metadata.labels["homelab.io/zone"] == "public")
+```
+
+Zwei Feinheiten darin, die man sonst erst im Fehlerfall bemerkt:
+
+- **Der Optional-Zugriff auf `ingressClassName`.** Das Feld ist optional; ein
+  direkter Zugriff bräche bei jedem Ingress ohne Klassennamen mit einem
+  CEL-Fehler ab — und ein Auswertungsfehler ist bei `validationActions: [Deny]`
+  eine Ablehnung.
+- **Das Label kommt aus `namespaceObject`, nicht aus einem Namespace-Selektor
+  im Match.** Ein Selektor würde einen Ingress in einem Namespace *ohne* Label
+  gar nicht erst erfassen und ihn damit durchlassen. Hier ist es umgekehrt
+  gewollt: kein Label heißt nicht öffentlich.
+
+`failurePolicy: Fail`: Ist Kyverno unten, scheitern Änderungen an Ingresses,
+und Flux versucht es erneut. Der Webhook erfasst nur Ingresses — ein Ausfall
+hält also nicht den Cluster an, sondern genau die eine Ressourcenart.
+
+Abnahme:
+
+```bash
+# muss abgelehnt werden
+kubectl -n headlamp create ingress test --class=public --rule="x.example/*=headlamp:80"
+
+# muss durchgehen
+kubectl -n whoami create ingress test --class=public --rule="x.example/*=whoami:80" --dry-run=server
+kubectl -n headlamp create ingress test --class=internal --rule="x.example/*=headlamp:80" --dry-run=server
+```
 
 Die Reloader-Annotation, die Kyverno früher ebenfalls setzte, wird nicht mehr
 gebraucht; siehe [flux/README.md](flux/README.md), Abschnitt Rotation.
