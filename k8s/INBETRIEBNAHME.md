@@ -805,8 +805,10 @@ Das Zertifikat kommt trotzdem: DNS-01 braucht keinen A-Record.
 
 ## 9. Kyverno — tragend, nicht ergänzend
 
-Steht als [flux/clusters/talos-cp1/kyverno.yaml](flux/clusters/talos-cp1/kyverno.yaml),
-Chart `kyverno/kyverno` 3.9.0.
+Steht als [flux/clusters/talos-cp1/kyverno.yaml](flux/clusters/talos-cp1/kyverno.yaml)
+(Chart `kyverno/kyverno` 3.9.0) und
+[flux/policies/public-ingress.yaml](flux/policies/public-ingress.yaml) — zwei
+Dateien, aus einem Grund, der weiter unten steht.
 
 Ohne die Regel gibt es nur **eine** Sperre gegen „privater Dienst versehentlich
 öffentlich": die Namespace-Liste aus Schritt 8. **Kyverno gehört deshalb vor
@@ -855,11 +857,62 @@ Zwei Feinheiten darin, die man sonst erst im Fehlerfall bemerkt:
 und Flux versucht es erneut. Der Webhook erfasst nur Ingresses — ein Ausfall
 hält also nicht den Cluster an, sondern genau die eine Ressourcenart.
 
+**Die Regel liegt außerhalb von `clusters/talos-cp1`, und das ist der
+eigentliche Lerneffekt dieses Schritts.** Der erste Einbau hatte Chart und
+Regel in einer Datei im Wurzelverzeichnis — und legte damit den gesamten
+Cluster-Sync still:
+
+```
+kustomization/flux-system   READY=False
+  ValidatingPolicy/public-ingress-nur-in-public-namespaces dry-run failed:
+  no matches for kind "ValidatingPolicy" in version "policies.kyverno.io/v1"
+```
+
+Die CRD kommt aus dem Chart, das in derselben Kustomization steht.
+kustomize-controller prüft aber erst alles im Server-Side-Dry-Run und wendet
+dann an; ein Objekt, dessen Art der API-Server nicht kennt, lässt die ganze
+Stufe scheitern — also auch die HelmRelease, die die CRD gebracht hätte. Der
+Namespace war angelegt (der geht in einer früheren Stufe durch), sonst nichts.
+Und weil es *die* Wurzel-Kustomization ist, stand danach für **jeden** Dienst
+kein Abgleich mehr, kein Prune, keine Drift-Korrektur. Ein Henne-Ei-Problem,
+das sich nicht von selbst löst: Jeder weitere Durchlauf scheitert an derselben
+Stelle.
+
+Deshalb jetzt zwei Kustomizations. Die zweite (`kyverno-policies`, definiert
+am Ende von `kyverno.yaml`) zeigt auf `k8s/flux/policies` und hängt per
+`dependsOn` an der Wurzel. Warum nicht ein Unterverzeichnis unter
+`talos-cp1/`: kustomize-controller erzeugt seine `kustomization.yaml` aus
+einem **rekursiven** Verzeichnislauf und sammelte die Datei trotzdem wieder
+ein. Erst eine Ebene über `clusters/` ist sie wirklich draußen.
+
+`dependsOn` ordnet, garantiert aber nichts — die Wurzel läuft ohne `wait` und
+ist fertig, sobald sie angewendet hat, während die HelmRelease noch
+installiert. Beim ersten Durchlauf gegen einen frischen Cluster steht
+`kyverno-policies` deshalb kurz mit derselben `no matches for kind`-Meldung auf
+`False`. Das ist gewollt und behebt sich selbst: `retryInterval: 1m`, und der
+erste Versuch nach dem Start des Admission-Controllers geht durch. Der
+Unterschied zu vorher ist der ganze Punkt — betroffen ist eine Kustomization,
+nicht der Cluster.
+
+**Eine Falle in den Chart-Values, im Vorbeigehen:** `features.reporting` hat
+als einziger dieser Blöcke kein `enabled`, sondern eine Liste von Regelarten
+(`validate`, `mutate`, `mutateExisting`, `imageVerify`, `generate`). Ein
+`enabled: false` dort ist stillschweigend wirkungslos — der gerenderte
+Container behält `--enableReporting=validate,mutate,…`. Helm meldet unbekannte
+Schlüssel nicht; sichtbar wird so etwas nur mit `helm template` und einem Blick
+in die `args`.
+
 Abnahme:
 
 ```bash
-# muss abgelehnt werden
-kubectl -n headlamp create ingress test --class=public --rule="x.example/*=headlamp:80"
+# beide gruen - flux-system sofort, kyverno-policies nach dem ersten Retry
+kubectl -n flux-system get kustomizations
+kubectl -n kyverno get pods
+
+# muss abgelehnt werden (--dry-run=server ruft den Webhook trotzdem auf -
+# und laesst, falls die Regel doch nicht greift, keinen echten oeffentlichen
+# Ingress in headlamp zurueck)
+kubectl -n headlamp create ingress test --class=public --rule="x.example/*=headlamp:80" --dry-run=server
 
 # muss durchgehen
 kubectl -n whoami create ingress test --class=public --rule="x.example/*=whoami:80" --dry-run=server
