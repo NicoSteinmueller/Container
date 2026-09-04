@@ -1,0 +1,107 @@
+#
+# Die zweite Sperre gegen "privater Dienst versehentlich oeffentlich".
+#
+# Ohne sie gibt es genau eine: die Namespace-Liste in ingress-public.yaml.
+# Ein Namespace zu viel in dieser Liste, und ein interner Dienst haengt am
+# oeffentlichen Controller. Mit dieser Regel muessen es zwei Fehler
+# gleichzeitig sein - der Eintrag in der Liste UND das Label am Namespace -,
+# und beide stehen in Git und sind im Review sichtbar.
+#
+# ---------------------------------------------------------------------------
+# Warum nativ und nicht Kyverno.
+#
+# `ValidatingAdmissionPolicy` ist dieselbe Bedingung in derselben Sprache -
+# CEL -, nur ohne alles darunter: kein Pod, keine CRD, kein Webhook, kein
+# zweiter Controller, der ausfallen kann. Der API-Server wertet sie selbst
+# aus. Seit Kubernetes 1.30 ist die API stabil, der Cluster laeuft auf 1.36:
+#
+#   $ kubectl api-resources --api-group=admissionregistration.k8s.io
+#   validatingadmissionpolicies    admissionregistration.k8s.io/v1
+#
+# Ein Nebeneffekt, der eine ganze Konstruktion einspart: Kyverno brauchte
+# zwei Flux-Kustomizations, weil seine CRD erst aus dem Chart kam und der
+# Server-Side-Dry-Run der Wurzel-Kustomization sonst an der unbekannten Art
+# scheiterte - was den gesamten Cluster-Sync anhielt. Diese beiden Arten
+# kennt der API-Server von Haus aus. Die Datei darf deshalb hier liegen.
+# ---------------------------------------------------------------------------
+#
+# Gelesen: Ein Ingress ist zulaessig, wenn er NICHT die Klasse `public`
+# traegt, ODER wenn sein Namespace das Label homelab.io/zone=public hat.
+#
+# Der Labelname ist `homelab.io/zone` und nicht etwas Eigenes: Die Namespaces
+# tragen ihn laengst - traefik-internal, headlamp, crowdsec mit `internal`,
+# traefik-public und whoami mit `public`. Eine Regel auf ein zweites Label,
+# das nur sie selbst kennt, waere eine Regel, die man beim Anlegen des
+# naechsten Namespace vergisst.
+#
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: public-ingress-nur-in-public-namespaces
+spec:
+  #
+  # Fail, nicht Ignore. Anders als bei einem Webhook ist das hier fast
+  # folgenlos: Es gibt keinen Pod, der ausfallen koennte. `Fail` greift nur
+  # noch, wenn die CEL-Auswertung selbst scheitert - und dann ist eine
+  # Ablehnung die richtige Antwort.
+  #
+  failurePolicy: Fail
+
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - networking.k8s.io
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - ingresses
+
+  validations:
+    #
+    # `object.spec.?ingressClassName.orValue("")` statt eines direkten
+    # Zugriffs: Das Feld ist optional. Ohne den Optional-Zugriff braeche die
+    # Regel bei jedem Ingress ohne Klassennamen mit einem CEL-Fehler ab - und
+    # ein Auswertungsfehler ist bei validationActions: [Deny] eine Ablehnung.
+    # Ein Ingress ohne Klasse wird von keinem der beiden Controller bedient
+    # (keine `is-default-class`), er ist also harmlos und soll durchgehen.
+    #
+    # Das Label kommt aus `namespaceObject`, nicht aus einem Namespace-Selektor
+    # im Match: Der Selektor wuerde den Ingress bei fehlendem Label gar nicht
+    # erst erfassen - und damit durchlassen. Hier ist es umgekehrt gewollt:
+    # Kein Label heisst nicht oeffentlich.
+    #
+    - expression: >-
+        object.spec.?ingressClassName.orValue("") != "public" ||
+        (has(namespaceObject.metadata.labels) &&
+        "homelab.io/zone" in namespaceObject.metadata.labels &&
+        namespaceObject.metadata.labels["homelab.io/zone"] == "public")
+      message: >-
+        ingressClassName "public" ist nur in Namespaces mit dem Label
+        homelab.io/zone=public erlaubt. Dieser Ingress waere aus dem Internet
+        erreichbar gewesen. Gewollt? Dann das Label am Namespace setzen UND
+        den Namespace in ingress-public.yaml eintragen - beides, sonst wird
+        er ohnehin nicht bedient.
+
+---
+#
+# Die Policy allein tut nichts - erst das Binding schaltet sie scharf. Das
+# ist der Unterschied zu Kyverno und kein Umweg: Dieselbe Policy laesst sich
+# damit erst im Audit-Modus beobachten und spaeter auf Deny stellen, ohne sie
+# anzufassen.
+#
+# `matchResources` bleibt leer: Es gilt, was die Policy oben in
+# matchConstraints sagt, cluster-weit. Kein Namespace ist ausgenommen -
+# gerade kube-system nicht, denn ein oeffentlicher Ingress waere dort so
+# falsch wie ueberall.
+#
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: public-ingress-nur-in-public-namespaces
+spec:
+  policyName: public-ingress-nur-in-public-namespaces
+  validationActions:
+    - Deny
