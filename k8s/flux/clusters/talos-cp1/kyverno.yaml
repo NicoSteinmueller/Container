@@ -1,0 +1,216 @@
+#
+# Kyverno - und hier gibt es genau eine Regel.
+#
+# Sie beantwortet die Frage, die seit ingress-public offen ist: Was hindert
+# einen privaten Dienst daran, versehentlich oeffentlich zu werden?
+#
+# Bisher gab es dagegen eine einzige Sperre - die Namespace-Liste in
+# ingress-public.yaml. Sie ist gut, aber sie ist eine: Ein Namespace zu viel
+# in dieser Liste, und ein interner Dienst haengt am oeffentlichen
+# Controller. Mit der Regel unten muessen es zwei Fehler gleichzeitig sein,
+# der Eintrag in der Liste UND das Label am Namespace, und beide stehen in
+# Git und sind im Review sichtbar.
+#
+# Deshalb kommt Kyverno vor dem ersten echten oeffentlichen Dienst und nicht
+# danach: Heute gibt es genau einen Ingress der Klasse `public` (whoami), an
+# dem nichts haengt. Nach Schritt 7 waeren es Immich und Nextcloud, und ein
+# Fehlversuch waere dann teuer.
+#
+# ---------------------------------------------------------------------------
+# Nur der Admission-Controller.
+#
+# Das Chart bringt vier: admission, background, cleanup, reports. Fuer eine
+# validierende Regel braucht es den ersten. Die anderen sind abgeschaltet,
+# und das ist eine Speicherentscheidung mit Ansage - der Node stand beim
+# Einbau bei 76 % Speicher und 73 % Requests, und Schritt 7 will davon noch
+# etwas fuer Immich und Nextcloud uebrig lassen (siehe INBETRIEBNAHME.md,
+# Abschnitt RAM-Budget).
+#
+# Was damit fehlt, ehrlich benannt:
+#
+#   - Keine PolicyReport-Objekte. Ein Verstoss zeigt sich als abgelehnte
+#     Anfrage - bei Flux als Fehler in der Kustomization, bei kubectl direkt
+#     auf der Konsole. Das ist fuer eine Enforce-Regel der lautere Weg;
+#     Reports waeren fuer Audit-Regeln interessant, und die gibt es hier
+#     nicht.
+#   - Keine erzeugte ValidatingAdmissionPolicy. Kyverno koennte die Regel in
+#     eine native VAP uebersetzen, die der API-Server selbst durchsetzt -
+#     das macht aber der background-Controller. Ohne ihn laeuft die Regel
+#     ueber Kyvernos eigenen Webhook.
+#   - Kein generate/mutate-existing und keine CleanupPolicies. Beides wird
+#     hier nicht gebraucht; die Reloader-Annotation, die Kyverno frueher
+#     cluster-weit setzte, macht Reloader inzwischen selbst (reloader.yaml).
+#
+# Wer eine dieser Faehigkeiten braucht, schaltet den zugehoerigen Controller
+# hier ein - und rechnet vorher nach, was der Node noch hat.
+# ---------------------------------------------------------------------------
+#
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: kyverno
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://kyverno.github.io/kyverno
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kyverno
+  labels:
+    homelab.io/zone: internal
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kyverno
+  namespace: flux-system
+spec:
+  interval: 10m
+  releaseName: kyverno
+  targetNamespace: kyverno
+  storageNamespace: kyverno
+  chart:
+    spec:
+      chart: kyverno
+      version: "3.9.0"
+      sourceRef:
+        kind: HelmRepository
+        name: kyverno
+        namespace: flux-system
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    crds:
+      install: true
+
+    admissionController:
+      replicas: 1
+
+      #
+      # Enger als die Chart-Vorgabe (100m/384Mi). Ein Cluster mit einer
+      # einzigen Regel auf einer Ressourcenart hat wenig zu tun; das Limit
+      # bleibt grosszuegig, damit ein CRD-Update beim Start nicht am
+      # Speicher scheitert.
+      #
+      container:
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            memory: 384Mi
+
+    #
+    # Die drei anderen Controller - siehe Kopf der Datei.
+    #
+    backgroundController:
+      enabled: false
+    cleanupController:
+      enabled: false
+    reportsController:
+      enabled: false
+
+    #
+    # Ohne reports-Controller erzeugt der Admission-Controller Berichte, die
+    # niemand einsammelt und niemand aufraeumt. Das ist keine Kosmetik: Die
+    # Objekte landen in etcd und wachsen mit jeder Anfrage.
+    #
+    features:
+      admissionReports:
+        enabled: false
+      aggregateReports:
+        enabled: false
+      policyReports:
+        enabled: false
+      validatingAdmissionPolicyReports:
+        enabled: false
+      reporting:
+        enabled: false
+      backgroundScan:
+        enabled: false
+
+---
+#
+# Die Regel.
+#
+# `ValidatingPolicy` statt der aelteren `ClusterPolicy`: Sie ist seit
+# Kyverno 1.19 die stabile API (policies.kyverno.io/v1) und formuliert die
+# Bedingung in CEL - derselben Sprache, in der eine native
+# ValidatingAdmissionPolicy sie spaeter erzwingen wuerde, falls der
+# background-Controller einmal dazukommt.
+#
+# Gelesen: Ein Ingress ist zulaessig, wenn er NICHT die Klasse `public`
+# traegt, ODER wenn sein Namespace das Label homelab.io/zone=public hat.
+#
+# `object.spec.?ingressClassName.orValue("")` statt eines direkten Zugriffs:
+# Das Feld ist optional. Ohne den Optional-Zugriff wuerde die Regel bei
+# jedem Ingress ohne Klassennamen mit einem CEL-Fehler abbrechen - und ein
+# Fehler in der Auswertung ist bei validationActions: [Deny] eine
+# Ablehnung. Ein Ingress ohne Klasse wird von keinem der beiden Controller
+# bedient (keine `is-default-class`), er ist also harmlos und soll
+# durchgehen.
+#
+# Das Label wird ueber `namespaceObject` gelesen, nicht ueber einen
+# Namespace-Selektor im Match: Der Selektor wuerde den Ingress bei fehlendem
+# Label gar nicht erst erfassen - und damit durchlassen. Hier ist es
+# umgekehrt gewollt: Kein Label heisst nicht oeffentlich.
+#
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: public-ingress-nur-in-public-namespaces
+  annotations:
+    homelab.io/beschreibung: >-
+      ingressClassName public nur in Namespaces mit homelab.io/zone=public.
+spec:
+  #
+  # Fail, nicht Ignore. Ist Kyverno unten, scheitern Aenderungen an
+  # Ingresses - Flux versucht es beim naechsten Durchlauf erneut, und in der
+  # Zwischenzeit entsteht kein oeffentlicher Ingress an der Regel vorbei.
+  # Der umgekehrte Fall waere die stille Variante: Regel unwirksam, alles
+  # gruen.
+  #
+  # Der Webhook erfasst nur Ingresses. Ein Kyverno-Ausfall haelt also nicht
+  # den Cluster an, sondern genau die eine Ressourcenart, um die es geht.
+  #
+  failurePolicy: Fail
+
+  validationActions:
+    - Deny
+
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - networking.k8s.io
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - ingresses
+
+  validations:
+    - expression: >-
+        object.spec.?ingressClassName.orValue("") != "public" ||
+        (has(namespaceObject.metadata.labels) &&
+        "homelab.io/zone" in namespaceObject.metadata.labels &&
+        namespaceObject.metadata.labels["homelab.io/zone"] == "public")
+      message: >-
+        ingressClassName "public" ist nur in Namespaces mit dem Label
+        homelab.io/zone=public erlaubt. Dieser Ingress waere aus dem Internet
+        erreichbar gewesen. Gewollt? Dann das Label am Namespace setzen UND
+        den Namespace in ingress-public.yaml eintragen - beides, sonst wird
+        er ohnehin nicht bedient.
