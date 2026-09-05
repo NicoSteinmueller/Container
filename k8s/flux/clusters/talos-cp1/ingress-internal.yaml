@@ -147,15 +147,104 @@ spec:
             cidr: 192.168.178.0/24
 
 
+---
 #
-# Kein Egress-Default-Deny in diesem Namespace, und das ist eine Entscheidung,
-# keine Luecke: Der Controller muss die Kubernetes-API erreichen, und die
-# liegt hinter einer ClusterIP, deren Backend die Node-Adresse ist - also die
-# Identitaet `host`, gegen die ipBlock-Regeln nicht greifen. Eine Egress-Policy
-# hier waere schwer zu schreiben und noch schwerer zu debuggen. Die Zusage
-# "kein Pod erreicht das LAN" gehoert ohnehin zu den Anwendungs-Namespaces;
-# dort kommt sie mit dem ersten migrierten Dienst.
+# Egress-Default-Deny - dieselbe Bauart wie `traefik-public-egress` in
+# ingress-public.yaml. Zwei Controller derselben Software sollten sich nicht
+# darin unterscheiden, wohin sie sprechen duerfen.
 #
+# Hier stand die Begruendung, warum es das nicht gibt: Die Kubernetes-API
+# liege hinter einer ClusterIP, deren Backend die Node-Adresse sei - also die
+# Identitaet `host`, gegen die ipBlock-Regeln nicht greifen. Das stimmt, und
+# es ist der Grund, warum eine `kind: NetworkPolicy` das hier nicht kann.
+#
+# Die Cilium-Variante kann es, weil sie nicht ueber Adressen geht, sondern
+# ueber Identitaeten. Und die Node-Adresse traegt zwei Labels, nicht eines:
+#
+#   $ kubectl -n kube-system exec ds/cilium -- \
+#       hubble observe --to-port 6443 -o json | jq .flow.destination.labels
+#     reserved:host, reserved:kube-apiserver
+#
+# `toEntities: [kube-apiserver]` trifft damit genau den Weg zur API - und der
+# Port darunter macht ihn eng. Ohne ihn waere die Regel wegen der gemeinsamen
+# Identitaet so breit wie `toEntities: [host]`, also inklusive Kubelet auf
+# 10250 und allem anderen auf dem Node.
+#
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: traefik-internal-egress
+  namespace: traefik-internal
+spec:
+  endpointSelector: {}
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    #
+    # Die bedienten Namespaces - dieselben, die oben in `providers.namespaces`
+    # stehen. Kommt dort einer dazu, gehoert er auch hierher; sonst nimmt der
+    # Controller den Ingress an und erreicht das Backend nicht.
+    #
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: headlamp
+      toPorts:
+        - ports:
+            - port: "4466"
+              protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: whoami
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+
+    #
+    # ACME. Das ist die Regel, die man vergisst, weil ihr Fehlen erst in
+    # sechzig Tagen auffaellt - dann naemlich, wenn das Wildcard erneuert
+    # werden muesste und der DNS-01-Challenge der Weg fehlt:
+    #
+    #   443 - Let's Encrypt (acme-v02.api.letsencrypt.org) und die
+    #         IONOS-API, ueber die der TXT-Record gesetzt wird
+    #    53 - die Resolver 1.1.1.1 und 8.8.8.8 aus `propagation`, die
+    #         Traefik direkt fragt, ob der Record schon steht
+    #
+    # `except` ist auch hier die eigentliche Regel: Internet ja, Heimnetz
+    # nein. Der Controller darf hinaus, aber nicht zum Unraid-Host.
+    #
+    - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+            - 169.254.0.0/16
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
 
 ---
 #

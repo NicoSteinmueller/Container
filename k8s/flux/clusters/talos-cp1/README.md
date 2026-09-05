@@ -3,6 +3,54 @@
 Was hier liegt, rollt Flux automatisch aus - dies ist der `sync.path` der
 FluxInstance aus `../../main.tf`.
 
+## Egress: wer aus dem Cluster heraus darf
+
+Eingehend ist die Trennung über Zonen und `default-deny-ingress` je Namespace
+geregelt. Die Gegenrichtung war es lange nicht — ohne Egress-Regel erreicht
+jeder Pod das ganze Heimnetz, den Unraid-Host eingeschlossen. Nachgemessen:
+
+```bash
+kubectl -n crowdsec exec ds/crowdsec-agent -- nc -z 192.168.178.3 80
+```
+
+Jeder Namespace mit eigenen Pods trägt deshalb eine `CiliumNetworkPolicy` mit
+`endpointSelector: {}` und einem `egress`-Block — das allein schaltet
+Default-Deny für die ausgehende Richtung. Die Begründung je Regel steht in der
+jeweiligen Datei.
+
+| Namespace            | Darf hinaus zu                                              |
+|----------------------|-------------------------------------------------------------|
+| `crowdsec`           | CoreDNS · LAPI `:8080` · Internet `:443` (CAPI, Hub)         |
+| `headlamp`           | CoreDNS · kube-apiserver `:6443`                             |
+| `reloader`           | CoreDNS · kube-apiserver `:6443`                             |
+| `local-path-storage` | CoreDNS · kube-apiserver `:6443`                             |
+| `traefik-internal`   | + headlamp `:4466` · whoami `:80` · Internet `:443`/`:53`    |
+| `traefik-public`     | + LAPI · whoami · Internet `:443`/`:53`                      |
+| `whoami`             | CoreDNS (`kind: NetworkPolicy`, aus dem Chart)               |
+
+Ins Heimnetz darf keiner: Die Internet-Regeln sind `toCIDRSet` auf `0.0.0.0/0`
+mit RFC 1918 und `169.254.0.0/16` unter `except`.
+
+**Zwei Namespaces haben bewusst keine** — beide, weil die Policy dort nicht
+wirken *könnte*, nicht weil sie unerwünscht wäre:
+
+- **`csi-driver-nfs`** — beide Pods laufen auf hostNetwork und tragen damit die
+  Identität des Nodes. Keine NetworkPolicy greift auf sie. Begründung in
+  [nfs-storage.yaml](nfs-storage.yaml).
+- **`kube-system`** — sechs von neun Pods ebenfalls hostNetwork (Cilium, Envoy,
+  Operator und die drei Static Pods). Adressierbar blieben CoreDNS und
+  metrics-server. CoreDNS braucht den Resolver im LAN (`dns_servers` aus
+  `vm/talos/terraform.tfvars`) — eine Regel dafür koppelt eine Flux-Datei an
+  die tfvars, und ein Fehler nimmt die clusterweite Namensauflösung mit. Der
+  Gewinn steht dazu in keinem Verhältnis.
+
+```bash
+# Gegenprobe nach dem Rollout - erwartet: kein Durchkommen mehr
+kubectl -n crowdsec exec ds/crowdsec-agent -- nc -z -w3 192.168.178.3 80
+kubectl -n kube-system exec ds/cilium -- \
+  hubble observe --from-namespace crowdsec --verdict DROPPED --last 50
+```
+
 ## `whoami.yaml`
 
 `HelmRelease` auf das lokale Chart `k8s/whoami/chart` (Deployment, Service,

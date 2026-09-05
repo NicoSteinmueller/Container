@@ -68,6 +68,45 @@ metadata:
     pod-security.kubernetes.io/warn: privileged
     pod-security.kubernetes.io/audit: privileged
 ---
+#
+# Egress-Default-Deny.
+#
+# Gerade hier, wo `enforce: privileged` stehen muss - der Provisioner startet
+# Helfer-Pods, die als root ein Verzeichnis auf der Host-Platte anlegen -
+# lohnt die Gegenrichtung: Was aus dem Netz nicht heraus kann, traegt einen
+# uebernommenen Helfer nicht weiter als bis zum Node.
+#
+# Der Provisioner selbst spricht nur mit CoreDNS und dem kube-apiserver. Die
+# Helfer-Pods laufen im selben Namespace, fallen also unter dieselbe Regel -
+# sie brauchen kein Netz, sie rufen `mkdir`.
+#
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: local-path-egress
+  namespace: local-path-storage
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    # `toPorts` ist Pflicht, nicht Kosmetik - Begruendung in headlamp.yaml.
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
