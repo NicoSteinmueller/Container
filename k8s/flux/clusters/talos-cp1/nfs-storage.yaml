@@ -43,6 +43,25 @@ spec:
   interval: 1h
   url: https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
 ---
+#
+# Hier steht bewusst keine Egress-Policy, anders als in crowdsec, headlamp,
+# reloader, local-path-storage und traefik-internal.
+#
+# Der Grund ist keine Abwaegung, sondern eine Tatsache: Beide Pods des Treibers
+# laufen auf hostNetwork. Sie haben damit keine eigene Cilium-Identitaet,
+# sondern die des Nodes - und auf die greift keine NetworkPolicy, weder die
+# von Kubernetes noch die von Cilium. Gegenprobe:
+#
+#   kubectl -n csi-driver-nfs get pods \
+#     -o jsonpath='{.items[*].spec.hostNetwork}'
+#
+# Eine Policy hier waere gueltig, wuerde angelegt, saehe richtig aus und taete
+# nichts - genau die Sorte Einstellung, die spaeter eine halbe Stunde
+# Fehlersuche in der falschen Richtung kostet. Was den ausgehenden Verkehr des
+# Nodes begrenzen koennte, ist Ciliums Host-Firewall
+# (`enable-host-firewall`), die in diesem Cluster aus ist. Das waere die
+# Stelle, nicht diese Datei.
+#
 apiVersion: v1
 kind: Namespace
 metadata:

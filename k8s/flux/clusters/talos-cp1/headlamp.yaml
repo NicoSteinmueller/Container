@@ -190,6 +190,53 @@ spec:
           port: 4466
 
 ---
+#
+# Egress-Default-Deny. Headlamp spricht mit genau zwei Gegenstellen: CoreDNS
+# und dem kube-apiserver. Alles andere - das Heimnetz, der Unraid-Host, die
+# uebrigen Pods - hat es nicht zu erreichen, und das ist bei einer Oberflaeche
+# mit clusterweitem Leserecht der Unterschied zwischen "liest den Cluster" und
+# "steht im Heimnetz".
+#
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: headlamp-egress
+  namespace: headlamp
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    #
+    # Der kube-apiserver, und `toPorts` ist hier nicht optional.
+    #
+    # Auf einem Ein-Node-Cluster laeuft die API auf der Node-Adresse, und die
+    # traegt in Cilium eine einzige Identitaet mit beiden Labels:
+    #
+    #   $ hubble observe --to-port 6443 -o json | jq .flow.destination.labels
+    #     reserved:host, reserved:kube-apiserver
+    #
+    # Ein `toEntities: [kube-apiserver]` ohne Portangabe waere damit exakt so
+    # breit wie `toEntities: [host]` - also jeder Port auf dem Node,
+    # einschliesslich Kubelet auf 10250. Erst der Port macht die Regel eng.
+    #
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+
+---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:

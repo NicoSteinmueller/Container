@@ -120,12 +120,95 @@ spec:
 
 ---
 #
-# Kein Egress-Default-Deny, und das ist hier eine Entscheidung: Der Agent
-# muss die Kubernetes-API nicht erreichen, die LAPI aber sehr wohl den Hub
-# auf hub-cdn.crowdsec.net - sonst gibt es keine Szenarien und keine
-# Blocklisten. Das ist Verkehr ins Internet, den man nur ueber einen Namen
-# beschreiben kann, und NetworkPolicies kennen keine Namen.
+# Egress-Default-Deny. Hier stand einmal die Begruendung, warum es keins
+# gibt: Die LAPI braucht den Hub auf hub-cdn.crowdsec.net, das sei Verkehr
+# ins Internet, den man nur ueber einen Namen beschreiben koenne, und
+# NetworkPolicies kennten keine Namen.
 #
+# Der zweite Halbsatz stimmt fuer `kind: NetworkPolicy`. Fuer die
+# Cilium-Variante nicht - und die laeuft in diesem Cluster laengst, siehe
+# `traefik-public-egress` in ingress-public.yaml. Sie kann zweierlei, was
+# hier reicht:
+#
+#   toCIDRSet mit `except`  - "ins Internet ja, ins LAN nein", ohne einen
+#                             einzigen Namen zu kennen. Das ist der Weg
+#                             unten, und derselbe wie beim oeffentlichen
+#                             Ingress.
+#   toFQDNs                 - Namen tatsaechlich, ueber den DNS-Proxy von
+#                             Cilium (l7Proxy ist an). Damit liesse sich das
+#                             443 unten auf *.crowdsec.net eingrenzen. Ein
+#                             Baustein mehr im Datenpfad; wenn er kommt,
+#                             dann fuer alle Namespaces zugleich und nicht
+#                             hier allein.
+#
+# Was das schliesst: Der Agent verarbeitet die Zugriffslogs des
+# oeffentlichen Traefik - also von aussen bestimmte Eingaben. Ohne diese
+# Regel erreicht er von dort aus den Unraid-Host, die Fritzbox und jedes
+# andere Geraet im Heimnetz. Nachgemessen, bevor die Regel stand:
+#
+#   kubectl -n crowdsec exec ds/crowdsec-agent -- nc -z 192.168.178.3 80
+#
+# Die Kubernetes-API steht bewusst nicht in der Liste: Es gibt keine
+# ClusterRole fuer CrowdSec, und Hubble zeigt keinen einzigen Flow nach
+# 6443. Der `default`-Token im Pod ist damit auch ohne Weg dorthin.
+#
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: crowdsec-egress
+  namespace: crowdsec
+spec:
+  endpointSelector: {}
+  egress:
+    #
+    # DNS. Ohne diese Regel schlaegt schon die Aufloesung des
+    # LAPI-Servicenamens fehl, und der Init-Container des Agents kommt nicht
+    # ueber `wait-for-lapi-and-register` hinaus.
+    #
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    #
+    # Agent -> LAPI. Derselbe Selektor wie im Ingress oben - `k8s-app` in der
+    # alten Schreibweise, die das Chart setzt.
+    #
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: crowdsec
+            k8s-app: crowdsec
+            type: lapi
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
+    #
+    # LAPI -> Central API und Hub. Das `except` ist die eigentliche Regel:
+    # Internet ja, Heimnetz nein. Gegenprobe, dass der Weg nach draussen
+    # steht - 54.246.102.122 ist die CAPI:
+    #
+    #   kubectl -n kube-system exec ds/cilium -- \
+    #     hubble observe --from-namespace crowdsec --to-port 443
+    #
+    - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+            - 169.254.0.0/16
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
 
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
