@@ -46,13 +46,29 @@ Startet neu, was ein geändertes Secret benutzt — sonst arbeitet ein Pod nach
 einer Rotation bis zu seinem nächsten Start mit dem alten Wert weiter. Fremder
 Chart, deshalb eine eigene `HelmRepository`.
 
-Wen er anfasst, regelt er selbst: `autoReloadAll: true` mit
-`ignoreNamespaces` als Ausnahmeliste — alles gilt als annotiert, außer
-`kube-system`, `flux-system` und `reloader`. Vorher setzte Kyverno die
+Wen er anfasst, regelt er selbst: `autoReloadAll: true` — innerhalb seines
+Blickfelds gilt jeder Workload als annotiert. Vorher setzte Kyverno die
 Annotation `reloader.stakater.com/auto` cluster-weit; mit dem Plattform-Stack
 fiel Kyverno weg, und Reloader lief eine Zeit lang wirkungslos. Dieselbe Regel,
-ein Controller weniger — Begründung je Namespace steht in
-[reloader.yaml](reloader.yaml).
+ein Controller weniger.
+
+Das Blickfeld ist eine Namespace-Liste und nicht der ganze Cluster
+(`watchGlobally: false` plus `namespaces`): `crowdsec`, `traefik-internal`,
+`traefik-public` — dort und nur dort hält ein laufender Prozess ein Secret aus
+`homelab-secrets`. Das Chart legt daraufhin Role und RoleBinding je Namespace
+an und **keine ClusterRole**. Der Unterschied ist nicht kosmetisch: Cluster-weit
+bekam Reloader `update`/`patch` auf Deployments, DaemonSets und StatefulSets in
+jedem Namespace, `kube-system` eingeschlossen. Begründung je Namespace und die
+Gegenrechnung stehen in [reloader.yaml](reloader.yaml).
+
+> **Ein neuer Dienst mit Secret gehört in diese Liste.** Sonst läuft er nach
+> einer Rotation still mit dem alten Wert weiter — er läuft ja.
+
+```bash
+# Gegenprobe, dass nichts cluster-weit übrig ist:
+kubectl get clusterrole,clusterrolebinding | grep reloader   # erwartet: leer
+kubectl get role,rolebinding -A | grep reloader
+```
 
 ```bash
 kubectl -n reloader get pods

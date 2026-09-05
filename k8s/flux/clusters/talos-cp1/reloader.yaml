@@ -25,14 +25,17 @@
 # Plattform-Stack entfernt worden, und damit trug die Annotation kein Workload
 # mehr: Reloader lief, beobachtete und tat nichts.
 #
-# Jetzt macht Reloader das selbst - autoReloadAll mit ignoreNamespaces unten.
-# Das ist dieselbe Regel wie vorher, nur ohne den Umweg: alles gilt als
-# annotiert, bis auf eine benannte Liste. Der Unterschied ist, dass die Regel
-# nicht mehr von einem zweiten Controller abhängt, den man dafür betreiben,
-# aktualisieren und beim Wiederaufbau in der richtigen Reihenfolge hochziehen
-# müsste.
+# Jetzt macht Reloader das selbst - autoReloadAll unten. Alles im Blickfeld
+# gilt als annotiert, ohne den Umweg über einen zweiten Controller, den man
+# dafür betreiben, aktualisieren und beim Wiederaufbau in der richtigen
+# Reihenfolge hochziehen müsste.
 #
 # Wenn Kyverno zurückkommt, ist das kein Grund, das hier zurückzudrehen.
+#
+# Was sich seither geändert hat: Das Blickfeld ist eine Namespace-Liste
+# geworden statt des ganzen Clusters (namespaces unten). Der Grund steht
+# dort - kurz: Reloader darf Workloads patchen, und diese Berechtigung
+# gehört nicht in jeden Namespace, nur weil sie in dreien gebraucht wird.
 #
 # Was Reloader *nicht* tut: das Passwort auf der Gegenseite ändern. Ein
 # rotiertes Postgres-Passwort im Secret startet Nextcloud neu, und Nextcloud
@@ -93,53 +96,90 @@ spec:
   values:
     reloader:
       #
-      # Cluster-weit, nicht auf eine Namespace-Liste beschränkt: Eine Liste
-      # müsste bei jedem neuen Dienst nachgezogen werden, und das Vergessen
-      # fällt nicht auf - der Dienst läuft ja, nur eben mit dem alten Passwort.
+      # Scoped Mode: watchGlobally aus, dafür die Namespaces einzeln. Das
+      # Chart legt dann Role und RoleBinding je genanntem Namespace an und
+      # gar keine ClusterRole - der Release-Namespace kommt automatisch dazu.
       #
-      # Der Preis steht im Klartext hier, damit er nicht untergeht: Reloader
-      # bekommt damit get/list/watch auf Secrets in allen Namespaces. Ein
-      # weiterer Leser aller Geheimnisse des Clusters, neben
-      # kustomize-controller. Er wertet sie nicht aus - er vergleicht Hashes -
-      # aber die Berechtigung ist dieselbe.
+      # Hier stand einmal watchGlobally: true, mit einer Begründung, die noch
+      # gilt: Eine Liste muss bei jedem neuen Dienst nachgezogen werden, und
+      # das Vergessen fällt nicht auf - der Dienst läuft ja, nur eben mit dem
+      # alten Passwort. Diese Richtung des Vergessens ist der Preis dieser
+      # Zeile, und sie ist der Grund, warum die Liste direkt neben den
+      # Dienstdateien im selben Verzeichnis steht: Wer hier einen Namespace
+      # anlegt, kommt an dieser Datei nicht vorbei.
       #
-      watchGlobally: true
+      # Dagegen stand, was cluster-weit tatsächlich verteilt wurde. Nicht nur
+      # get/list/watch auf alle Secrets - das allein wäre der beschriebene
+      # Preis gewesen, ein weiterer Leser neben kustomize-controller. Dazu
+      # kam update/patch auf Deployments, DaemonSets und StatefulSets in
+      # *jedem* Namespace, kube-system eingeschlossen. Damit ist der Weg vom
+      # übernommenen Reloader-Pod zu einem privilegierten Container auf dem
+      # Node zwei Schritte lang, und auf einem Ein-Node-Cluster ist der Node
+      # der ganze Cluster. ignoreNamespaces hat das nie verhindert: Es filtert
+      # im Programm, nicht im RBAC.
+      #
+      # Ein vergessener Eintrag kostet ein veraltetes Passwort, das beim
+      # nächsten Neustart von selbst verschwindet. Die Berechtigung kostete
+      # im Ernstfall den Cluster. Deshalb so herum.
+      #
+      watchGlobally: false
 
       #
-      # Jeder Workload gilt als annotiert. Das ist die Voreinstellung, die zu
-      # einem Cluster passt, dessen Dienste ihre Geheimnisse aus einem
-      # gemeinsamen Repo beziehen: Ein neuer Dienst ist von sich aus dabei,
-      # ohne dass jemand daran denken muss.
+      # Die Namespaces, in denen ein Secret aus homelab-secrets von einem
+      # laufenden Prozess gehalten wird - und nur die:
+      #
+      # crowdsec:         crowdsec-bouncer-key als BOUNCER_KEY_traefik_public
+      #                   in env, einmal beim Start gelesen.
+      # traefik-internal: traefik-ionos in env (IONOS_API_KEY).
+      # traefik-public:   traefik-ionos in env, dazu crowdsec-bouncer-key als
+      #                   Datei unter /crowdsec - das Plugin liest sie beim
+      #                   Start, nicht bei jeder Anfrage.
+      #
+      # Nicht dabei und mit Absicht: headlamp und whoami halten kein Secret;
+      # csi-driver-nfs und local-path-storage auch nicht. kube-system und
+      # flux-system standen vorher in ignoreNamespaces und sind jetzt schlicht
+      # außerhalb des Blickfelds - dieselbe Wirkung, eine Zeile weniger. Die
+      # Begründungen dafür sind es wert, aufgehoben zu werden:
+      #
+      #   kube-system  - dort liegt Cilium, dessen Konfiguration als
+      #     Inline-Manifest aus der Machine-Config kommt (vm/talos/README.md).
+      #     Ein Neustart des Agents auf Zuruf wäre ein zweiter Schreiber auf
+      #     demselben Datapath, und zwar auf der Komponente, über die jeder
+      #     Pod im Cluster spricht.
+      #   flux-system  - die Controller halten die Geheimnisse, aus denen die
+      #     anderen Secrets erst entstehen (sops-age, die Git-Zugänge).
+      #     kustomize-controller schreibt ein Secret, Reloader startet
+      #     daraufhin kustomize-controller neu: eine Rückkopplung, kein Nutzen.
+      #   reloader     - er würde sich selbst neu starten. Der Release-
+      #     Namespace lässt sich im Scoped Mode nicht ausschließen, das Chart
+      #     nimmt ihn immer mit. Hier ist das folgenlos: Es läuft nur Reloader
+      #     selbst darin, und er hält kein Secret, das sich ändert.
+      #
+      namespaces:
+        - crowdsec
+        - traefik-internal
+        - traefik-public
+
+      #
+      # Innerhalb der Namespaces oben gilt jeder Workload als annotiert -
+      # niemand muss je Dienst daran denken.
       #
       # Die Richtung des Vergessens ist der Grund. Andersherum - Annotation je
       # Workload - läuft ein vergessener Dienst nach einer Rotation still mit
       # dem alten Passwort weiter, und niemand merkt es, denn er läuft ja. So
-      # herum bedeutet ein vergessener Eintrag unten einen Neustart, der nicht
-      # hätte sein sollen. Der fällt auf.
+      # herum bedeutet ein überflüssiger Workload im Blickfeld einen Neustart,
+      # der nicht hätte sein müssen. Der fällt auf.
+      #
+      # Die Grenze ist damit der Namespace und nicht die Annotation. Genau
+      # deshalb ist die Liste oben so kurz gehalten: Sie ist jetzt beides -
+      # Blickfeld und Berechtigung.
+      #
+      # ignoreNamespaces stand hier einmal darunter und ist weg. Nicht nur,
+      # weil die Ausnahmen jetzt schon durch die Liste oben fallen: Das Chart
+      # setzt --namespaces-to-ignore ausschließlich bei watchGlobally: true.
+      # Der Wert wäre stehengeblieben und hätte nichts mehr getan.
       #
       autoReloadAll: true
-
-      #
-      # Die Ausnahmen dazu - die Liste, die vorher in der Kyverno-Regel stand.
-      #
-      # kube-system: Dort liegt Cilium, und dessen Konfiguration kommt als
-      #   Inline-Manifest aus der Machine-Config von Talos (siehe
-      #   vm/talos/README.md). Ein Neustart des Agents auf Zuruf eines anderen
-      #   Controllers wäre ein zweiter Schreiber auf demselben Datapath - und
-      #   trifft ausgerechnet die Komponente, über die jeder Pod im Cluster
-      #   spricht.
-      # flux-system: Die Controller halten die Geheimnisse, aus denen die
-      #   anderen Secrets überhaupt entstehen (sops-age, die Git-Zugänge).
-      #   kustomize-controller schreibt ein Secret, Reloader startet daraufhin
-      #   kustomize-controller neu - das ist eine Rückkopplung, kein Nutzen.
-      # reloader: Er würde sich selbst neu starten.
-      #
-      # Was hier fehlt und dazugehört, sobald es wieder existiert: die
-      # Namespaces des Plattform-Stacks (step-ca, cert-manager, traefik-*).
-      # Die drehen ihre Zertifikate im eigenen Takt und werden von einem
-      # Neustart nur gestört.
-      #
-      ignoreNamespaces: "kube-system,flux-system,reloader"
 
       #
       # Wie die Änderung ins Pod-Template kommt, nicht *ob*. Die Voreinstellung
