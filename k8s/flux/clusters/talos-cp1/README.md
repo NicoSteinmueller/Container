@@ -446,7 +446,7 @@ Nicht im Repo abgebildet und von Hand zu setzen — NFS ist dort ab Werk aus
    192.168.178.230(sec=sys,rw,no_root_squash)
    ```
 
-   für `k8s` und `data`.
+   für `k8s` (dynamisch) und `k8s-data` (statisch, PV `unraid-data`).
 
 Die Regel steht auf der **Node-Adresse**, nicht auf dem Pod-CIDR: Gemountet
 wird nicht vom Pod, sondern vom kubelet auf dem Node — und Cilium maskiert
@@ -458,6 +458,16 @@ auf dem Share `root` ist; die Regel ist deshalb auf die eine Adresse begrenzt.
 
 Dass der Weg überhaupt offen ist, hängt an Unraids *Host access to custom
 networks* — siehe [vm/talos/README.md](../../../../vm/talos/README.md#macvtap-wer-wen-erreicht).
+Nachprüfen lässt sich das ohne Testdienst aus dem `csi-nfs-node`-Pod heraus; er
+läuft mit `hostNetwork`, steht also genau dort, wo auch das kubelet mountet:
+
+```bash
+kubectl -n csi-driver-nfs exec ds/csi-nfs-node -c nfs -- \
+  timeout 10 showmount -e 192.168.178.3
+```
+
+Kommt eine Export-Liste zurück, ist der Weg offen und jede weitere Fehlersuche
+gehört auf die Share-Namen und die Export-Regeln, nicht auf das Netz.
 
 ### Voraussetzung in der VM
 
