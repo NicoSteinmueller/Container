@@ -12,6 +12,27 @@
 #   Settings -> NFS -> Enable NFS = Yes      (verlangt ein gestopptes Array)
 #   Shares -> <share> -> NFS Security Settings -> Export = Yes, Rule wie dort
 #
+# Dass der Weg ueber macvtap ueberhaupt traegt, haengt an Unraids
+# "Host access to custom networks" - siehe vm/talos/README.md, Abschnitt
+# "macvtap: wer wen erreicht". Wird die Einstellung zurueckgenommen, ist das
+# Fehlerbild kein sauberer Fehler, sondern haengende Mounts (`hard` unten).
+#
+# ---------------------------------------------------------------------------
+# Nachpruefen, ohne raten zu muessen.
+#
+# Der csi-nfs-node-Pod laeuft mit hostNetwork und bringt mount.nfs und
+# showmount mit - er steht also genau dort, wo das kubelet spaeter mountet:
+#
+#   kubectl -n csi-driver-nfs exec ds/csi-nfs-node -c nfs -- \
+#     timeout 10 showmount -e 192.168.178.3
+#
+# Die Ausgabe ist zugleich die Antwort auf die haeufigste Verwechslung: Ein
+# PVC auf "Bound" heisst bei einem statisch gebundenen PV nur "zugeordnet",
+# nicht "mountbar". Steht der Pfad des PV nicht in der Export-Liste, scheitert
+# erst der erste Pod, der ihn benutzt - mit
+# "reason given by server: No such file or directory".
+# ---------------------------------------------------------------------------
+#
 ---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository

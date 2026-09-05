@@ -180,18 +180,30 @@ lan_macvtap_dev = "bond0"     # ip -br link auf dem Host zeigt den Namen
 ```
 
 Was das bedeutet, und das ist kein Detail: Mit macvtap erreichen sich VM und
-Hypervisor-Host **nicht**. Zwei Folgen muss man kennen:
+Hypervisor-Host **im Regelfall nicht**. macvtap-Geschwister im `bridge`-Modus
+am selben Parent dürfen untereinander sprechen — der Host spricht aber über
+das physische Interface, ist damit der Elternteil und nicht Geschwister, und
+bleibt ausgeschlossen.
+
+**Auf diesem Host gilt die Regel nicht**, und das ist nachgemessen: Unraid
+legt bei eingeschaltetem *Host access to custom networks* selbst ein
+macvtap-Bein `vhost0` am selben Parent an und wird damit zum Geschwister.
+Beide Richtungen laufen. Die Herleitung steht in
+[../vm/talos/README.md](../vm/talos/README.md), Abschnitt „macvtap: wer wen
+erreicht".
+
+Eine Folge bleibt trotzdem:
 
 - **Der interne Resolver darf nicht auf dem Host selbst liegen.** Läuft
   AdGuard als Docker-Container in einem macvlan-Netz (auf Unraid der
   Netzwerktyp `bond0`), hat er eine eigene LAN-Adresse und ist erreichbar —
   genau die gehört in `dns_servers`, nicht die Adresse des Unraid-Hosts.
-- **NFS-Exporte vom selben Host sind über dieses Bein nicht erreichbar.**
-  Solange die PVCs auf der VM-Disk liegen (local-path), ist das egal; sobald
-  die Nutzerdaten auf das Array wandern, ist es der Punkt, an dem entweder
-  Bridging eingeschaltet oder ein zweites Bein ergänzt werden muss. Zu
-  entscheiden ist das, *bevor* die StorageClass zurückkommt — danach hängen
-  Daten daran.
+
+Und eine Abhängigkeit, die man kennen muss: **`vhost0` ist geliehen.** Es
+hängt an einer Unraid-Einstellung, die niemand hier bemerkt, wenn sie jemand
+zurücknimmt. Das Fehlerbild wäre dann kein sauberer Fehler, sondern das
+Hängen aller NFS-Mounts (`hard`, siehe `nfs-storage.yaml`). Wer die
+Abhängigkeit nicht will, gibt der VM ein zweites Bein an einem libvirt-Netz.
 
 **SSH-Key nach Unraid.** Terraform spricht über `qemu+ssh://root@…` mit
 libvirt. Unraid bootet vom USB-Stick, `/root` ist ein RAM-Dateisystem — ein
@@ -1127,10 +1139,6 @@ gebannt wird — und dass der eigene LAN-Zugang davon unberührt bleibt.
 
 - **Kein Backup.** Weder etcd-Snapshots noch PVC-Sicherung, kein Restore-Test.
   Gehört vor den ersten migrierten Dienst, nicht danach.
-- **Der NFS-PV kann nicht mounten.** `unraid-data` zeigt auf `192.168.178.3`,
-  den Unraid-Host — und der Node hängt per `macvtap` am LAN, womit VM und
-  Hypervisor einander nicht erreichen. Der PVC steht auf `Bound`, aber das ist
-  nur die statische Bindung; benutzt hat ihn noch niemand.
 - **Keine Benachrichtigung.** `kubectl get alerts,providers` ist leer — ein
   fehlschlagender Reconcile fällt nur auf, wenn jemand nachsieht.
 - **Kein CSR-Genehmiger**, deshalb läuft der metrics-server weiter mit
