@@ -7,7 +7,7 @@ Flux Operator und eine `FluxInstance`, die dieses Repo beobachtet.
 | | |
 |---|---|
 | Quelle | `k8s/flux/clusters/talos-cp1` aus diesem Repo (`sync_path`) |
-| Zugang | Flux-Status-Seite, ClusterIP + `port-forward` (ohne Login) |
+| Zugang | `https://flux.k8s.nico-steinmueller.de` (ingress-internal, IP-Allowlist) |
 | Secrets | `homelab-secrets` (Gitea), SOPS-verschlüsselt |
 | Bootstrap | drei Secrets, leer angelegt, von Hand befüllt (drei `kubectl patch`) |
 
@@ -180,11 +180,30 @@ Aus derselben Quelladresse gemessen:
 ```
 
 Übrig blieb eine Seite ohne Login, per NetworkPolicy für ganz RFC 1918
-geöffnet. Deshalb jetzt ClusterIP:
+geöffnet. Deshalb jetzt ClusterIP plus ein regulärer Ingress:
+
+```
+https://flux.k8s.nico-steinmueller.de
+```
+
+Der Ingress ist kein Terraform-Objekt, sondern ein Flux-Manifest -
+[clusters/talos-cp1/flux-web.yaml](clusters/talos-cp1/flux-web.yaml). Dort
+steht auch die `ipAllowList`, die den Zugriff auf die Verwaltungsrechner
+begrenzt (dieselben Adressen wie `admin_sources`, als Kopie - sie zieht sich
+nicht von selbst nach).
+
+**Traefik bekommt in flux-system bewusst keinen Secret-Zugriff.** Hier liegen
+`sops-age` und `flux-git-auth`; ein aus dem Heimnetz erreichbarer
+Ingress-Controller darf beides nicht lesen. Deshalb hängt an diesem Namespace
+die ClusterRole `traefik-internal-namespaced-nosecrets`, und deshalb trägt der
+Ingress keinen `tls`-Block (das Wildcard hängt am Entrypoint) und die
+Middleware ist eine ipAllowList statt BasicAuth - beides käme sonst über ein
+Secret.
+
+Ohne Cluster-Netz geht weiterhin auch:
 
 ```bash
 kubectl -n flux-system port-forward svc/flux-operator 9080:9080
-# http://localhost:9080
 ```
 
 Zurück auf NodePort ist eine Zeile in den tfvars - dann aber
