@@ -745,6 +745,37 @@ spec:
         type: LoadBalancer
         externalTrafficPolicy: Local
 
+        #
+        # Kein NodePort zu diesem Service.
+        #
+        # Ein LoadBalancer bekommt ab Werk zusaetzlich zwei NodePorts, und die
+        # sind hier kein zweiter Weg, sondern ein Loch: Talos filtert sie
+        # nicht. Die Ingress-Firewall in patches/firewall.yaml.tftpl regelt
+        # Verkehr an Host-Prozesse - apid, kube-apiserver, kubelet. NodePorts
+        # bedient Cilium in eBPF, und der Pfad sieht diese Regelkette nie.
+        # Nachgemessen aus einer Adresse, die in admin_sources steht:
+        #
+        #   4244  gefiltert   Hubble, ein Host-Prozess ohne Regel
+        #   30670 offen       dieser NodePort, ebenfalls ohne Regel
+        #
+        # Dieselbe Quelle, derselbe Node, entgegengesetztes Ergebnis. Der
+        # Kommentar zur ingress-ports-Regel in firewall.yaml.tftpl hat genau
+        # das offengelassen ("Ob die Pakete diese Regelkette ueberhaupt
+        # sehen, ist damit offen") - die Antwort ist: sie sehen sie nicht.
+        #
+        # Ohne NodePort bleibt der Dienst genau unter 192.168.178.231
+        # erreichbar. Cilium fuehrt LoadBalancer- und NodePort-Eintraege
+        # getrennt; nur die zweiten fallen weg:
+        #
+        #   cilium-dbg service list
+        #     192.168.178.231:443/TCP  LoadBalancer   <- bleibt
+        #     0.0.0.0:31098/TCP        NodePort       <- weg
+        #
+        # Damit ist `allow-from-lan` oben wieder die einzige Tuer und nicht
+        # eine von zweien.
+        #
+        allocateLoadBalancerNodePorts: false
+
     #
     # Das Zertifikat: ein Wildcard von Let's Encrypt, per DNS-01 ueber IONOS.
     #

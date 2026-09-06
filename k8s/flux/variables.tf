@@ -110,9 +110,20 @@ variable "service_type" {
 
     Die Seite verlangt kein Token, zeigt aber weder Secrets noch ConfigMaps -
     NodePort heißt also: jeder im Heimnetz sieht den GitOps-Zustand. README.
+
+    Der Default ist bewusst ClusterIP und war einmal NodePort. Der Grund für
+    den Wechsel ist keine neue Abwägung, sondern eine Messung: Die
+    Talos-Ingress-Firewall filtert NodePorts nicht. Sie regelt Verkehr an
+    Host-Prozesse; NodePorts bedient Cilium im eBPF-Datapath, und der sieht
+    die Regelkette nicht. Aus derselben Quelladresse ist 4244 (Hubble, ein
+    Host-Prozess ohne Regel) gefiltert und 30081 offen.
+
+    Damit trägt bei NodePort allein web_source_cidrs, und dessen Default ist
+    ganz RFC 1918. Wer NodePort setzt, sollte deshalb zugleich
+    web_source_cidrs auf die Admin-Adressen einengen.
   EOT
   type        = string
-  default     = "NodePort"
+  default     = "ClusterIP"
 
   validation {
     condition     = contains(["ClusterIP", "NodePort"], var.service_type)

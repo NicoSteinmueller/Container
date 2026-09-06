@@ -7,7 +7,7 @@ Flux Operator und eine `FluxInstance`, die dieses Repo beobachtet.
 | | |
 |---|---|
 | Quelle | `k8s/flux/clusters/talos-cp1` aus diesem Repo (`sync_path`) |
-| Zugang | Flux-Status-Seite, NodePort `30081`, ohne Login |
+| Zugang | Flux-Status-Seite, ClusterIP + `port-forward` (ohne Login) |
 | Secrets | `homelab-secrets` (Gitea), SOPS-verschlüsselt |
 | Bootstrap | drei Secrets, leer angelegt, von Hand befüllt (drei `kubectl patch`) |
 
@@ -164,12 +164,34 @@ Ihn durch den State laufen zu lassen machte die State-Passphrase zu seinem
 Vorhängeschloss — eine Abhängigkeit, die man beim Wechsel der Passphrase
 mitdenken müsste und dann nicht mitdenkt.
 
-**NodePort ohne Login.** Die Status-Seite verlangt anders als Headlamp kein
-Token, zeigt dafür weder Secrets noch ConfigMaps - jeder im Heimnetz sieht den
-Reconciliation-Zustand. Reicht das nicht, `service_type = "ClusterIP"` und
-`kubectl -n flux-system port-forward svc/flux-operator 9080:9080`.
+**Kein NodePort mehr, und warum.** Die Status-Seite verlangt anders als
+Headlamp kein Token, zeigt dafür weder Secrets noch ConfigMaps. Auf dieser
+Abwägung stand `service_type = "NodePort"`, abgesichert durch die
+NetworkPolicy unten und - so die Annahme - zusätzlich durch die
+Talos-Ingress-Firewall, die `30081` nirgends nennt.
 
-**Zum NodePort gehören zwei Objekte, nicht eines.** Neben den Service braucht
+Die Firewall greift dort nicht. Sie filtert Verkehr an Host-Prozesse;
+NodePorts bedient Cilium im eBPF-Datapath, und der sieht die Regelkette nie.
+Aus derselben Quelladresse gemessen:
+
+```
+4244   gefiltert   Hubble-API, ein Host-Prozess ohne Firewall-Regel
+30081  offen       NodePort, ebenfalls ohne Regel
+```
+
+Übrig blieb eine Seite ohne Login, per NetworkPolicy für ganz RFC 1918
+geöffnet. Deshalb jetzt ClusterIP:
+
+```bash
+kubectl -n flux-system port-forward svc/flux-operator 9080:9080
+# http://localhost:9080
+```
+
+Zurück auf NodePort ist eine Zeile in den tfvars - dann aber
+`web_source_cidrs` zugleich von RFC 1918 auf die Admin-Adressen einengen.
+
+**Zum NodePort gehören zwei Objekte, nicht eines.** (Gilt weiterhin, falls er
+zurückkommt.) Neben den Service braucht
 es `kubernetes_network_policy.flux_web_nodeport` - beide hängen an derselben
 `count`-Bedingung. Grund ist eine NetworkPolicy, die das Chart selbst
 mitbringt:
