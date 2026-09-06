@@ -111,16 +111,22 @@ variable "service_type" {
     Die Seite verlangt kein Token, zeigt aber weder Secrets noch ConfigMaps -
     NodePort heißt also: jeder im Heimnetz sieht den GitOps-Zustand. README.
 
-    Der Default ist bewusst ClusterIP und war einmal NodePort. Der Grund für
-    den Wechsel ist keine neue Abwägung, sondern eine Messung: Die
-    Talos-Ingress-Firewall filtert NodePorts nicht. Sie regelt Verkehr an
-    Host-Prozesse; NodePorts bedient Cilium im eBPF-Datapath, und der sieht
-    die Regelkette nicht. Aus derselben Quelladresse ist 4244 (Hubble, ein
-    Host-Prozess ohne Regel) gefiltert und 30081 offen.
+    Der Default ist ClusterIP, der laufende Cluster setzt NodePort - und das
+    ist kein Widerspruch, sondern die Absicht: Ein Neuaufbau soll die Seite
+    nicht ungefragt ins Netz stellen, ein bewusst gesetzter Wert darf es.
 
-    Damit trägt bei NodePort allein web_source_cidrs, und dessen Default ist
-    ganz RFC 1918. Wer NodePort setzt, sollte deshalb zugleich
-    web_source_cidrs auf die Admin-Adressen einengen.
+    Wer NodePort setzt, muss web_source_cidrs mitsetzen. Der Grund ist eine
+    Messung, keine Vorsicht: Die Talos-Ingress-Firewall filtert NodePorts
+    nicht. Sie regelt Verkehr an Host-Prozesse; NodePorts bedient Cilium im
+    eBPF-Datapath, und der sieht die Regelkette nie. Aus derselben
+    Quelladresse ist 4244 (Hubble, ein Host-Prozess ohne Regel) gefiltert und
+    30081 offen. Die NetworkPolicy aus web_source_cidrs ist damit die
+    einzige Kontrolle vor dieser Seite - nicht die erste von zweien.
+
+    Der Weg über ingress-internal (TLS, Hostname, Middleware) scheidet aus:
+    Traefik startet für jeden beobachteten Namespace einen Secrets-Informer,
+    unabhängig vom Bedarf. Er müsste dafür Secrets in flux-system lesen
+    dürfen, und dort liegen sops-age und flux-git-auth.
   EOT
   type        = string
   default     = "ClusterIP"
@@ -139,11 +145,15 @@ variable "web_source_cidrs" {
     die Port 9080 nur clusterinternen Identitäten öffnet. Ein Browser im
     Heimnetz ist für Cilium `world` und würde verworfen - siehe main.tf.
 
-    Default sind die privaten Bereiche nach RFC 1918: Das konkrete Heimnetz
-    steht nicht in diesem Repo, sondern in den tfvars, und dort gehört der
-    Wert auch eingeengt. "0.0.0.0/0" wäre hier kein Sicherheitsgewinn und kein
-    -verlust, solange der Node nur im LAN hängt - aber ein Router, der den Port
-    weiterleitet, wäre dann ein Fehler ohne zweite Bremse.
+    Diese Liste ist die einzige Kontrolle vor der Seite. Die zweite Bremse,
+    die man hier vermutet - die Talos-Ingress-Firewall -, greift auf
+    NodePorts nicht; die Begründung steht bei service_type.
+
+    Der Default sind die privaten Bereiche nach RFC 1918, und der ist für
+    einen Dauerbetrieb zu weit: Er lässt jedes Gerät im Heimnetz auf eine
+    Seite ohne Login. Er steht hier nur, weil das konkrete Netz nicht in
+    dieses Repo gehört - eingeengt wird er in den tfvars, und dort gehören
+    die Adressen der Verwaltungsrechner hin, nicht das ganze Netz.
   EOT
   type        = list(string)
   default     = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
