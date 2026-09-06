@@ -218,6 +218,20 @@ spec:
               protocol: TCP
 
     #
+    # Die Flux-Statusseite (flux-web.yaml). Eng auf den Web-Port des
+    # Operators - die uebrigen Controller in flux-system, allen voran
+    # source-controller und kustomize-controller, gehen den Ingress nichts an.
+    #
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: flux-system
+            app.kubernetes.io/name: flux-operator
+      toPorts:
+        - ports:
+            - port: "9080"
+              protocol: TCP
+
+    #
     # ACME. Das ist die Regel, die man vergisst, weil ihr Fehlen erst in
     # sechzig Tagen auffaellt - dann naemlich, wenn das Wildcard erneuert
     # werden muesste und der DNS-01-Challenge der Weg fehlt:
@@ -475,6 +489,106 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: traefik-internal-namespaced
+subjects:
+  - kind: ServiceAccount
+    name: traefik-internal
+    namespace: traefik-internal
+
+---
+#
+# Dieselbe Rolle noch einmal, ohne Secrets - fuer flux-system.
+#
+# Der Grund, warum es eine zweite Rolle braucht und nicht dieselbe Bindung
+# eine Zeile tiefer: In flux-system liegen `sops-age` und `flux-git-auth`. Ein
+# Ingress-Controller, der aus dem Heimnetz erreichbar ist, darf beides nicht
+# lesen koennen - auch nicht "nur" per get/list/watch.
+#
+# Traefik braucht Secrets in einem Namespace fuer genau zwei Dinge: ein
+# TLS-Secret, auf das ein Ingress zeigt, und ein Secret, auf das eine
+# Middleware zeigt. In flux-system gibt es beides nicht:
+#
+#   - Der Ingress in flux-web.yaml traegt keinen tls-Block. Das Zertifikat
+#     haengt am Entrypoint (Wildcard *.k8s.nico-steinmueller.de), genau wie
+#     bei whoami und headlamp.
+#   - Die Middleware dort ist eine ipAllowList. Die traegt ihre Adressen
+#     inline und liest kein Secret.
+#
+# Bleibt diese Rolle also secretfrei, faellt in flux-system nichts aus. Wer
+# hier spaeter eine BasicAuth-Middleware mit `secret:` einfuegt, merkt es
+# sofort - die Middleware bleibt wirkungslos und Traefik loggt den
+# fehlenden Zugriff. Das ist die richtige Richtung des Scheiterns.
+#
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traefik-internal-namespaced-nosecrets
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingresses/status
+    verbs:
+      - update
+  - apiGroups:
+      - traefik.io
+    resources:
+      - ingressroutes
+      - ingressroutetcps
+      - ingressrouteudps
+      - middlewares
+      - middlewaretcps
+      - tlsoptions
+      - tlsstores
+      - traefikservices
+      - serverstransports
+      - serverstransporttcps
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: traefik-internal-namespaced
+  namespace: flux-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-internal-namespaced-nosecrets
 subjects:
   - kind: ServiceAccount
     name: traefik-internal
@@ -927,6 +1041,9 @@ spec:
           - traefik-internal
           - headlamp
           - whoami
+          # Nur fuer die Flux-Statusseite (flux-web.yaml). Das RBAC dafuer ist
+          # bewusst ein anderes - traefik-internal-namespaced-nosecrets.
+          - flux-system
 
       kubernetesCRD:
         enabled: true
@@ -943,6 +1060,9 @@ spec:
           - traefik-internal
           - headlamp
           - whoami
+          # Nur fuer die Flux-Statusseite (flux-web.yaml). Das RBAC dafuer ist
+          # bewusst ein anderes - traefik-internal-namespaced-nosecrets.
+          - flux-system
 
       kubernetesGateway:
         enabled: false
