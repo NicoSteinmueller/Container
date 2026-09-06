@@ -825,6 +825,22 @@ spec:
         type: LoadBalancer
         externalTrafficPolicy: Local
 
+        #
+        # Kein NodePort - Begruendung ausfuehrlich in ingress-internal.yaml.
+        #
+        # Hier wiegt sie schwerer als drueben. Der oeffentliche Controller
+        # soll ausschliesslich unter 192.168.178.232 stehen, denn genau darauf
+        # beruht die Zusage im Sicherheitskonzept: Die Portfreigabe zeigt auf
+        # eine eigene Adresse und nicht auf den Node, der auch die Talos-API
+        # traegt. Mit NodePort war er zusaetzlich unter
+        # 192.168.178.230:30603 erreichbar - also doch auf dieser Adresse.
+        #
+        # Solange die Fritzbox auf .232 weiterleitet, war das eine Unschaerfe
+        # im LAN und kein Weg aus dem Internet. Die Zusage soll aber nicht
+        # davon abhaengen, dass in der Fritzbox die richtige Adresse steht.
+        #
+        allocateLoadBalancerNodePorts: false
+
     #
     # Zertifikate: Let's Encrypt per DNS-01 ueber IONOS, je Name.
     #

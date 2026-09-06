@@ -113,18 +113,42 @@ ingress:
 #
 # Die Ingress-Ports, bewusst für alle offen.
 #
-# Diese Regel sichert nichts ab, sie hält etwas offen. Der Grund ist eine
-# Unschärfe, die man sonst erst im Fehlerfall bemerkt: Cilium verarbeitet den
-# LoadBalancer-Verkehr in eBPF und kann Netfilter dabei umgehen. Ob die
-# Pakete an 192.168.178.231:443 diese Regelkette überhaupt sehen, ist damit
-# offen - und die Antwort darf keine Rolle spielen. Sehen sie sie nicht, ist
-# die Regel wirkungslos; sehen sie sie doch, wäre der interne Ingress ohne
-# sie tot.
+# Diese Regel sichert nichts ab, sie hält etwas offen - und inzwischen ist
+# nachgemessen, dass sie nicht einmal das tut.
 #
-# Deshalb steht hier kein Quellnetz. Wer diese Ports absichern will, tut das
-# in den NetworkPolicies - `allow-from-lan` in
-# k8s/flux/clusters/talos-cp1/ingress-internal.yaml ist die Stelle, nicht
-# diese. Verlass dich für die Ingress-Ports nicht auf diese Firewall.
+# Hier stand die Unschärfe: Cilium verarbeitet den LoadBalancer-Verkehr in
+# eBPF und kann Netfilter dabei umgehen; ob die Pakete an
+# 192.168.178.231:443 diese Regelkette überhaupt sehen, sei offen. Sie sehen
+# sie nicht. Der Beweis läuft über die NodePorts, die denselben Datapfad
+# nehmen - aus einer Quelladresse, die in admin_sources steht:
+#
+#   4244   gefiltert   Hubble-API, ein Host-Prozess ohne Regel hier
+#   2379   gefiltert   etcd, ebenfalls ohne Regel
+#   30081  offen       NodePort, ebenfalls ohne Regel
+#   31098  offen       NodePort, ebenfalls ohne Regel
+#
+# Dieselbe Quelle, derselbe Node, entgegengesetztes Ergebnis: Was an einen
+# Host-Prozess geht, fällt unter diese Kette. Was Cilium als Service
+# behandelt, nicht.
+#
+# Die Regel bleibt trotzdem stehen. Sie kostet nichts, und sie zu entfernen
+# hiesse, sich auf genau die Aussage zu verlassen, die hier eben noch offen
+# war - für einen Gewinn, den es nicht gibt: 80 und 443 sollen erreichbar
+# sein.
+#
+# Was daraus folgt, gilt aber weit über diese Regel hinaus und gehört in
+# jede Abwägung, die diese Firewall als zweite Bremse einplant:
+#
+#   Für alles hinter einem Kubernetes-Service ist die NetworkPolicy die
+#   einzige Kontrolle. Diese Firewall schützt die Talos-API, das Kubelet
+#   und etcd - sonst nichts.
+#
+# Deshalb tragen die LoadBalancer-Services seit
+# k8s/flux/clusters/talos-cp1/ingress-*.yaml `allocateLoadBalancerNodePorts:
+# false`: Was keinen NodePort hat, ist auf der Node-Adresse auch nicht
+# erreichbar. Wer diese Ports einschränken will, tut das in den
+# NetworkPolicies - `allow-from-lan` in ingress-internal.yaml ist die
+# Stelle, nicht diese.
 #
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
