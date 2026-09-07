@@ -35,13 +35,46 @@
 #
 ---
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
+kind: GitRepository
 metadata:
   name: csi-driver-nfs
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
+  url: https://github.com/kubernetes-csi/csi-driver-nfs
+  ref:
+    #
+    # Hier stand eine HelmRepository auf
+    #   raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
+    #
+    # Das war eine bewegliche Quelle in dreifacher Hinsicht, und die
+    # gepinnte Version "4.13.4" hat davon nichts aufgehalten - sie benennt
+    # einen Eintrag im Index, nicht dessen Inhalt:
+    #
+    #   1. Der Index kam aus dem Branch `master`.
+    #   2. Er loeste 4.13.4 auf .../release-4.12/charts/latest/... auf -
+    #      ein Verzeichnis, das jede Veroeffentlichung ueberschreibt.
+    #   3. Auch dieser Pfad liegt auf einem Branch, nicht auf einem Tag.
+    #
+    # Ein OCI-Chart gibt es nicht (weder registry.k8s.io noch ghcr.io), und
+    # der getaggte Index fuehrt 4.13.4 doppelt - einmal auf `latest/`, einmal
+    # auf `v4.13.4/`. Welchen Helm nimmt, ist nicht festgelegt.
+    #
+    # Deshalb dieselbe Bauart wie bei local-path-provisioner: Die Chart-
+    # Quelle liegt im Repo unter charts/v4.13.4/csi-driver-nfs, und dieser
+    # Commit ist der von Tag v4.13.4. Damit ist die Version nicht mehr ein
+    # Name in einem Index, sondern ein Verzeichnisstand.
+    #
+    # Beim Update aendern sich zwei Zeilen: dieser Commit und der `chart:`-
+    # Pfad im HelmRelease unten. Renovate hebt den Commit, den Pfad nicht -
+    # das ist der Preis eines versionierten Verzeichnisses und faellt beim
+    # Review auf, weil der Chart sonst nicht gefunden wird.
+    #
+    # renovate: datasource=github-tags depName=kubernetes-csi/csi-driver-nfs
+    commit: f09798c0f1e7d1ae3b32dc8dfef67f6e848e8761 # v4.13.4
+  ignore: |
+    /*
+    !/charts/v4.13.4
 ---
 #
 # Hier steht bewusst keine Egress-Policy, anders als in crowdsec, headlamp,
@@ -94,10 +127,14 @@ spec:
   storageNamespace: csi-driver-nfs
   chart:
     spec:
-      chart: csi-driver-nfs
-      version: "4.13.4"
+      #
+      # Pfad im Repo statt Name im Index - kein `version:` mehr, die steht in
+      # der Chart.yaml am Pfad. Muss beim Update mitgezogen werden, siehe
+      # GitRepository oben.
+      #
+      chart: ./charts/v4.13.4/csi-driver-nfs
       sourceRef:
-        kind: HelmRepository
+        kind: GitRepository
         name: csi-driver-nfs
         namespace: flux-system
   install:

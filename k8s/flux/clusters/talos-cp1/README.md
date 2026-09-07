@@ -51,6 +51,52 @@ kubectl -n kube-system exec ds/cilium -- \
   hubble observe --from-namespace crowdsec --verdict DROPPED --last 50
 ```
 
+## Woher die Charts kommen
+
+Jede Fremdquelle in diesem Verzeichnis ist unveränderlich gepinnt. Der Grund
+steht in einem Satz: `kustomize-controller` und `helm-controller` sind an
+`cluster-admin` gebunden (`multitenant: false`, ein Autor — siehe
+[../../README.md](../../README.md)). Was hier als Chart hereinkommt, wird also
+mit den höchsten Rechten des Clusters gerendert und angewendet. Eine bewegliche
+Quelle ist damit gleichbedeutend mit fremdem Code als Cluster-Admin.
+
+| Quelle | Pinning |
+|---|---|
+| `local-path-provisioner` | GitRepository auf **Commit** `49b2be8e…` (Tag `v0.0.37`) |
+| `csi-driver-nfs` | GitRepository auf **Commit** `f09798c0…` (Tag `v4.13.4`), Chart aus `charts/v4.13.4/` |
+| Traefik, CrowdSec, Headlamp, metrics-server, Reloader | HelmRepository über HTTPS, Chart-Version exakt gepinnt |
+| Container-Images | Tag, teils zusätzlich Digest |
+
+**Commits statt Tags** bei den beiden GitRepositories: Ein Git-Tag lässt sich
+verschieben, ein SHA nicht. Bei `csi-driver-nfs` kam dazu, dass die frühere
+`HelmRepository` auf `…/master/charts` zeigte und die Version `4.13.4` dort auf
+`…/release-4.12/charts/latest/…` auflöste — ein wanderndes Verzeichnis auf
+einem wandernden Branch. Die gepinnte Versionsnummer benannte einen Eintrag im
+Index, nicht dessen Inhalt.
+
+Renovate zieht beide Commits weiter nach; der `flux`-Manager kann das nicht
+(er kennt `ref.tag`, nicht `ref.commit`), deshalb gibt es dafür einen eigenen
+`customManager` in [renovate.json5](../../../../renovate.json5). Der Tag im
+Zeilenkommentar hinter dem Commit ist Teil des Vertrags — ohne ihn findet
+Renovate den nächsten Stand nicht.
+
+> **Bei einem `csi-driver-nfs`-Update ändern sich zwei Zeilen**: der Commit
+> *und* der `chart:`-Pfad (`./charts/v4.13.4/…`). Renovate hebt nur den ersten.
+> Wird der Pfad vergessen, findet Flux das Chart nicht — ein lauter Fehler, kein
+> stiller.
+
+**Was offen bleibt**, weil es eine Entscheidung oder einen Schlüssel braucht,
+den dieses Repo nicht hat:
+
+- **Keine Signaturprüfung** (`spec.verify`) auf den GitRepositories. Sie setzt
+  GPG-signierte Commits und ein Secret mit dem öffentlichen Keyring voraus —
+  eine Umstellung der eigenen Arbeitsweise, nicht eine Zeile Manifest. Solange
+  sie fehlt, ist ein kompromittierter GitHub-Zugang oder ein abgeflossenes PAT
+  gleichbedeutend mit Cluster-Admin.
+- **Kein `serviceAccountName`** an Kustomizations und HelmReleases. Das ist der
+  Weg, `cluster-admin` loszuwerden; er verlangt je Kustomization eine eigene
+  Rolle und ist bei einem Autor bewusst nicht gegangen worden.
+
 ## `whoami.yaml`
 
 `HelmRelease` auf das lokale Chart `k8s/whoami/chart` (Deployment, Service,
