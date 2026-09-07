@@ -625,6 +625,54 @@ spec:
       - name: rate-limit
 
 ---
+#
+# Der ServiceAccount des Controllers.
+#
+# Er steht hier und nicht im Chart, weil das Chart seinen eigenen nur anlegt,
+# solange `serviceAccount.name` leer ist (templates/rbac/serviceaccount.yaml,
+# `{{- if not .Values.serviceAccount.name -}}`). Gesetzt ist der Name unten im
+# HelmRelease, damit das handgeschriebene RBAC weiter oben einen festen
+# Namen hat, auf den es sich beziehen kann.
+#
+# Zu `automountServiceAccountToken: false` - und das ist die Zeile, die man
+# falsch liest:
+#
+# Sie haelt den Token NICHT aus dem Traefik-Pod heraus. Das Chart schreibt im
+# Pod-Template das Gegenteil, und die Pod-Ebene gewinnt:
+#
+#   templates/rbac/serviceaccount.yaml:13  automountServiceAccountToken: false
+#   templates/_podtemplate.tpl:33          automountServiceAccountToken: true
+#
+# Beide Werte sind fest verdrahtet, kein Chart-Wert steuert sie. Nachgemessen
+# am laufenden Objekt:
+#
+#   kubectl -n traefik-public get sa traefik-public \
+#     -o jsonpath='{.automountServiceAccountToken}'      -> false
+#   kubectl -n traefik-public get deploy traefik-public \
+#     -o jsonpath='{.spec.template.spec.automountServiceAccountToken}'  -> true
+#
+# Die Zeile ist damit kein Fehler, aber auch keine Haertung: Sie schreibt
+# genau das fest, was das Chart fuer seinen eigenen ServiceAccount ohnehin
+# schreibt - `traefik-internal` hat dasselbe Feld, dort vom Chart gesetzt.
+# Ihr Nutzen liegt woanders: Ein *anderer* Pod, der diesen Account benutzte
+# und nicht ausdruecklich einen Token anfordert, bekaeme keinen.
+#
+# Wegnehmen laesst sich der Token ohnehin nicht. Traefik beobachtet
+# Ingresses, Services und Secrets ueber die API, und den Secrets-Informer
+# startet es fuer jeden beobachteten Namespace, ob dort ein Secret
+# referenziert wird oder nicht - das hat der Versuch mit einer secretfreien
+# Rolle fuer flux-system gezeigt, der den gesamten Kubernetes-Provider
+# lahmgelegt hat (siehe k8s/flux/README.md).
+#
+# Was die Beute begrenzt, steht deshalb nicht hier, sondern weiter oben:
+# `rbac.enabled: false` im HelmRelease und eine eigene, namespace-begrenzte
+# ClusterRole - kein Blick in andere Namespaces, kein internes Wildcard.
+#
+# Was sie nicht begrenzt und auch nicht begrenzen kann: IONOS_API_KEY steht
+# als env im Pod. Wer dort Code ausfuehrt, hat ihn, ganz ohne API-Zugriff.
+# Das ist der Punkt "Ein DNS-Provider-Token liegt in der exponierten Zone"
+# aus den Restrisiken, und er faellt erst mit E4 weg, nicht mit RBAC.
+#
 apiVersion: v1
 kind: ServiceAccount
 metadata:
