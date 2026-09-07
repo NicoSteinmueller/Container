@@ -61,6 +61,34 @@ metadata:
 
 ---
 #
+# Der `default`-ServiceAccount, nur um ihm den Token wegzunehmen.
+#
+# Agent und LAPI laufen unter diesem Account - das Chart setzt fuer die LAPI
+# gar keinen `serviceAccountName`, und fuer den Agent nur, wenn man
+# `agent.serviceAccountName` fuellt. Beide sprechen die Kubernetes-API aber
+# nie an: Es gibt keine ClusterRole fuer CrowdSec, und Hubble zeigt aus
+# diesem Namespace keinen einzigen Flow nach 6443 (seit der Egress-Policy
+# weiter unten koennte es auch keinen mehr geben).
+#
+# Ein Token, den niemand benutzt, ist trotzdem der Unterschied zwischen
+# "ein Pod" und "ein authentifizierter Client am API-Server" - er reicht fuer
+# kube-public/cluster-info und Selbstauskuenfte. Der Agent ist der Prozess,
+# der von Berufs wegen feindliche Eingaben verarbeitet; ihm den Ausweis
+# abzunehmen kostet nichts.
+#
+# Kubernetes legt diesen ServiceAccount selbst an. Ihn hier zu deklarieren
+# heisst nur, das eine Feld zu setzen - Flux uebernimmt ihn per Server-Side
+# Apply.
+#
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+  namespace: crowdsec
+automountServiceAccountToken: false
+
+---
+#
 # Eingehend nur von ingress-public - und das ist die eine Regel, auf die es
 # ankommt.
 #
@@ -237,6 +265,20 @@ spec:
     remediation:
       retries: 3
   values:
+    #
+    # Talos faehrt containerd, nicht Docker - und der Chart-Default ist
+    # `docker`. Der Unterschied ist hier kein Schoenheitsfehler: Bei "docker"
+    # haengt das Chart zusaetzlich den hostPath /var/lib/docker/containers in
+    # den Agent. Auf diesem Node gibt es das Verzeichnis nicht einmal; der
+    # Mount war reine Angriffsflaeche fuer nichts.
+    #
+    # Auf die Acquisition wirkt der Wert hier nicht: Er setzt nur das
+    # `type:`-Label fuer Eintraege unter `agent.acquisition`, und die ist
+    # leer - gelesen wird ueber `additionalAcquisition` weiter unten, wo
+    # `type: containerd` ohnehin schon steht.
+    #
+    container_runtime: containerd
+
     lapi:
       replicas: 1
 
@@ -304,6 +346,28 @@ spec:
         # SQLite-Datei mit zwei Schreibern ist eine kaputte SQLite-Datei.
         #
         type: Recreate
+
+      #
+      # Wie beim Agent: Der Chart-Default laesst den vollen
+      # Capability-Satz stehen. Die LAPI lauscht auf 8080, also
+      # unprivilegiert - sie braucht keine davon.
+      #
+      # Auch hier kein `runAsNonRoot`. Anders als beim Agent liegt der Grund
+      # nicht an Dateirechten auf dem Host, sondern daran, dass die LAPI in
+      # ihre beiden PVCs schreibt (/etc/crowdsec und die SQLite-Datenbank).
+      # Mit fsGroup waere das loesbar, ist aber ungetestet - und ein Fehler
+      # daran macht beim naechsten Neustart die Sperrliste des oeffentlichen
+      # Ingress unbrauchbar. Ohne hostPath ist die LAPI ohnehin die
+      # harmlosere Haelfte dieses Namespace.
+      #
+      securityContext:
+        allowPrivilegeEscalation: false
+        privileged: false
+        capabilities:
+          drop:
+            - ALL
+        seccompProfile:
+          type: RuntimeDefault
 
       resources:
         requests:
@@ -376,6 +440,70 @@ spec:
           labels:
             type: containerd
             program: traefik
+
+      #
+      # Nicht das ganze /var/log, nur die Container-Logs.
+      #
+      # `hostVarLog` ist der Chart-Default und haengt /var/log als hostPath
+      # ein. Was darin liegt, ist auf Talos deutlich mehr als Container-Logs:
+      #
+      #   apid.log            die Talos-API
+      #   trustd.log          verteilt Zertifikate an beitretende Nodes
+      #   etcd.log            etcd
+      #   kubelet.log         Kubelet
+      #   machined.log        Talos selbst
+      #   auditd.log(.1)      das auditd des Hosts, mehrere MB
+      #   audit/              das Kubernetes-Audit-Log
+      #
+      # Alles -rw-r----- root:root, und der Agent laeuft als root - er konnte
+      # das also lesen. Gebraucht hat er davon nichts: Die Acquisition oben
+      # zeigt auf /var/log/containers, und die Dateien dort sind Symlinks
+      # nach /var/log/pods. Beide Pfade einzeln eingehaengt, schreibgeschuetzt,
+      # loesen die Symlinks weiterhin auf - alles andere ist weg.
+      #
+      # Gegenprobe nach dem Rollout:
+      #   kubectl -n crowdsec exec ds/crowdsec-agent -- ls /var/log
+      #   kubectl -n crowdsec exec ds/crowdsec-agent -- \
+      #     cscli metrics | grep traefik-logs
+      #
+      hostVarLog: false
+
+      extraVolumes:
+        - name: varlogcontainers
+          hostPath:
+            path: /var/log/containers
+        - name: varlogpods
+          hostPath:
+            path: /var/log/pods
+
+      extraVolumeMounts:
+        - name: varlogcontainers
+          mountPath: /var/log/containers
+          readOnly: true
+        - name: varlogpods
+          mountPath: /var/log/pods
+          readOnly: true
+
+      #
+      # Capabilities und seccomp. Der Chart-Default setzt nur
+      # allowPrivilegeEscalation und privileged auf false - der Container
+      # behielt damit den vollen Standard-Satz an Capabilities.
+      #
+      # Kein `runAsNonRoot`, und das ist gemessen und nicht bequem: Die
+      # Container-Logs sind -rw-r----- root:root. Als Nicht-Root kaeme der
+      # Agent nicht mehr an sie heran, und zwar lautlos - er liefe weiter,
+      # meldete sich gesund, und `cscli metrics` bliebe leer. Ein stiller
+      # Ausfall der Erkennung ist schlechter als ein root-Prozess ohne
+      # Capabilities.
+      #
+      securityContext:
+        allowPrivilegeEscalation: false
+        privileged: false
+        capabilities:
+          drop:
+            - ALL
+        seccompProfile:
+          type: RuntimeDefault
 
       resources:
         requests:
