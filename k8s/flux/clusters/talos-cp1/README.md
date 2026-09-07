@@ -51,6 +51,57 @@ kubectl -n kube-system exec ds/cilium -- \
   hubble observe --from-namespace crowdsec --verdict DROPPED --last 50
 ```
 
+## Pod Security: welcher Namespace was darf
+
+Ohne `pod-security.kubernetes.io/enforce`-Label gilt **`privileged`** — ein Pod
+dort dürfte privilegiert laufen, Host-Namespaces betreten und hostPath mounten.
+Jeder Namespace trägt seine Stufe deshalb ausdrücklich; die, die Kubernetes
+selbst anlegt, bekommen sie über [namespaces.yaml](namespaces.yaml).
+
+| Stufe | Namespaces | Warum |
+|---|---|---|
+| `restricted` | `headlamp`, `reloader`, `traefik-internal`, `traefik-public`, `whoami` | Brauchen nichts davon |
+| `restricted` | `default`, `kube-public`, `kube-node-lease` | Leer, und sollen es bleiben |
+| `privileged` | `crowdsec` | Agent liest Container-Logs per hostPath |
+| `privileged` | `csi-driver-nfs` | `mount(8)` im Host-Namespace, Bidirectional Mount Propagation |
+| `privileged` | `local-path-storage` | Helfer-Pods legen Verzeichnisse auf der Host-Platte an |
+| *(keine)* | `kube-system`, `flux-system`, `cilium-secrets` | siehe unten |
+
+**hostPath ist bereits ab `baseline` ein Verstoß**, nicht erst ab `restricted`.
+Das ist der Grund, warum die drei mittleren Zeilen auf `privileged` stehen und
+nicht eine Stufe tiefer — nachgemessen:
+
+```bash
+kubectl label --dry-run=server --overwrite ns crowdsec \
+  pod-security.kubernetes.io/enforce=baseline
+# Warning: crowdsec-agent-…: hostPath volumes
+```
+
+`warn` und `audit` stehen dort trotzdem auf `baseline`: Jede *andere*
+Abweichung taucht weiterhin als Warnung auf, nur der hostPath ist die Ausnahme.
+
+**`default` ist der Fall, auf den es ankommt.** Er ist leer, aber dort hängt das
+PVC `unraid-data` auf den 8-TiB-Share. Ein Manifest ohne `namespace:` landet
+genau hier. Nebenwirkung: `kubectl run` und `kubectl debug` ohne
+securityContext werden dort jetzt abgelehnt — für einen schnellen Testpod
+lästig, und genau so gemeint.
+
+**Drei bleiben bewusst ohne Stufe:**
+
+- **`kube-system`** — Cilium läuft dort mit `privileged: true` (mount-bpf-fs)
+  und einem Capability-Satz, den `baseline` ablehnt. Eine Stufe wäre hier kein
+  Zugewinn, sondern ein Ausfall des CNI.
+- **`flux-system`** — bewusst offen, damit die Controller anwenden dürfen, was
+  im Repo steht.
+- **`cilium-secrets`** — trägt `helm.sh/chart=cilium-1.20.1`, kommt also aus dem
+  Inline-Manifest der Talos-Machine-Config und nicht aus Flux. Von hier aus
+  bearbeitet, wären zwei Schreiber auf demselben Objekt. Pods laufen dort keine.
+
+> Die drei Namespaces in `namespaces.yaml` tragen
+> `kustomize.toolkit.fluxcd.io/prune: disabled`. Sie existierten vor diesem Repo
+> und sollen es überleben — ohne die Annotation würde Flux sie beim Entfernen
+> der Datei einsammeln, und ein gelöschtes `default` nähme `unraid-data` mit.
+
 ## Woher die Charts kommen
 
 Jede Fremdquelle in diesem Verzeichnis ist unveränderlich gepinnt. Der Grund

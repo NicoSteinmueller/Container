@@ -1,0 +1,92 @@
+#
+# Pod-Security fuer die Namespaces, die Kubernetes selbst anlegt.
+#
+# Jeder Namespace, den dieses Repo erzeugt, traegt seine PSS-Stufe in der
+# Datei der zugehoerigen Komponente. Uebrig blieben die, die beim
+# Cluster-Aufbau entstehen und niemandem gehoeren - und die standen damit
+# ganz ohne Stufe da. Ohne `enforce`-Label gilt `privileged`: Ein Pod dort
+# darf privilegiert laufen, Host-Namespaces betreten und hostPath mounten.
+#
+# `default` ist der Fall, auf den es ankommt. Er ist leer, aber nicht
+# bedeutungslos - dort haengt das PVC `unraid-data` auf den 8-TiB-Share des
+# Unraid-Hosts (nfs-storage.yaml). Ein Manifest ohne `namespace:` landet
+# genau hier, und bis eben haette es dabei alles gedurft.
+#
+# `restricted` und nicht `baseline`: In diesen drei Namespaces soll gar
+# nichts laufen. Wenn doch einmal etwas hineinsoll, ist die Fehlermeldung
+# der PSS-Admission die richtige Antwort - sie zwingt zur Entscheidung,
+# statt sie stillschweigend zu treffen.
+#
+# Nebenwirkung, die man kennen sollte: `kubectl run` und `kubectl debug`
+# ohne securityContext werden hier abgelehnt. Fuer einen schnellen Testpod
+# ist das laestig; genau deshalb steht es hier.
+#
+# ---------------------------------------------------------------------------
+# Drei Namespaces bleiben bewusst ohne Stufe:
+#
+#   kube-system     Dort laeuft Cilium mit `privileged: true` beim
+#                   mount-bpf-fs-Init und einem Capability-Satz, den
+#                   `baseline` bereits ablehnt. Eine Stufe hier waere kein
+#                   Zugewinn, sondern ein Ausfall des CNI.
+#   flux-system     Bewusst offen, im Repo begruendet: Die Controller
+#                   muessen anwenden duerfen, was im Repo steht.
+#   cilium-secrets  Traegt `helm.sh/chart=cilium-1.20.1` - er kommt aus dem
+#                   Inline-Manifest der Talos-Machine-Config, nicht aus
+#                   Flux. Ihn von hier aus zu bearbeiten hiesse, zwei
+#                   Schreiber auf dasselbe Objekt zu setzen; Talos macht
+#                   seit v1.13 Server-Side-Apply auf seine
+#                   Bootstrap-Manifeste. Pods laufen dort ohnehin keine -
+#                   der Namespace haelt nur die Secrets, die Cilium fuer
+#                   TLS-Policies synchronisiert.
+# ---------------------------------------------------------------------------
+#
+# Zur Annotation `kustomize.toolkit.fluxcd.io/prune: disabled` unten:
+#
+# Diese drei Namespaces existierten vor diesem Repo und sollen es
+# ueberleben. Ohne die Annotation wuerde Flux sie beim Entfernen dieser
+# Datei als verwaiste Objekte einsammeln - und ein geloeschtes `default`
+# nimmt das PVC `unraid-data` mit. Die Annotation nimmt sie aus der
+# Garbage Collection heraus; geaendert werden die Labels weiterhin.
+#
+# Es ist ein Sicherheitsnetz, kein Verlass: `default` und `kube-public`
+# schuetzt der NamespaceLifecycle-Admission-Controller ohnehin vor dem
+# Loeschen. `kube-node-lease` nicht.
+#
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: default
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-public
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-node-lease
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
