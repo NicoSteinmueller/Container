@@ -617,6 +617,25 @@ Pod-Egress ohnehin auf die Node-Adresse.
 Dateien sonst `nobody` gehören. Es heißt zugleich, dass `root` im Cluster auch
 auf dem Share `root` ist; die Regel ist deshalb auf die eine Adresse begrenzt.
 
+**Die Adressbegrenzung deckt aber nur die halbe Bedrohung.** Sie hält andere
+Geräte im Heimnetz fern. Gegen einen übernommenen Pod hilft sie nicht — der
+erreicht den Share ja bestimmungsgemäß. Ohne weitere Maßnahme wäre die Kette:
+
+1. Ein Pod, der als `root` läuft, legt eine setuid-root-Binary auf dem Share ab
+   (erlaubt durch `no_root_squash`).
+2. Irgendein Pod führt sie vom Mount aus aus.
+3. Root auf dem Node — und auf einem Ein-Node-Cluster ist das der ganze Cluster.
+
+Schritt 2 ist deshalb im Mount geschlossen: Sowohl die StorageClass als auch
+das statische PV tragen `nosuid`, `nodev` und `noexec` (Begründung je Option in
+[nfs-storage.yaml](nfs-storage.yaml)). `sec=sys` steht dort ausdrücklich, damit
+beim Lesen sichtbar ist, dass diese Strecke keine Authentisierung hat.
+
+Der saubere Weg wäre `root_squash`. Er scheitert heute daran, dass die Dienste,
+die vom Host herüberziehen, als `root` schreiben. Sobald sie über `runAsUser`
+und `fsGroup` feste IDs führen, ist das der nächste Schritt — dann fällt auch
+`no_root_squash` weg.
+
 Dass der Weg überhaupt offen ist, hängt an Unraids *Host access to custom
 networks* — siehe [vm/talos/README.md](../../../../vm/talos/README.md#macvtap-wer-wen-erreicht).
 Nachprüfen lässt sich das ohne Testdienst aus dem `csi-nfs-node`-Pod heraus; er

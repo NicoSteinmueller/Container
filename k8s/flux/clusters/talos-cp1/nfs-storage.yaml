@@ -272,6 +272,53 @@ mountOptions:
   #
   - hard
   - noatime
+
+  #
+  # Die drei folgenden sind die eigentliche Absicherung dieser Strecke, und
+  # sie sind noetig, weil NFS hier ohne Authentisierung laeuft.
+  #
+  # NFSv4.1 ohne `sec=krb5` bedeutet AUTH_SYS: Der Server glaubt die UID, die
+  # der Client schickt. Wer den Export erreicht, ist wer er behauptet zu sein.
+  # Getragen wird das allein von der Export-Regel auf dem Unraid-Host, die auf
+  # die Node-Adresse begrenzt sein muss - nicht auf 192.168.178.0/24 und schon
+  # gar nicht auf *. Gegenprobe, die keinen Zugang zum Host braucht:
+  #
+  #   kubectl -n csi-driver-nfs exec ds/csi-nfs-node -c nfs -- \
+  #     showmount -e 192.168.178.3
+  #   Export list for 192.168.178.3:
+  #   /mnt/user/k8s-data 192.168.178.230
+  #   /mnt/user/k8s      192.168.178.230
+  #
+  # Steht dort ein Netz statt der einen Adresse, ist alles Weitere hinfaellig.
+  #
+  # nosuid  Ein setuid-Bit auf einer Datei im Share wirkt nicht mehr. Ohne
+  #         das genuegt Schreibrecht auf dem Share, um dem Node eine
+  #         setuid-root-Binary unterzuschieben. PSS `restricted` setzt zwar
+  #         no_new_privs und entschaerft das - aber nicht in crowdsec,
+  #         csi-driver-nfs und local-path-storage, die `privileged` sind.
+  # nodev   Geraetedateien auf dem Share bleiben wirkungslos. Sonst waere ein
+  #         mitgebrachtes /dev/sda ein Weg an die Platte des Hosts vorbei am
+  #         Dateisystem.
+  # noexec  Nichts wird von hier ausgefuehrt. Das ist ein Datenspeicher -
+  #         Nextcloud-Uploads, Immich-Bilder, Paperless-Scans -, kein Ort fuer
+  #         Programme.
+  #
+  # Zu noexec, weil es die einzige der drei ist, die etwas kaputtmachen kann:
+  # Der Fehler ist laut und eindeutig ("Permission denied" beim exec, nicht
+  # beim Lesen). Wenn ein Dienst hier doch etwas ausfuehren muss, gehoert das
+  # ausdruecklich entschieden - dann diese Zeile entfernen und im Kommentar
+  # festhalten, welcher Dienst es war.
+  #
+  # sec=sys steht ausdruecklich da, obwohl es die Voreinstellung ist: Diese
+  # Strecke hat keine Authentisierung, und das soll man beim Lesen sehen und
+  # nicht wissen muessen. Der Weg zu echter Authentisierung waere krb5 mit
+  # einem KDC - auf Unraid ein eigenes Projekt und fuer ein Heimnetz, dessen
+  # Export auf eine Adresse begrenzt ist, kein gutes Verhaeltnis.
+  #
+  - nosuid
+  - nodev
+  - noexec
+  - sec=sys
 ---
 #
 # "data" - der Share, in dem heute die Daten der Container auf dem Host liegen
@@ -298,10 +345,28 @@ spec:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
   storageClassName: ""
+  #
+  # Dieselben Optionen wie in der StorageClass oben, wo auch die ausfuehrliche
+  # Begruendung steht. Kurz: AUTH_SYS ohne Authentisierung, getragen allein von
+  # der Export-Regel auf dem Unraid-Host - dahinter nosuid/nodev/noexec, damit
+  # aus Schreibrecht auf dem Share kein Weg auf den Node wird.
+  #
+  # Hier wiegt noexec schwerer als drueben und ist trotzdem richtig: In diesem
+  # Share liegen die Daten der Dienste, die vom Host herueberziehen -
+  # Nextcloud-Dateien, Immich-Bilder, Paperless-Scans, Musik. Nichts davon
+  # wird ausgefuehrt.
+  #
+  # Aenderungen an dieser Liste wirken erst beim naechsten Mount. Solange kein
+  # Pod das PVC benutzt (heute keiner), ist das folgenlos.
+  #
   mountOptions:
     - nfsvers=4.1
     - hard
     - noatime
+    - nosuid
+    - nodev
+    - noexec
+    - sec=sys
   csi:
     driver: nfs.csi.k8s.io
     #
