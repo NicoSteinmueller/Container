@@ -291,6 +291,25 @@ spec:
 # nachziehen. Das ist aber der laute Fehlerfall - Traefik protokolliert
 # RBAC-Fehler - und nicht der stille von oben.
 #
+# Wie laut, ist inzwischen gemessen und schaerfer als "protokolliert":
+# `secrets` in dieser Liste ist nicht verhandelbar. Traefik startet den
+# Secrets-Informer fuer JEDEN beobachteten Namespace, unabhaengig davon, ob
+# dort ueberhaupt etwas ein Secret referenziert. Fehlt das Recht in einem
+# einzigen Namespace, scheitert der Informer -
+#
+#   failed to list *v1.Secret: secrets is forbidden: ... in namespace "..."
+#
+# - und das reisst den gesamten Kubernetes-Provider mit, nicht nur den
+# betroffenen Namespace: Danach liefert JEDE Route dieses Controllers 404.
+# Der Versuch, flux-system mit einer secretfreien Rolle zu bedienen, hat
+# genau das ausgeloest; die Vorgeschichte steht in k8s/flux/README.md.
+#
+# Zwei Folgerungen: Eine RoleBinding fuer diesen Controller in einem
+# Namespace zu setzen heisst zwingend, ihm dort auch Secrets zu geben - eine
+# abgespeckte Rolle gibt es nicht. Und wer hier einen Namespace hinzufuegt,
+# muss ihn in `providers.*.namespaces` UND in einer RoleBinding haben,
+# sonst faellt der ganze Controller aus.
+#
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
