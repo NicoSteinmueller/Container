@@ -1,0 +1,234 @@
+#
+# CloudNativePG - der Operator, dem die Postgres-Instanzen der migrierten
+# Dienste gehoeren.
+#
+# Warum er ueberhaupt kommt, steht in k8s/AUSBAUSTUFEN.md, Stufe 1. Kurz: Man
+# deklariert einen `Cluster`, kein Passwort. Der Operator wuerfelt es selbst
+# und legt es als Secret `<name>-app` ab; die Anwendung greift es per
+# `secretKeyRef`. Der Wert existiert damit nie in Git - weder im Klartext noch
+# SOPS-verschluesselt - und fuenf Eintraege fallen ersatzlos aus
+# homelab-secrets heraus.
+#
+# Er ist damit auch der Migrationsweg: `bootstrap.initdb.import` mit
+# `type: microservice` faehrt pg_dump/pg_restore gegen die alte Instanz auf dem
+# Unraid-Host, inklusive Versionssprung.
+#
+# ---------------------------------------------------------------------------
+# Backup - warum hier keine ScheduledBackup steht
+#
+# CNPG kennt genau drei Backup-Methoden, und keine davon schreibt in ein PVC:
+#
+#   barmanObjectStore   Objektspeicher (S3 und Verwandte). Gibt es hier nicht.
+#   plugin              dasselbe ueber den barman-cloud-Plugin, gleiches Ziel.
+#   volumeSnapshot      braucht den snapshot-controller, eine
+#                       VolumeSnapshotClass und einen CSI-Treiber, der
+#                       Snapshots kann. `local-path` kann es nicht - und dort
+#                       liegt PGDATA, aus den Gruenden in README.md,
+#                       Abschnitt "local-path.yaml, nfs-storage.yaml".
+#
+# Ein `ScheduledBackup` auf ein `nfs-unraid`-PVC gibt es also nicht; wer es
+# hinschreibt, bekommt von der Admission eine Absage. Der Weg hier ist
+# stattdessen der, den k8s/CHECKLISTE.md unter A/Stufe 2 beschreibt:
+#
+#   pg_dump per CronJob, alle 12 h, auf ein PVC der Klasse `nfs-unraid` -
+#   also nach /mnt/user/k8s auf dem Unraid-Host, wo Kopia es abholt.
+#
+# Der Preis ist ausdruecklich entschieden: kein PITR. Man kommt auf den letzten
+# Dump zurueck, nicht auf einen Zeitpunkt dazwischen. Wer das aendern will,
+# braucht einen Objektspeicher und nimmt dann barmanObjectStore samt WAL -
+# das ist eine andere Entscheidung, nicht eine andere Zeile.
+#
+# Der CronJob steht **nicht** in dieser Datei. Er braucht das Secret
+# `<cluster>-app`, und das ist namespace-gebunden - er gehoert also je Dienst
+# in dessen Namespace. Die vollstaendige Vorlage (Cluster, Dump-PVC, CronJob,
+# NetworkPolicies) steht in README.md, Abschnitt "cloudnative-pg.yaml".
+# ---------------------------------------------------------------------------
+#
+# Was gesichert werden muss, ist damit wenig: nur der Dump. Nicht das PGDATA,
+# nicht der Operator, nicht die `Cluster`-CRs - die stehen in Git und kommen
+# ueber Flux zurueck. Der Weg zurueck ist: CR anwenden, leere Instanz, Dump
+# einspielen. Das vom Operator gewuerfelte Passwort entsteht dabei neu und
+# fehlt niemandem, solange die Anwendung es per `secretKeyRef` liest.
+#
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: cloudnative-pg
+  namespace: flux-system
+spec:
+  interval: 1h
+  #
+  # Die kanonische Adresse, nicht cloudnative-pg.github.io/charts - die
+  # antwortet mit 301 hierher. Ein Redirect, dem Flux zwar folgt, der aber
+  # bei jeder Fehlersuche eine Zeile Rauschen ist.
+  #
+  url: https://cloudnative-pg.io/charts
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cnpg-system
+  labels:
+    #
+    # Der Operator selbst braucht weder Privilegien noch Host-Zugriff - er
+    # spricht mit der API und mit den Instanzen. Die Chart-Defaults erfuellen
+    # `restricted` bereits (runAsNonRoot, runAsUser 10001, seccompProfile
+    # RuntimeDefault, capabilities drop ALL, readOnlyRootFilesystem), es ist
+    # also keine Zumutung, sondern eine Feststellung.
+    #
+    # Wichtig fuer spaeter: Die Postgres-Instanzen laufen **nicht** hier,
+    # sondern im Namespace des jeweiligen Dienstes. Auch die vertragen
+    # `restricted` - CNPG-Instanzen laufen als UID 26 ohne Capabilities.
+    #
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+#
+# Egress-Default-Deny, dieselbe Bauart wie reloader-egress und
+# local-path-egress. Der Operator haelt die Zugangsdaten **jeder** Datenbank
+# im Cluster - er ist damit genau die Sorte Komponente, die im Heimnetz nichts
+# verloren hat.
+#
+# Nur Egress, kein Ingress: Eine Cilium-Policy erzwingt ausschliesslich die
+# Richtungen, die sie nennt. Das ist hier keine Nachlaessigkeit, sondern
+# noetig - der kube-apiserver muss den Validating- und Mutating-Webhook auf
+# 9443 erreichen, sonst wird jedes `Cluster`-Objekt abgelehnt
+# (`failurePolicy: Fail`). Eine Ingress-Regel dafuer waere machbar, aber sie
+# ist die Sorte Regel, deren Fehler man erst beim naechsten Anlegen einer
+# Datenbank bemerkt.
+#
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: cnpg-egress
+  namespace: cnpg-system
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    # `toPorts` ist Pflicht, nicht Kosmetik - Begruendung in headlamp.yaml.
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+
+    #
+    # Die Namespaces mit Postgres-Instanzen
+    #
+    # Der Operator laesst die Instanzen nicht laufen und schaut zu: Er fragt
+    # den Instance Manager jedes Pods ueber HTTP nach dem Zustand (Port 8000)
+    # und spricht fuer Rollen- und Datenbankverwaltung Postgres selbst an
+    # (5432). Ohne diese Regel steht der `Cluster` auf "Setting up primary"
+    # und kommt nicht weiter.
+    #
+    # Dieselbe Richtung des Vergessens wie bei den Namespace-Listen in
+    # ingress-internal.yaml: Ein fehlender Eintrag faellt sofort auf, weil die
+    # Datenbank gar nicht erst hochkommt. Deshalb hier eine Liste und nicht
+    # ein Selektor ueber alle Namespaces.
+    #
+    # Je migriertem Dienst kommt hinzu:
+    #
+    #   - toEndpoints:
+    #       - matchLabels:
+    #           io.kubernetes.pod.namespace: nextcloud
+    #           cnpg.io/podRole: instance
+    #     toPorts:
+    #       - ports:
+    #           - port: "5432"
+    #             protocol: TCP
+    #           - port: "8000"
+    #             protocol: TCP
+    #
+    # Gegenprobe, wenn eine Instanz haengt - die Quelle ist dann der
+    # Operator-Pod, das Ziel der Instanz-Pod:
+    #
+    #   kubectl -n kube-system exec ds/cilium -- \
+    #     hubble observe --namespace cnpg-system --type drop --last 100
+    #
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cloudnative-pg
+  namespace: flux-system
+spec:
+  interval: 10m
+  releaseName: cloudnative-pg
+  targetNamespace: cnpg-system
+  storageNamespace: cnpg-system
+  chart:
+    spec:
+      chart: cloudnative-pg
+      version: "0.29.0"
+      sourceRef:
+        kind: HelmRepository
+        name: cloudnative-pg
+        namespace: flux-system
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    #
+    # Die CRDs liegen bei diesem Chart unter templates/crds/ und sind damit
+    # gewoehnliche Templates - Helm verwaltet sie mit, ein Upgrade zieht
+    # Feldaenderungen also nach. Das ist die Ausnahme, nicht die Regel: Bei
+    # Charts mit einem echten crds/-Verzeichnis laesst Helm sie nach der
+    # Installation in Ruhe, und ein Versionssprung braucht Handarbeit.
+    #
+    crds:
+      create: true
+
+    config:
+      #
+      # Cluster-weit statt auf einen Namespace begrenzt: Die Instanzen liegen
+      # je Dienst in dessen eigenem Namespace (nextcloud, immich, paperless,
+      # ...), nicht hier. Ein Operator je Namespace waere die Alternative -
+      # fuenf Deployments statt einem, fuer denselben Zweck.
+      #
+      # Die Kehrseite steht im Repo schon bei Flux: Der Operator liest und
+      # schreibt Secrets in jedem Namespace, in dem eine Datenbank liegt.
+      # Genau deshalb ist der Egress oben eng.
+      #
+      clusterWide: true
+
+    #
+    # Fuenf Instanzen zu verwalten kostet nichts; der Operator arbeitet nur,
+    # wenn sich etwas aendert. Der Wert entspricht dem, was AUSBAUSTUFEN.md
+    # unter "Kosten" nennt.
+    #
+    resources:
+      requests:
+        cpu: 100m
+        memory: 100Mi
+      limits:
+        memory: 256Mi
+
+    #
+    # Kein PodMonitor und kein Dashboard - es gibt keinen Prometheus in
+    # diesem Cluster (siehe reloader.yaml, gleiche Stelle). Kommt einer,
+    # gehoert hier podMonitorEnabled: true hin; die Metriken der Instanzen
+    # kommen dann aus deren eigenem Port 9187, nicht von hier.
+    #
+    monitoring:
+      podMonitorEnabled: false
+      grafanaDashboard:
+        create: false

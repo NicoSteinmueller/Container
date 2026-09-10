@@ -8,9 +8,10 @@
 # darf privilegiert laufen, Host-Namespaces betreten und hostPath mounten.
 #
 # `default` ist der Fall, auf den es ankommt. Er ist leer, aber nicht
-# bedeutungslos - dort haengt das PVC `unraid-data` auf den 8-TiB-Share des
-# Unraid-Hosts (nfs-storage.yaml). Ein Manifest ohne `namespace:` landet
-# genau hier, und bis eben haette es dabei alles gedurft.
+# bedeutungslos: Ein Manifest ohne `namespace:` landet genau hier, und bis
+# eben haette es dabei alles gedurft. Das ist die Sorte Fehler, die niemand
+# absichtlich macht - ein vergessenes `namespace:` in einer Datei, die sonst
+# stimmt.
 #
 # `restricted` und nicht `baseline`: In diesen drei Namespaces soll gar
 # nichts laufen. Wenn doch einmal etwas hineinsoll, ist die Fehlermeldung
@@ -44,8 +45,8 @@
 #
 # Diese drei Namespaces existierten vor diesem Repo und sollen es
 # ueberleben. Ohne die Annotation wuerde Flux sie beim Entfernen dieser
-# Datei als verwaiste Objekte einsammeln - und ein geloeschtes `default`
-# nimmt das PVC `unraid-data` mit. Die Annotation nimmt sie aus der
+# Datei als verwaiste Objekte einsammeln - und ein Namespace nimmt beim
+# Loeschen alles mit, was darin liegt. Die Annotation nimmt sie aus der
 # Garbage Collection heraus; geaendert werden die Labels weiterhin.
 #
 # Es ist ein Sicherheitsnetz, kein Verlass: `default` und `kube-public`

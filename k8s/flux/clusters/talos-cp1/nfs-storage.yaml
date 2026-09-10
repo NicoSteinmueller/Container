@@ -237,15 +237,27 @@ parameters:
   share: /mnt/user/k8s
 
   #
-  # Was beim Loeschen eines PVC mit dem Unterverzeichnis passiert. "archive"
-  # benennt es in archived-<namespace>-<name> um, statt es wegzuwerfen.
-  #
-  # Der Preis ist Plattenplatz, den niemand aufraeumt, und den bezahlt dieser
-  # Cluster gern: Ein versehentlich geloeschter PVC ist ein Handgriff, ein
-  # versehentlich geloeschter Datenbestand ein Abend.
-  #
-  onDelete: archive
+  # Wie das Unterverzeichnis je PVC heisst. Ohne diese Zeile nimmt der Treiber
+  # den PV-Namen - also `pvc-4bcbf944-b6f7-4bd0-b50f-3c3dd00efc64`.
 
+  # So entsteht /mnt/user/k8s/<namespace>/<pvc-name>, zum
+  # Beispiel /mnt/user/k8s/nextcloud/dumps.
+  #
+
+  subDir: ${pvc.metadata.namespace}/${pvc.metadata.name}
+
+  #
+  # Was beim Loeschen eines PVC mit dem Unterverzeichnis passiert: nichts.
+  #
+  # "retain" heisst woertlich das - der Treiber protokolliert
+  # "volume is set to retain, not deleting/archiving subdirectory" und ruehrt
+  # das Verzeichnis nicht an. Weder loeschen noch umbenennen.
+  #
+  onDelete: retain
+
+# Es regelt das PV-*Objekt*, nicht das Verzeichnis: Das Objekt
+# verschwindet mit dem PVC, die Daten bleiben. Mit `Retain` bliebe
+# stattdessen ein PV in `Released` liegen, das nie wieder b
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 
@@ -286,8 +298,7 @@ mountOptions:
   #   kubectl -n csi-driver-nfs exec ds/csi-nfs-node -c nfs -- \
   #     showmount -e 192.168.178.3
   #   Export list for 192.168.178.3:
-  #   /mnt/user/k8s-data 192.168.178.230
-  #   /mnt/user/k8s      192.168.178.230
+  #   /mnt/user/k8s 192.168.178.230
   #
   # Steht dort ein Netz statt der einen Adresse, ist alles Weitere hinfaellig.
   #
@@ -319,81 +330,3 @@ mountOptions:
   - nodev
   - noexec
   - sec=sys
----
-#
-# "data" - der Share, in dem heute die Daten der Container auf dem Host liegen
-# (immich, nextcloud, paperless, music, ...). Als statisches PV eingebunden und
-# nicht ueber die StorageClass oben, weil der Inhalt schon da ist: Der Cluster
-# soll ihn benutzen, nicht anlegen.
-#
-# Deshalb auch Retain: Ein `kubectl delete pvc` darf hier unter keinen
-# Umstaenden in Richtung Daten wirken.
-#
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: unraid-data
-spec:
-  capacity:
-    #
-    # NFS erzwingt kein Kontingent - der Wert ist eine Angabe fuer den
-    # Scheduler, keine Grenze. Er entspricht ungefaehr dem freien Platz des
-    # Arrays zum Zeitpunkt der Einrichtung (8 TB von 24 TB).
-    #
-    storage: 8Ti
-  accessModes:
-    - ReadWriteMany
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: ""
-  #
-  # Dieselben Optionen wie in der StorageClass oben, wo auch die ausfuehrliche
-  # Begruendung steht. Kurz: AUTH_SYS ohne Authentisierung, getragen allein von
-  # der Export-Regel auf dem Unraid-Host - dahinter nosuid/nodev/noexec, damit
-  # aus Schreibrecht auf dem Share kein Weg auf den Node wird.
-  #
-  # Hier wiegt noexec schwerer als drueben und ist trotzdem richtig: In diesem
-  # Share liegen die Daten der Dienste, die vom Host herueberziehen -
-  # Nextcloud-Dateien, Immich-Bilder, Paperless-Scans, Musik. Nichts davon
-  # wird ausgefuehrt.
-  #
-  # Aenderungen an dieser Liste wirken erst beim naechsten Mount. Solange kein
-  # Pod das PVC benutzt (heute keiner), ist das folgenlos.
-  #
-  mountOptions:
-    - nfsvers=4.1
-    - hard
-    - noatime
-    - nosuid
-    - nodev
-    - noexec
-    - sec=sys
-  csi:
-    driver: nfs.csi.k8s.io
-    #
-    # Muss cluster-weit eindeutig sein; der Treiber benutzt ihn als Schluessel.
-    #
-    volumeHandle: unraid-data
-    volumeAttributes:
-      server: 192.168.178.3
-      share: /mnt/user/k8s-data
----
-#
-# Der passende Claim. Ein PV ist cluster-weit, ein PVC gehoert einem Namespace -
-# soll ein zweiter Namespace an denselben Share, braucht er ein eigenes PV mit
-# eigenem volumeHandle (ein PV bindet an genau einen PVC).
-#
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: unraid-data
-  namespace: default
-spec:
-  accessModes:
-    - ReadWriteMany
-  # Leer, nicht weggelassen: Ohne diese Zeile schoebe der Default-Setzer
-  # "nfs-unraid" ein und der Claim suchte ein dynamisches Volume statt des PV.
-  storageClassName: ""
-  volumeName: unraid-data
-  resources:
-    requests:
-      storage: 8Ti
