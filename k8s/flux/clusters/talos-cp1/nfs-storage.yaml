@@ -60,18 +60,11 @@ spec:
     # der getaggte Index fuehrt 4.13.4 doppelt - einmal auf `latest/`, einmal
     # auf `v4.13.4/`. Welchen Helm nimmt, ist nicht festgelegt.
     #
-    # Deshalb dieselbe Bauart wie bei local-path-provisioner: Die Chart-
-    # Quelle liegt im Repo unter charts/v4.13.4/csi-driver-nfs, und dieser
-    # Commit ist der von Tag v4.13.4. Damit ist die Version nicht mehr ein
-    # Name in einem Index, sondern ein Verzeichnisstand.
+    # Deshalb die Chart-Quelle aus dem Repo statt aus einem Index: Sie liegt
+    # unter charts/v4.13.4/csi-driver-nfs, und die Version ist damit ein
+    # Verzeichnisstand statt ein Name, den ein Index umhaengen kann.
     #
-    # Beim Update aendern sich zwei Zeilen: dieser Commit und der `chart:`-
-    # Pfad im HelmRelease unten. Renovate hebt den Commit, den Pfad nicht -
-    # das ist der Preis eines versionierten Verzeichnisses und faellt beim
-    # Review auf, weil der Chart sonst nicht gefunden wird.
-    #
-    # renovate: datasource=github-tags depName=kubernetes-csi/csi-driver-nfs
-    commit: f09798c0f1e7d1ae3b32dc8dfef67f6e848e8761 # v4.13.4
+    tag: v4.13.4
   ignore: |
     /*
     !/charts/v4.13.4

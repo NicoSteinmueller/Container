@@ -115,28 +115,27 @@ Quelle ist damit gleichbedeutend mit fremdem Code als Cluster-Admin.
 
 | Quelle | Pinning |
 |---|---|
-| `local-path-provisioner` | GitRepository auf **Commit** `49b2be8e…` (Tag `v0.0.37`) |
-| `csi-driver-nfs` | GitRepository auf **Commit** `f09798c0…` (Tag `v4.13.4`), Chart aus `charts/v4.13.4/` |
+| `local-path-provisioner` | GitRepository auf **Tag** `v0.0.37` |
+| `csi-driver-nfs` | GitRepository auf **Tag** `v4.13.4`, Chart aus `charts/v4.13.4/` |
 | Traefik, CrowdSec, Headlamp, metrics-server, Reloader, CloudNativePG | HelmRepository über HTTPS, Chart-Version exakt gepinnt |
 | Container-Images | Tag, teils zusätzlich Digest |
 
-**Commits statt Tags** bei den beiden GitRepositories: Ein Git-Tag lässt sich
-verschieben, ein SHA nicht. Bei `csi-driver-nfs` kam dazu, dass die frühere
+
+Bei `csi-driver-nfs` kam in beiden Varianten dazu, dass die frühere
 `HelmRepository` auf `…/master/charts` zeigte und die Version `4.13.4` dort auf
 `…/release-4.12/charts/latest/…` auflöste — ein wanderndes Verzeichnis auf
 einem wandernden Branch. Die gepinnte Versionsnummer benannte einen Eintrag im
-Index, nicht dessen Inhalt.
+Index, nicht dessen Inhalt. 
 
-Renovate zieht beide Commits weiter nach; der `flux`-Manager kann das nicht
-(er kennt `ref.tag`, nicht `ref.commit`), deshalb gibt es dafür einen eigenen
-`customManager` in [renovate.json5](../../../../renovate.json5). Der Tag im
-Zeilenkommentar hinter dem Commit ist Teil des Vertrags — ohne ihn findet
-Renovate den nächsten Stand nicht.
+Beide Tags hebt jetzt der eingebaute `flux`-Manager. Der `customManager` in
+[renovate.json5](../../../../renovate.json5), der die Commit-Zeilen nachzog, ist
+damit entfallen — er hätte auf nichts mehr gepasst, und eine Regel, die
+aussieht als täte sie etwas, ist schlimmer als keine.
 
-> **Bei einem `csi-driver-nfs`-Update ändern sich zwei Zeilen**: der Commit
-> *und* der `chart:`-Pfad (`./charts/v4.13.4/…`). Renovate hebt nur den ersten.
-> Wird der Pfad vergessen, findet Flux das Chart nicht — ein lauter Fehler, kein
-> stiller.
+> **Bei einem `csi-driver-nfs`-Update ändern sich drei Zeilen**: der `tag:`,
+> der `chart:`-Pfad (`./charts/v4.13.4/…`) *und* der `ignore:`-Pfad. Renovate
+> hebt nur den ersten. Werden die anderen vergessen, findet Flux das Chart
+> nicht — ein lauter Fehler, kein stiller.
 
 **Was offen bleibt**, weil es eine Entscheidung oder einen Schlüssel braucht,
 den dieses Repo nicht hat:

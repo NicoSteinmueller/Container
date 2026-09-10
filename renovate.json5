@@ -22,34 +22,6 @@
   },
   customManagers: [
     {
-      //
-      // Flux-GitRepositories, die auf einen Commit gepinnt sind statt auf
-      // einen Tag - k8s/flux/clusters/talos-cp1/{local-path,nfs-storage}.yaml.
-      //
-      // Warum ueberhaupt Commits: Ein Git-Tag laesst sich verschieben. Der
-      // helm-controller rendert daraus mit cluster-admin, also gehoert dort
-      // etwas Unveraenderliches hin. Der eingebaute `flux`-Manager kann das
-      // nicht nachziehen - er kennt `ref.tag`, nicht `ref.commit`. Ohne
-      // diesen Block blieben die Zeilen stehen, bis jemand sie von Hand
-      // anfasst, und das Pinning haette ein Sicherheitsproblem gegen ein
-      // Wartungsproblem getauscht.
-      //
-      // Erwartete Form im Manifest - der Tag im Zeilenkommentar ist Teil des
-      // Vertrags, nicht Dekoration: Renovate sucht ueber `currentValue` den
-      // naechsten Tag und schreibt dessen SHA nach `currentDigest`.
-      //
-      //   # renovate: datasource=github-tags depName=<org>/<repo>
-      //   commit: <40 hex> # <tag>
-      //
-      customType: 'regex',
-      managerFilePatterns: [
-        '/(^|/)k8s\\/flux\\/clusters\\/.+\\.ya?ml$/',
-      ],
-      matchStrings: [
-        '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+commit:\\s*(?<currentDigest>[0-9a-f]{40})\\s*#\\s*(?<currentValue>\\S+)',
-      ],
-    },
-    {
       // Traefik-Plugins im Docker-Stack (traefik/config/traefik.yml).
       customType: 'regex',
       managerFilePatterns: [

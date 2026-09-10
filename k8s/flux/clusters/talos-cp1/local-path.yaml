@@ -44,21 +44,13 @@ spec:
   url: https://github.com/rancher/local-path-provisioner
   ref:
     #
-    # Auf den Commit gepinnt, nicht auf den Tag.
+    # Auf den Tag gepinnt.
     #
-    # Ein Git-Tag ist verschiebbar. Wer `v0.0.37` in rancher/local-path-
-    # provisioner auf einen anderen Commit zeigen laesst, aendert damit den
-    # Chart-Inhalt, den helm-controller rendert - und der rendert mit
-    # cluster-admin, weil das HelmRelease keinen eigenen ServiceAccount
-    # setzt. Ein Commit-SHA laesst sich nicht verschieben.
+    # Beim Update aendert sich genau diese eine Zeile - anders als bei
+    # csi-driver-nfs, wo Chart- und ignore-Pfad die Version mittragen. Den
+    # Tag hebt der eingebaute `flux`-Manager von Renovate.
     #
-    # Der Tag steht als Kommentar dahinter, und zwar nicht nur zum Lesen:
-    # Renovate braucht beide Angaben. Der Manager dafuer steht in
-    # renovate.json5 unter "Flux GitRepository auf Commit gepinnt" - ohne ihn
-    # bliebe diese Zeile stehen, bis sie jemand von Hand anfasst.
-    #
-    # renovate: datasource=github-tags depName=rancher/local-path-provisioner
-    commit: 49b2be8e26d6d34c9afaa21fa33108d2e82f8955 # v0.0.37
+    tag: v0.0.37
   ignore: |
     /*
     !/deploy/chart
