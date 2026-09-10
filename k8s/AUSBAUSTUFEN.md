@@ -44,6 +44,16 @@ Dazu WAL-Archivierung und `ScheduledBackup` als CR — was im
 Sicherheitskonzept unter „Postgres auf die SSD-vDisk" und „append-only
 Backup-Repository" steht, deklarativ.
 
+**Was davon gesichert werden muss, ist wenig:** nur der Dump, den der Operator
+erzeugt. Nicht das PGDATA auf `local-path`, nicht der Operator, nicht die
+`Cluster`-CRs — die stehen in Git und kommen über Flux zurück, und ein
+Dateiabzug eines laufenden PGDATA wäre ohnehin ein zerrissener Stand. Der Weg
+zurück ist: CR anwenden, leere Instanz, Dump einspielen. Das vom Operator
+gewürfelte Passwort entsteht dabei neu und fehlt niemandem, solange die
+Anwendung es per `secretKeyRef` liest — genau die Eigenschaft, um die es in
+diesem Abschnitt geht. Die Ablage regelt
+[CHECKLISTE.md](CHECKLISTE.md), Abschnitt A.
+
 **Kosten:** Operator-Deployment, grob 100–200 MiB. Die Postgres-Instanzen selbst
 kosten nichts zusätzlich — es sind dieselben fünf, die heute als Container auf
 dem Host laufen. Ein `Cluster` pro Dienst ist die vorgesehene Bauweise, keine

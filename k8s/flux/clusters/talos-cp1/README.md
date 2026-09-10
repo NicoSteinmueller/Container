@@ -24,6 +24,7 @@ jeweiligen Datei.
 | `headlamp`           | CoreDNS · kube-apiserver `:6443`                             |
 | `reloader`           | CoreDNS · kube-apiserver `:6443`                             |
 | `local-path-storage` | CoreDNS · kube-apiserver `:6443`                             |
+| `cnpg-system`        | CoreDNS · kube-apiserver `:6443` · Instanzen `:5432`/`:8000` |
 | `traefik-internal`   | + headlamp `:4466` · whoami `:80` · Internet `:443`/`:53`    |
 | `traefik-public`     | + LAPI · whoami · Internet `:443`/`:53`                      |
 | `whoami`             | CoreDNS (`kind: NetworkPolicy`, aus dem Chart)               |
@@ -60,7 +61,7 @@ selbst anlegt, bekommen sie über [namespaces.yaml](namespaces.yaml).
 
 | Stufe | Namespaces | Warum |
 |---|---|---|
-| `restricted` | `headlamp`, `reloader`, `traefik-internal`, `traefik-public`, `whoami` | Brauchen nichts davon |
+| `restricted` | `headlamp`, `reloader`, `traefik-internal`, `traefik-public`, `whoami`, `cnpg-system` | Brauchen nichts davon |
 | `restricted` | `default`, `kube-public`, `kube-node-lease` | Leer, und sollen es bleiben |
 | `privileged` | `crowdsec` | Agent liest Container-Logs per hostPath |
 | `privileged` | `csi-driver-nfs` | `mount(8)` im Host-Namespace, Bidirectional Mount Propagation |
@@ -80,9 +81,9 @@ kubectl label --dry-run=server --overwrite ns crowdsec \
 `warn` und `audit` stehen dort trotzdem auf `baseline`: Jede *andere*
 Abweichung taucht weiterhin als Warnung auf, nur der hostPath ist die Ausnahme.
 
-**`default` ist der Fall, auf den es ankommt.** Er ist leer, aber dort hängt das
-PVC `unraid-data` auf den 8-TiB-Share. Ein Manifest ohne `namespace:` landet
-genau hier. Nebenwirkung: `kubectl run` und `kubectl debug` ohne
+**`default` ist der Fall, auf den es ankommt.** Er ist leer — aber ein Manifest
+ohne `namespace:` landet genau hier, und das ist die Sorte Fehler, die niemand
+absichtlich macht. Nebenwirkung: `kubectl run` und `kubectl debug` ohne
 securityContext werden dort jetzt abgelehnt — für einen schnellen Testpod
 lästig, und genau so gemeint.
 
@@ -100,7 +101,8 @@ lästig, und genau so gemeint.
 > Die drei Namespaces in `namespaces.yaml` tragen
 > `kustomize.toolkit.fluxcd.io/prune: disabled`. Sie existierten vor diesem Repo
 > und sollen es überleben — ohne die Annotation würde Flux sie beim Entfernen
-> der Datei einsammeln, und ein gelöschtes `default` nähme `unraid-data` mit.
+> der Datei einsammeln, und ein Namespace nimmt beim Löschen alles mit, was
+> darin liegt.
 
 ## Woher die Charts kommen
 
@@ -115,7 +117,7 @@ Quelle ist damit gleichbedeutend mit fremdem Code als Cluster-Admin.
 |---|---|
 | `local-path-provisioner` | GitRepository auf **Commit** `49b2be8e…` (Tag `v0.0.37`) |
 | `csi-driver-nfs` | GitRepository auf **Commit** `f09798c0…` (Tag `v4.13.4`), Chart aus `charts/v4.13.4/` |
-| Traefik, CrowdSec, Headlamp, metrics-server, Reloader | HelmRepository über HTTPS, Chart-Version exakt gepinnt |
+| Traefik, CrowdSec, Headlamp, metrics-server, Reloader, CloudNativePG | HelmRepository über HTTPS, Chart-Version exakt gepinnt |
 | Container-Images | Tag, teils zusätzlich Digest |
 
 **Commits statt Tags** bei den beiden GitRepositories: Ein Git-Tag lässt sich
@@ -535,7 +537,7 @@ Der Speicher des Clusters, aufgeteilt nach **Zugriffsmuster**:
 | wofür | fsync und Locking: DBs, Indizes, Queues | Bestände: Medien, Uploads, Backups |
 | liegt auf | zweiter Disk der VM, `/var/mnt/local-path` | Unraid-Shares über NFSv4.1 |
 | Zugriff | `ReadWriteOnce`, an einen Node gebunden | `ReadWriteMany` |
-| beim PVC-Löschen | `Retain` — Verzeichnis bleibt | `onDelete: archive` |
+| beim PVC-Löschen | `Retain` — Verzeichnis bleibt | `onDelete: retain` — Verzeichnis bleibt |
 
 Vor diesen Dateien hatte der Cluster **keine** StorageClass — `kubectl get sc`
 kam leer zurück, und jeder Chart, der einen PVC ohne `storageClassName` anlegt,
@@ -581,16 +583,24 @@ Dateikopie.
 
 ### `nfs-storage.yaml`
 
-`csi-driver-nfs` plus die StorageClass `nfs-unraid` und die statischen PVs auf
-die Shares des Unraid-Hosts.
+`csi-driver-nfs` plus die StorageClass `nfs-unraid` auf den Share `k8s` des
+Unraid-Hosts.
 
-Zwei Wege, bewusst nebeneinander:
+**Ein** Mechanismus für alles Dauerhafte — plus eine Brücke, die wieder
+verschwindet:
 
-- **dynamisch** über `nfs-unraid` (Default-Klasse). Der Treiber legt je PVC ein
-  Unterverzeichnis unter `/mnt/user/k8s` an. Für alles, was der Cluster sich
-  selbst anlegt.
-- **statisch** über das PV `unraid-data`. Für Bestände, die schon da sind —
-  der Cluster soll sie benutzen, nicht anlegen. Deshalb dort `Retain`.
+- **dynamisch über `nfs-unraid`** (nicht die Default-Klasse — die ist
+  `local-path`, siehe oben; wer NFS will, schreibt `storageClassName` hin).
+  Der Treiber legt je PVC ein Verzeichnis `<namespace>/<pvc-name>` unter
+  `/mnt/user/k8s` an. Für **alles**, was dauerhaft auf dem Array liegen soll:
+  Dumps ebenso wie Nutzerdateien und Medien.
+
+  Dass das auch für Bestände trägt, deren Verlust wehtut, hängt an
+  `onDelete: retain`: Beim Löschen eines PVC passiert mit dem Verzeichnis
+  nichts. Und weil der Pfad ausschließlich aus Namespace und PVC-Namen
+  entsteht, findet ein später neu angelegtes PVC gleichen Namens seine Daten
+  wieder. Statisch gebundene PVs braucht es dafür nicht — ein Weg, ein Muster,
+  ein Pfad.
 
 ### Voraussetzung auf dem Unraid-Host
 
@@ -599,15 +609,15 @@ Nicht im Repo abgebildet und von Hand zu setzen — NFS ist dort ab Werk aus
 
 1. **Array stoppen.** *Settings → NFS* ist bei laufendem Array gesperrt.
 2. *Settings → NFS* → **Enable NFS = Yes**, Array wieder starten.
-3. Share `k8s` anlegen, falls noch nicht vorhanden (Ziel der dynamischen PVCs).
-4. Je Share unter *Shares → \<share\> → NFS Security Settings*: **Export = Yes**,
+3. Share `k8s` anlegen, falls noch nicht vorhanden — das Ziel jedes PVC.
+4. Unter *Shares → k8s → NFS Security Settings*: **Export = Yes**,
    Rule auf die Node-Adresse:
 
    ```
    192.168.178.230(sec=sys,rw,no_root_squash)
    ```
 
-   für `k8s` (dynamisch) und `k8s-data` (statisch, PV `unraid-data`).
+   für den Share `k8s` — den einzigen, den der Cluster mountet.
 
 Die Regel steht auf der **Node-Adresse**, nicht auf dem Pod-CIDR: Gemountet
 wird nicht vom Pod, sondern vom kubelet auf dem Node — und Cilium maskiert
@@ -701,7 +711,7 @@ spec:
 EOF
 kubectl get pvc nfs-smoketest     # erwartet: Bound
 ssh root@192.168.178.3 ls /mnt/user/k8s
-kubectl delete pvc nfs-smoketest  # bleibt als archived-* liegen (onDelete)
+kubectl delete pvc nfs-smoketest  # Verzeichnis bleibt liegen (onDelete: retain)
 ```
 
 Hängt ein Pod beim Start in `ContainerCreating`, steht der Grund im Event, nicht
@@ -710,4 +720,222 @@ im Log:
 ```bash
 kubectl describe pod <name> | tail -20
 kubectl -n csi-driver-nfs logs ds/csi-nfs-node -c nfs | tail
+```
+
+## `cloudnative-pg.yaml`
+
+Der Operator, dem die Postgres-Instanzen der migrierten Dienste gehören. Was er
+löst und warum er kommt, steht in [../../../AUSBAUSTUFEN.md](../../../AUSBAUSTUFEN.md),
+Stufe 1 — kurz: Man deklariert einen `Cluster`, kein Passwort.
+
+Er läuft `clusterWide` in `cnpg-system`; die Instanzen selbst liegen **nicht**
+dort, sondern im Namespace des jeweiligen Dienstes. Der Operator spricht sie
+über zwei Ports an: den Instance Manager auf `8000` für den Zustand und
+Postgres auf `5432` für Rollen und Datenbanken. Beides muss in `cnpg-egress`
+je Namespace freigegeben werden — sonst bleibt der `Cluster` auf *Setting up
+primary* stehen.
+
+### Warum hier keine `ScheduledBackup` steht
+
+CNPG kennt drei Backup-Methoden, und keine schreibt in ein PVC:
+`barmanObjectStore` und `plugin` wollen einen Objektspeicher, `volumeSnapshot`
+einen snapshot-fähigen CSI-Treiber plus snapshot-controller. `local-path` kann
+das nicht — und dort liegt PGDATA, aus den Gründen weiter oben unter
+[local-path.yaml, nfs-storage.yaml](#local-pathyaml-nfs-storageyaml).
+
+Deshalb: **`pg_dump` per CronJob, alle 12 h, auf ein PVC der Klasse
+`nfs-unraid`** — also nach `/mnt/user/k8s`, wo Kopia es abholt
+([../../../CHECKLISTE.md](../../../CHECKLISTE.md), Abschnitt A). Der Preis ist
+entschieden und ausdrücklich: kein PITR.
+
+### Vorlage je Dienst
+
+Der CronJob braucht das Secret `<cluster>-app` und ist damit
+namespace-gebunden — er gehört in die Datei des Dienstes, nicht hierher. Am
+Beispiel `nextcloud`:
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: nextcloud-db
+  namespace: nextcloud
+spec:
+  instances: 1                    # ein Node, keine Hochverfügbarkeit
+  storage:
+    size: 20Gi                    # ohne storageClass -> local-path (Default)
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 1Gi }
+---
+# Das Ziel der Dumps: ein ganz gewoehnliches PVC der Klasse `nfs-unraid`,
+# also der Share /mnt/user/k8s - der einzige Weg, auf dem etwas aus dem
+# Cluster auf dem Array landet, und nur dort sieht Kopia es.
+#
+# Der Name des PVC landet im Pfad: die StorageClass setzt `subDir` auf
+# <namespace>/<pvc-name>, das ergibt /mnt/user/k8s/nextcloud/dumps.
+# Deshalb schlicht "dumps" - der Dienst steckt schon im Namespace.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dumps
+  namespace: nextcloud
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: nfs-unraid
+  resources:
+    requests:
+      storage: 20Gi            # NFS erzwingt kein Kontingent, nur Buchhaltung
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nextcloud-db-dump
+  namespace: nextcloud
+spec:
+  schedule: "0 */12 * * *"        # 00:00 und 12:00
+  timeZone: Europe/Berlin         # sonst UTC, und die Zeitstempel lügen
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 26         # postgres im CNPG-Image
+            runAsGroup: 26
+            fsGroup: 26
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: dump
+              # Dasselbe Image wie die Instanz. pg_dump muss zur Server-
+              # Version passen; ein fremdes Image ist der Fehler, der erst
+              # beim Versionssprung auffällt.
+              image: ghcr.io/cloudnative-pg/postgresql:17.6
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              env:
+                - { name: PGHOST,     valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: host } } }
+                - { name: PGPORT,     valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: port } } }
+                - { name: PGUSER,     valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: username } } }
+                - { name: PGPASSWORD, valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: password } } }
+                - { name: PGDATABASE, valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: dbname } } }
+              command: [/bin/bash, -c]
+              args:
+                - |
+                  set -euo pipefail
+                  out="/dumps/nextcloud-$(date +%Y-%m-%dT%H%M).dump"
+
+                  # --compress=0 mit Absicht: Kopia dedupliziert und
+                  # komprimiert selbst. Ein komprimierter Dump unterscheidet
+                  # sich ab der ersten geänderten Zeile auf ganzer Länge vom
+                  # vorigen - jeder Snapshot legt dann eine vollständige neue
+                  # Kopie ab. Unkomprimiert teilen sich zwei Dumps das meiste.
+                  # Der Preis ist Platz auf dem Array, und der ist billig.
+                  pg_dump --format=custom --compress=0 \
+                          --no-owner --no-privileges --file="${out}.part"
+
+                  # Erst fertig schreiben, dann umbenennen. Ein `mv` innerhalb
+                  # desselben Dateisystems ist atomar - Kopia sieht damit
+                  # entweder den alten vollständigen Dump oder den neuen, nie
+                  # einen halben. Ohne das ist ein Snapshot, der zufällig
+                  # während des Dumps läuft, unbrauchbar, und man merkt es
+                  # beim Restore.
+                  mv "${out}.part" "${out}"
+
+                  # Lokale Vorhaltung. Die Tiefe hat Kopia, hier reicht der
+                  # kurze Rückweg ohne Restore.
+                  ls -1t /dumps/nextcloud-*.dump | tail -n +15 | xargs -r rm --
+              volumeMounts:
+                - { name: dumps, mountPath: /dumps }
+                - { name: tmp,   mountPath: /tmp }
+          volumes:
+            - name: dumps
+              persistentVolumeClaim:
+                claimName: dumps
+            - name: tmp
+              emptyDir: {}
+```
+
+Dazu je Dienst:
+
+- **`cnpg-egress` erweitern** — der Namespace mit `cnpg.io/podRole: instance`
+  auf `5432` und `8000`, sonst kommt die Datenbank nicht hoch. Der Block steht
+  auskommentiert in [cloudnative-pg.yaml](cloudnative-pg.yaml).
+- **Egress im Dienst-Namespace** — CoreDNS und die eigene Instanz auf `5432`.
+  Der CronJob-Pod fällt unter dieselbe Regel wie die Anwendung.
+- **Reloader** — der Namespace gehört in die Liste in
+  [reloader.yaml](reloader.yaml), sobald ein Secret aus `homelab-secrets` dort
+  in `env` hängt. Für das `-app`-Secret ist er *nicht* nötig: Rotiert der
+  Operator es über `spec.managed.roles`, ändert er beide Seiten selbst — genau
+  die Lücke, die Reloader offenlässt.
+
+### Wo der Dump landet
+
+```
+/mnt/user/k8s/nextcloud/dumps/nextcloud-2026-09-10T0300.dump
+```
+
+Ein Pfad, den man vorlesen kann. Er entsteht aus einer Zeile an der
+StorageClass `nfs-unraid` ([nfs-storage.yaml](nfs-storage.yaml)):
+
+```yaml
+subDir: ${pvc.metadata.namespace}/${pvc.metadata.name}
+```
+
+### Der Weg zurück
+
+Kein Restore *in* eine laufende Instanz — der Weg ist immer: `Cluster`-CR
+anwenden, der Operator legt eine leere Instanz an, Dump einspielen.
+
+```bash
+kubectl -n nextcloud exec -it nextcloud-db-1 -- \
+  pg_restore --clean --if-exists --no-owner --no-privileges \
+             -d nextcloud /dumps/nextcloud-<zeitstempel>.dump
+```
+
+Das Passwort entsteht dabei neu und fehlt niemandem, solange die Anwendung es
+per `secretKeyRef` liest statt aus einer env-Datei.
+
+### Migration aus dem Docker-Container
+
+`bootstrap.initdb.import` mit `type: microservice` fährt pg_dump/pg_restore
+gegen die alte Instanz, inklusive Versionssprung. Zwei Dinge fallen dabei auf,
+die es sonst nicht gibt:
+
+- Das alte `POSTGRES_PASSWORD` braucht man **ein letztes Mal** als temporäres
+  Secret im Namespace. Danach nie wieder — es gehört nach der Migration aus
+  `homelab-secrets` heraus.
+- Der Import spricht den Unraid-Host an, und ins Heimnetz darf sonst keiner
+  (siehe [Egress](#egress-wer-aus-dem-cluster-heraus-darf)). Die Regel dafür
+  ist eine **befristete** Ausnahme auf `192.168.178.3:5432`, die mit dem
+  temporären Secret zusammen wieder verschwindet. Sie im Repo stehen zu lassen
+  wäre der stille Weg zurück in ein flaches Netz.
+
+### Gegenproben
+
+```bash
+kubectl -n cnpg-system get deploy,pods
+kubectl -n nextcloud get cluster,pods
+kubectl -n nextcloud get cronjob nextcloud-db-dump
+
+# Einen Lauf erzwingen, statt zwölf Stunden zu warten
+kubectl -n nextcloud create job --from=cronjob/nextcloud-db-dump dump-test
+kubectl -n nextcloud logs job/dump-test
+
+# Und die Gegenprobe, auf die es ankommt - auf dem Host, nicht im Cluster
+ssh root@192.168.178.3 ls -lh /mnt/user/k8s/nextcloud/dumps/
+```
+
+Bleibt der `Cluster` auf *Setting up primary*, ist die erste Stelle `cnpg-egress`:
+
+```bash
+kubectl -n kube-system exec ds/cilium -- \
+  hubble observe --namespace cnpg-system --type drop --last 100
 ```
