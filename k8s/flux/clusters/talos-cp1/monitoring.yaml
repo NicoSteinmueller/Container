@@ -108,6 +108,45 @@ spec:
   policyTypes:
     - Ingress
 ---
+#
+# vmagent scrapt den eigenen Namespace - und ohne diese Regel verwirft das
+# Default-Deny oben genau das.
+#
+# Der Fehler beim ersten Rollout sah nicht nach einer Policy aus: vmagent
+# entdeckte alle Targets, jeder Scrape lief aber in den Timeout statt in ein
+# "connection refused". Cilium verwirft still, und ein stiller Verwurf sieht
+# aus wie ein langsamer Dienst. Hubble macht es eindeutig:
+#
+#   kubectl -n kube-system exec ds/cilium -- \
+#     hubble observe --namespace monitoring --verdict DROPPED --last 20
+#   ... INGRESS DENIED (TCP Flags: SYN)
+#
+# `podSelector: {}` unter `from` heisst "alle Pods im selben Namespace" -
+# nicht "alle Pods im Cluster". Die Grenze nach aussen bleibt also stehen:
+# Ins Heimnetz oeffnet das nichts, und andere Namespaces kommen hier
+# weiterhin nicht herein.
+#
+# ACHTUNG bei Diensten ausserhalb: Jeder Namespace mit eigenem
+# `default-deny-ingress` (crowdsec, headlamp, traefik-internal,
+# traefik-public) braucht eine eigene Regel, sobald vmagent ihn scrapen
+# soll. Heute trifft das keinen - die Metrik-Endpunkte von Cilium und
+# Traefik sind aus, und reloader wie cloudnative-pg stehen auf
+# `serviceMonitor: false`. Wer sie einschaltet, braucht zwei Zeilen: die
+# Namespace-Regel in `monitoring-egress` und eine Ingress-Regel drueben.
+#
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-monitoring
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
