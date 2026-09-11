@@ -191,61 +191,32 @@ spec:
       enabled: false
 ---
 #
-# Die Wurzel: ein selbstsignierter Issuer, der genau eine Sache tut - das
-# CA-Zertifikat unten signieren.
+# Die zweite Kustomization fuer die Issuer - Begruendung in
+# ../../cert-manager-issuers/issuers.yaml.
 #
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
+# Kein `dependsOn` auf flux-system: Diese Kustomization entsteht selbst aus
+# flux-system, und flux-system wartet auf die Gesundheit seiner eigenen
+# Objekte. Die Abhaengigkeit waere ein Kreis. Stattdessen laeuft sie in ihren
+# eigenen Retry, bis die CRDs da sind - `retryInterval` macht das kurz genug,
+# dass es beim Zusehen nicht auffaellt.
+#
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
 metadata:
-  name: selfsigned-root
+  name: cert-manager-issuers
+  namespace: flux-system
 spec:
-  selfSigned: {}
----
-#
-# Das CA-Zertifikat des Homelabs.
-#
-# Es liegt im Namespace `cert-manager`, und das ist keine Willkuer: Ein
-# ClusterIssuer sucht sein Secret immer im "Cluster Resource Namespace", und
-# der ist per Voreinstellung der Namespace, in dem cert-manager laeuft. Ein
-# Secret anderswo findet er nicht, und der Fehler dabei ist leise - der
-# Issuer bleibt schlicht nicht `Ready`.
-#
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: homelab-ca
-  namespace: cert-manager
-spec:
-  isCA: true
-  commonName: homelab-ca
-  secretName: homelab-ca
+  interval: 1h
+  retryInterval: 1m
+  path: ./k8s/flux/cert-manager-issuers
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  prune: true
   #
-  # Fuenf Jahre. Eine interne CA, die niemand ausserhalb kennt, gewinnt
-  # nichts durch kurze Laufzeiten - aber jeder Wechsel kostet einen
-  # gleichzeitigen Neustart aller Beteiligten. Die Blaetter darunter rotieren
-  # kurz (siehe `duration` in crowdsec.yaml), die Wurzel selten.
+  # wait: Die Kustomization meldet sich erst fertig, wenn die Zertifikate
+  # tatsaechlich ausgestellt sind. Damit ist "gruen" hier eine Aussage und
+  # nicht nur "angewendet".
   #
-  duration: 43800h
-  renewBefore: 8760h
-  privateKey:
-    algorithm: ECDSA
-    size: 256
-  issuerRef:
-    name: selfsigned-root
-    kind: ClusterIssuer
-    group: cert-manager.io
----
-#
-# Der Issuer, den die Dienste benutzen. Bewusst ein ClusterIssuer und kein
-# Issuer je Namespace: Genau daran haengt, dass `traefik-public` sich vom
-# selben Vertrauensanker ein `ca.crt` ausstellen lassen kann wie die LAPI in
-# `crowdsec` - ohne dass ein Secret zwischen Namespaces kopiert werden muss
-# und ohne einen Reflector-Controller dafuer.
-#
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: homelab-ca
-spec:
-  ca:
-    secretName: homelab-ca
+  wait: true
+  timeout: 5m
