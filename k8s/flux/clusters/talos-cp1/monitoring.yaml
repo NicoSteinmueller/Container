@@ -306,7 +306,25 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  releaseName: victoria-metrics-k8s-stack
+  #
+  # Kurzer Release-Name, und das ist keine Kosmetik: Aus ihm leitet der Chart
+  # die Namen aller Subchart-Objekte ab. Mit dem naheliegenden
+  # `victoria-metrics-k8s-stack` entsteht fuer den Cleanup-Hook des Operators
+  #
+  #   victoria-metrics-k8s-stack-victoria-metrics-operator-cleanup-hook
+  #
+  # und das sind 65 Zeichen. Als Objektname geht das durch (253 erlaubt), als
+  # Label-Wert nicht - dort ist bei 63 Bytes Schluss:
+  #
+  #   Job ... is invalid: spec.template.labels: Invalid value:
+  #   must be no more than 63 bytes
+  #
+  # Der Hook laeuft nur beim Deinstallieren, der Fehler zeigt sich also erst,
+  # wenn etwas anderes schon schiefgegangen ist - und dann bleibt der Release
+  # in `uninstalling` haengen, wo weder Helm noch Flux weiterkommen. Mit
+  # `vm-stack` sind es 47 Zeichen.
+  #
+  releaseName: vm-stack
   targetNamespace: monitoring
   storageNamespace: monitoring
   chart:
@@ -320,7 +338,16 @@ spec:
   install:
     createNamespace: false
     remediation:
-      retries: 3
+      #
+      # Keine Deinstallation als Notbehelf. Flux wuerde bei einem
+      # fehlgeschlagenen Install sonst `uninstall` fahren - und genau dabei
+      # laeuft der Cleanup-Hook, der oben beschrieben ist.
+      #
+      # Der Tausch ist bewusst: Ein halb installierter Release laesst sich
+      # ansehen und nach vorne reparieren. Ein Release, der beim Aufraeumen
+      # stecken bleibt, blockiert auch jeden weiteren Versuch.
+      #
+      retries: 0
     # Der Chart legt CRDs und Operator gemeinsam an; der erste Lauf braucht
     # laenger als die voreingestellten fuenf Minuten.
     timeout: 15m
