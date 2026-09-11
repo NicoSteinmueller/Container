@@ -1,0 +1,126 @@
+#
+# Issuer und Zertifikate - alles, was die CRDs von cert-manager braucht.
+#
+# WARUM DIESE OBJEKTE NICHT BEI cert-manager.yaml LIEGEN, und das ist der
+# ganze Grund fuer dieses Verzeichnis:
+#
+# kustomize-controller prueft vor dem Anwenden jedes Objekt per Dry-Run. Die
+# CRDs `Certificate` und `ClusterIssuer` entstehen aber erst, wenn
+# helm-controller den cert-manager-Release ausgerollt hat - also nach diesem
+# Dry-Run. Lagen die Objekte im selben Pfad, scheiterte der Lauf mit
+#
+#   no matches for kind "Certificate" in version "cert-manager.io/v1"
+#
+# und zwar der *ganze* Lauf: Auch die HelmRelease, die die CRDs anlegen
+# wuerde, kam nicht durch. Eine Verklemmung, die sich nicht von selbst loest.
+#
+# Deshalb eine eigene Kustomization auf einen Pfad ausserhalb von
+# `k8s/flux/clusters/talos-cp1` - kustomize-controller nimmt Unterverzeichnisse
+# des Sync-Pfads sonst mit auf, ein Unterordner haette also nichts geaendert.
+#
+# Sie scheitert beim allerersten Mal ebenfalls und wird von selbst gruen,
+# sobald cert-manager steht. Das ist der Unterschied, auf den es ankommt: Sie
+# blockiert dabei nichts anderes mehr.
+#
+---
+#
+# Die Wurzel: ein selbstsignierter Issuer, der genau eine Sache tut - das
+# CA-Zertifikat unten signieren.
+#
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-root
+spec:
+  selfSigned: {}
+---
+#
+# Das CA-Zertifikat des Homelabs.
+#
+# Es liegt im Namespace `cert-manager`, und das ist keine Willkuer: Ein
+# ClusterIssuer sucht sein Secret immer im "Cluster Resource Namespace", und
+# der ist per Voreinstellung der Namespace, in dem cert-manager laeuft. Ein
+# Secret anderswo findet er nicht, und der Fehler dabei ist leise - der
+# Issuer bleibt schlicht nicht `Ready`.
+#
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: homelab-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: homelab-ca
+  secretName: homelab-ca
+  #
+  # Fuenf Jahre. Eine interne CA, die niemand ausserhalb kennt, gewinnt
+  # nichts durch kurze Laufzeiten - aber jeder Wechsel kostet einen
+  # gleichzeitigen Neustart aller Beteiligten. Die Blaetter darunter rotieren
+  # kurz (siehe `duration` in crowdsec.yaml), die Wurzel selten.
+  #
+  duration: 43800h
+  renewBefore: 8760h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-root
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+#
+# Der Issuer, den die Dienste benutzen. Bewusst ein ClusterIssuer und kein
+# Issuer je Namespace: Genau daran haengt, dass `traefik-public` sich vom
+# selben Vertrauensanker ein `ca.crt` ausstellen lassen kann wie die LAPI in
+# `crowdsec` - ohne dass ein Secret zwischen Namespaces kopiert werden muss
+# und ohne einen Reflector-Controller dafuer.
+#
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: homelab-ca
+spec:
+  ca:
+    secretName: homelab-ca
+
+---
+#
+# Die CA-Kopie fuer diesen Namespace.
+#
+# Das Plugin muss der LAPI vertrauen, seit die HTTPS spricht. Die CA liegt
+# aber als Secret im Namespace `cert-manager`, und ein Pod liest keine
+# Secrets aus fremden Namespaces.
+#
+# Statt ein Secret zu kopieren - wofuer der CrowdSec-Chart den
+# emberstack-Reflector voraussetzen wuerde, also einen weiteren Controller -
+# laesst sich cert-manager hier einfach ein eigenes Zertifikat ausstellen.
+# Jedes von `homelab-ca` signierte Secret enthaelt neben tls.crt und tls.key
+# auch ca.crt, und genau das wird gemountet.
+#
+# Das heisst: tls.crt und tls.key werden hier nicht gebraucht und nicht
+# benutzt. Das ist der Preis dieses Weges und bewusst so - ein ungenutztes
+# Schluesselpaar im Namespace ist billiger als ein Controller, der Secrets
+# clusterweit kopieren darf.
+#
+# Sollte die LAPI doch ein Client-Zertifikat verlangen (siehe die Gegenprobe
+# in crowdsec.yaml), ist genau dieses Objekt schon die halbe Antwort: Dann
+# wandern tls.crt und tls.key zusaetzlich in die Middleware oben, als
+# crowdsecLapiTlsCertificateBouncer und -BouncerKey.
+#
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: traefik-public-crowdsec-ca
+  namespace: traefik-public
+spec:
+  commonName: traefik-public bouncer
+  secretName: traefik-public-crowdsec-ca
+  duration: 2160h      # 90 Tage
+  renewBefore: 720h    # 30 Tage vorher
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: homelab-ca
+    kind: ClusterIssuer
+    group: cert-manager.io

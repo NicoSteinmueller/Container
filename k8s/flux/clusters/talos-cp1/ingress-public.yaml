@@ -453,48 +453,6 @@ spec:
 
 ---
 #
-# Die CA-Kopie fuer diesen Namespace.
-#
-# Das Plugin muss der LAPI vertrauen, seit die HTTPS spricht. Die CA liegt
-# aber als Secret im Namespace `cert-manager`, und ein Pod liest keine
-# Secrets aus fremden Namespaces.
-#
-# Statt ein Secret zu kopieren - wofuer der CrowdSec-Chart den
-# emberstack-Reflector voraussetzen wuerde, also einen weiteren Controller -
-# laesst sich cert-manager hier einfach ein eigenes Zertifikat ausstellen.
-# Jedes von `homelab-ca` signierte Secret enthaelt neben tls.crt und tls.key
-# auch ca.crt, und genau das wird gemountet.
-#
-# Das heisst: tls.crt und tls.key werden hier nicht gebraucht und nicht
-# benutzt. Das ist der Preis dieses Weges und bewusst so - ein ungenutztes
-# Schluesselpaar im Namespace ist billiger als ein Controller, der Secrets
-# clusterweit kopieren darf.
-#
-# Sollte die LAPI doch ein Client-Zertifikat verlangen (siehe die Gegenprobe
-# in crowdsec.yaml), ist genau dieses Objekt schon die halbe Antwort: Dann
-# wandern tls.crt und tls.key zusaetzlich in die Middleware oben, als
-# crowdsecLapiTlsCertificateBouncer und -BouncerKey.
-#
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: traefik-public-crowdsec-ca
-  namespace: traefik-public
-spec:
-  commonName: traefik-public bouncer
-  secretName: traefik-public-crowdsec-ca
-  duration: 2160h      # 90 Tage
-  renewBefore: 720h    # 30 Tage vorher
-  privateKey:
-    algorithm: ECDSA
-    size: 256
-  issuerRef:
-    name: homelab-ca
-    kind: ClusterIssuer
-    group: cert-manager.io
-
----
-#
 # Der CrowdSec-Bouncer.
 #
 # Er fragt vor jeder Anfrage die LAPI, ob die Quelladresse gesperrt ist.
