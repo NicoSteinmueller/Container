@@ -279,6 +279,71 @@ spec:
     #
     container_runtime: containerd
 
+    #
+    # ---------------------------------------------------------------------
+    # TLS - und das ist der Grund, warum cert-manager wieder im Cluster ist
+    #
+    # Ohne diese vier Zeilen registriert sich der Agent beim Start mit seinem
+    # Pod-Namen bei der LAPI, und zwar bedingungslos:
+    #
+    #   cscli lapi register --machine "$USERNAME" -u "$LAPI_URL" ...
+    #
+    # Startet der Container neu, ohne dass der Pod neu entsteht, sind seine
+    # lokalen Zugangsdaten weg - der Name in der LAPI aber nicht. Die Antwort
+    # ist dann `403: user already exist`, der Init-Container bricht ab, und
+    # der Pod kommt aus dem CrashLoopBackOff nicht mehr heraus. Am 2026-09-11
+    # waren es 65 Versuche nach dem VM-Neustart.
+    #
+    # Der Ausweg steht im Chart als Bedingung um den Init-Container:
+    #
+    #   {{- if or (not .Values.tls.enabled) (not .Values.tls.agent.tlsClientAuth) }}
+    #
+    # Mit TLS weist sich der Agent per Client-Zertifikat aus. Der
+    # Init-Container faellt in den `else`-Zweig und wartet nur noch auf die
+    # LAPI - kein `register`, kein 403. Das Problem ist damit weg und nicht
+    # nur diesmal geloest; ein Chart-Update haette nichts geaendert, in
+    # 0.24.0 und 0.24.2 steht dasselbe bedingungslose `register`.
+    #
+    # WAS DAS SONST NOCH AENDERT, und es ist die Stelle zum Aufpassen: Die
+    # LAPI spricht damit HTTPS auf demselben Port 8080. Der Bouncer in
+    # traefik-public muss also mit - `crowdsecLapiScheme: https` und die CA
+    # zum Pruefen, beides in ingress-public.yaml. Wer hier `true` setzt und
+    # dort nichts aendert, nimmt den oeffentlichen Ingress den Schutz weg.
+    #
+    # Der Bouncer behaelt seinen API-Schluessel; er bekommt kein
+    # Client-Zertifikat. Die LAPI prueft ein vorgelegtes Zertifikat, verlangt
+    # aber keines - das ist die Annahme hinter dieser Aufteilung und die
+    # erste Gegenprobe nach dem Rollout:
+    #
+    #   kubectl -n traefik-public logs deploy/traefik-public | grep -i crowdsec
+    #   kubectl -n crowdsec exec deploy/crowdsec-lapi -- cscli bouncers list
+    #
+    # Faellt sie anders aus, braucht auch der Bouncer ein Zertifikat aus
+    # demselben ClusterIssuer - der Weg dafuer steht in ingress-public.yaml
+    # bereits, es waere ein zweites `Certificate` statt nur der CA.
+    # ---------------------------------------------------------------------
+    #
+    tls:
+      enabled: true
+
+      #
+      # Nicht der chart-eigene selbstsignierte Issuer, sondern der
+      # ClusterIssuer aus cert-manager.yaml. Der Unterschied ist praktisch:
+      # Nur so kann sich traefik-public dieselbe CA ausstellen lassen, ohne
+      # dass ein Secret zwischen Namespaces kopiert werden muss - der Chart
+      # wuerde dafuer sonst den emberstack-Reflector voraussetzen
+      # (tls.bouncer.reflector.namespaces), also einen weiteren Controller.
+      #
+      certManager:
+        enabled: true
+        issuerRef:
+          name: homelab-ca
+          kind: ClusterIssuer
+
+      agent:
+        # Der eigentliche Schalter - er entscheidet ueber den Init-Container.
+        tlsClientAuth: true
+
     lapi:
       replicas: 1
 
