@@ -402,6 +402,37 @@ spec:
               name: crowdsec-bouncer-key
               key: traefik_public
 
+        #
+        # Welche Organisationseinheit ein Client-Zertifikat tragen muss, damit
+        # die LAPI es akzeptiert.
+        #
+        # Ohne diese beiden Zeilen startet die LAPI nicht, sobald TLS an ist:
+        #
+        #   client certificate OU [agent-ou] doesn't match expected OU []
+        #   fatal: crowdsec init: while initializing LAPIClient: ...
+        #
+        # Das ist eine Luecke im Chart. Es stellt die Zertifikate mit
+        # `subject.organizationalUnits: [agent-ou]` bzw. `[bouncer-ou]` aus,
+        # und sein Start-Skript liest AGENTS_ALLOWED_OU/BOUNCERS_ALLOWED_OU
+        # aus der Umgebung:
+        #
+        #   conf_set_if "$AGENTS_ALLOWED_OU" '.api.server.tls.agents_allowed_ou = ...'
+        #
+        # Gesetzt wird die Variable aber nirgends - die erlaubte Liste bleibt
+        # leer, und die LAPI lehnt ihr eigenes Agent-Zertifikat ab. Die Werte
+        # hier muessen zu den OUs der Zertifikate passen; aendert der Chart
+        # sie, aendert sich diese Stelle mit.
+        #
+        # Der Bouncer braucht das nicht - er meldet sich weiter mit dem
+        # API-Schluessel an. Die Zeile schadet aber nicht: Die LAPI laeuft mit
+        # `Client Auth Type set to VerifyClientCertIfGiven`, prueft ein
+        # vorgelegtes Zertifikat also, verlangt aber keines.
+        #
+        - name: AGENTS_ALLOWED_OU
+          value: agent-ou
+        - name: BOUNCERS_ALLOWED_OU
+          value: bouncer-ou
+
       #
       # Zwei Volumes, und beide werden gebraucht:
       #
