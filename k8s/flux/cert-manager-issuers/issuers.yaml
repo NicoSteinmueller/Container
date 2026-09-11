@@ -102,10 +102,15 @@ spec:
 # Schluesselpaar im Namespace ist billiger als ein Controller, der Secrets
 # clusterweit kopieren darf.
 #
-# Sollte die LAPI doch ein Client-Zertifikat verlangen (siehe die Gegenprobe
-# in crowdsec.yaml), ist genau dieses Objekt schon die halbe Antwort: Dann
-# wandern tls.crt und tls.key zusaetzlich in die Middleware oben, als
-# crowdsecLapiTlsCertificateBouncer und -BouncerKey.
+# Dass das genuegt, ist nachgemessen: Die LAPI laeuft mit
+# `Client Auth Type set to VerifyClientCertIfGiven`, prueft ein vorgelegtes
+# Zertifikat also, verlangt aber keines. Der Bouncer kommt mit seinem
+# API-Schluessel durch.
+#
+# Verlangt eine kuenftige Version doch eines, ist dieses Objekt schon die
+# halbe Antwort: Dann wandern tls.crt und tls.key zusaetzlich in die
+# Middleware in ingress-public.yaml, als crowdsecLapiTlsCertificateBouncer
+# und -BouncerKey.
 #
 apiVersion: cert-manager.io/v1
 kind: Certificate
