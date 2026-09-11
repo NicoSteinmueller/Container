@@ -340,6 +340,28 @@ spec:
           name: homelab-ca
           kind: ClusterIssuer
 
+        #
+        # Das Label ist nicht Kosmetik, sondern umgeht einen Chart-Fehler.
+        #
+        # Die Zertifikat-Templates geben `secretTemplate:` bedingungslos aus
+        # und fuellen es nur, wenn Reflector-Namespaces, Annotationen oder
+        # Labels gesetzt sind. Ist nichts davon gesetzt, steht dort ein
+        # leerer Schluessel - und den lehnt das CRD-Schema ab:
+        #
+        #   Certificate.cert-manager.io "crowdsec-agent" is invalid:
+        #   spec.secretTemplate: Invalid value: "null":
+        #   spec.secretTemplate in body must be of type object: "null"
+        #
+        # `helm template` faellt das nicht auf, weil es nicht gegen das
+        # Schema prueft - erst der Apply im Cluster. Betrifft 0.24.0 und
+        # 0.24.2 gleichermassen, ein Update hilft also nicht.
+        #
+        # Irgendein Inhalt genuegt; dieser sagt wenigstens etwas aus.
+        #
+        secretTemplate:
+          labels:
+            app.kubernetes.io/part-of: crowdsec
+
       agent:
         # Der eigentliche Schalter - er entscheidet ueber den Init-Container.
         tlsClientAuth: true
