@@ -167,6 +167,9 @@ spec:
       # traefik-public:   traefik-ionos in env, dazu crowdsec-bouncer-key als
       #                   Datei unter /crowdsec - das Plugin liest sie beim
       #                   Start, nicht bei jeder Anfrage.
+      # monitoring:       grafana-admin als GF_SECURITY_ADMIN_USER und
+      #                   GF_SECURITY_ADMIN_PASSWORD in env, einmal beim
+      #                   Start gelesen.
       #
       # Nicht dabei und mit Absicht: headlamp und whoami halten kein Secret;
       # csi-driver-nfs und local-path-storage auch nicht. kube-system und
@@ -190,6 +193,7 @@ spec:
       #
       namespaces:
         - crowdsec
+        - monitoring
         - traefik-internal
         - traefik-public
 

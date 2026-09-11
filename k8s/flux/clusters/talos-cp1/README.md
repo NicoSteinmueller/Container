@@ -26,6 +26,7 @@ jeweiligen Datei.
 | `local-path-storage` | CoreDNS · kube-apiserver `:6443`                             |
 | `cert-manager`       | CoreDNS · kube-apiserver `:6443` — kein Internet, die CA ist intern |
 | `cnpg-system`        | CoreDNS · kube-apiserver `:6443` · Instanzen `:5432`/`:8000` |
+| `monitoring`         | CoreDNS · kube-apiserver `:6443` · Kubelet `:10250` · Scrape-Ziele je Namespace · Sync-Job zusätzlich Internet `:443` |
 | `traefik-internal`   | + headlamp `:4466` · whoami `:80` · Internet `:443`/`:53`    |
 | `traefik-public`     | + LAPI · whoami · Internet `:443`/`:53`                      |
 | `whoami`             | CoreDNS (`kind: NetworkPolicy`, aus dem Chart)               |
@@ -67,6 +68,7 @@ selbst anlegt, bekommen sie über [namespaces.yaml](namespaces.yaml).
 | `privileged` | `crowdsec` | Agent liest Container-Logs per hostPath |
 | `privileged` | `csi-driver-nfs` | `mount(8)` im Host-Namespace, Bidirectional Mount Propagation |
 | `privileged` | `local-path-storage` | Helfer-Pods legen Verzeichnisse auf der Host-Platte an |
+| `privileged` | `monitoring` | node-exporter: hostNetwork, hostPID, hostPath auf `/proc`, `/sys`, `/` |
 | *(keine)* | `kube-system`, `flux-system`, `cilium-secrets` | siehe unten |
 
 **hostPath ist bereits ab `baseline` ein Verstoß**, nicht erst ab `restricted`.
@@ -118,7 +120,8 @@ Quelle ist damit gleichbedeutend mit fremdem Code als Cluster-Admin.
 |---|---|
 | `local-path-provisioner` | GitRepository auf **Tag** `v0.0.37` |
 | `csi-driver-nfs` | GitRepository auf **Tag** `v4.13.4`, Chart aus `charts/v4.13.4/` |
-| Traefik, CrowdSec, Headlamp, metrics-server, Reloader, CloudNativePG, cert-manager | HelmRepository über HTTPS, Chart-Version exakt gepinnt |
+| Traefik, CrowdSec, Headlamp, metrics-server, Reloader, CloudNativePG, cert-manager, VictoriaMetrics | HelmRepository über HTTPS, Chart-Version exakt gepinnt |
+| Grafana-Dashboards und Alarmregeln | **nicht gepinnt** — ein Sync-Job holt sie beim Deployen aus dem Netz, siehe [monitoring.yaml](monitoring.yaml) |
 | Container-Images | Tag, teils zusätzlich Digest |
 
 
@@ -126,7 +129,7 @@ Bei `csi-driver-nfs` kam in beiden Varianten dazu, dass die frühere
 `HelmRepository` auf `…/master/charts` zeigte und die Version `4.13.4` dort auf
 `…/release-4.12/charts/latest/…` auflöste — ein wanderndes Verzeichnis auf
 einem wandernden Branch. Die gepinnte Versionsnummer benannte einen Eintrag im
-Index, nicht dessen Inhalt. 
+Index, nicht dessen Inhalt.
 
 Beide Tags hebt jetzt der eingebaute `flux`-Manager. Der `customManager` in
 [renovate.json5](../../../../renovate.json5), der die Commit-Zeilen nachzog, ist
@@ -938,4 +941,62 @@ Bleibt der `Cluster` auf *Setting up primary*, ist die erste Stelle `cnpg-egress
 ```bash
 kubectl -n kube-system exec ds/cilium -- \
   hubble observe --namespace cnpg-system --type drop --last 100
+```
+
+## `monitoring.yaml`
+
+VictoriaMetrics-Stack mit Grafana: VM-Operator, `vmsingle` als Speicher,
+`vmagent` als Sammler, `vmalert` und Alertmanager, dazu kube-state-metrics,
+node-exporter und Grafana unter `grafana.k8s.nico-steinmueller.de`.
+
+**Warum nicht `kube-prometheus-stack`:** das RAM. Gemessen am 2026-09-11, vor
+jeder migrierten Anwendung, lag der Node bei 2717 von 3276 MiB — 83 %. Deshalb
+steht `vm_memory_mib` jetzt auf 6144; dieser Stack kommt mit grob 800 MiB
+Requests aus, der Prometheus-Stack läge beim Doppelten bis Dreifachen.
+
+Der Operator konvertiert Prometheus-Operator-Objekte selbst
+(`disable_prometheus_converter: false`). Die Schalter `serviceMonitor.enabled`
+in [reloader.yaml](reloader.yaml) und `podMonitorEnabled` in
+[cloudnative-pg.yaml](cloudnative-pg.yaml) bleiben damit gültig — sie müssen
+nur auf `true` gedreht werden.
+
+### Was auf Talos nicht scrapebar ist
+
+`kubeEtcd`, `kubeControllerManager` und `kubeScheduler` stehen im Chart auf
+`true` und wären hier dauerhaft rot: etcd lauscht mit Client-Zertifikaten und
+ist von der Ingress-Firewall ohnehin zu, die beiden Static Pods bindet Talos
+auf `127.0.0.1`. Sie sind deshalb **aus** und nicht ignoriert — ein Monitoring,
+dessen Startzustand kaputte Targets sind, bringt niemandem bei, auf rote
+Targets zu achten. `kubeProxy` bleibt aus, weil Cilium ihn ersetzt.
+
+Das Kubelet wird über HTTPS, aber ungeprüft gescrapt
+(`insecureSkipVerify: true`) — dieselbe Lücke wie beim metrics-server, mit
+demselben Grund: kein kubelet-csr-approver.
+
+### Der Sync-Job
+
+Dashboards und Alarmregeln liefert der Chart nicht als Template, sondern über
+einen Job, der sie beim Deployen aus dem Netz holt. Zwei Folgen:
+
+- Es ist eine **bewegliche Quelle**, anders als alles andere in diesem
+  Verzeichnis. Bewusst hingenommen, weil der Regelsatz der Grund für diesen
+  Chart ist.
+- Der Job ist ein Helm-Hook (`post-install,post-upgrade`), Helm wartet auf ihn.
+  Ohne Egress ins Internet scheitert **die ganze HelmRelease**, nicht nur die
+  Dashboards. Dafür gibt es `monitoring-syncjob-egress` — auf den Job
+  eingegrenzt, `except` auf RFC 1918 wie bei der ACME-Regel.
+
+### Voraussetzung
+
+Das Secret `grafana-admin` mit `admin-user` und `admin-password` muss in
+`homelab-secrets` liegen, sonst startet Grafana nicht.
+
+```bash
+kubectl -n monitoring get pods
+kubectl -n monitoring get vmsingle,vmagent,vmalert,vmalertmanager
+kubectl -n flux-system get helmrelease victoria-metrics-k8s-stack
+
+# Targets, die nicht antworten - die erste Stelle ist monitoring-egress
+kubectl -n kube-system exec ds/cilium -- \
+  hubble observe --namespace monitoring --type drop --last 100
 ```
