@@ -24,6 +24,7 @@ jeweiligen Datei.
 | `headlamp`           | CoreDNS · kube-apiserver `:6443`                             |
 | `reloader`           | CoreDNS · kube-apiserver `:6443`                             |
 | `local-path-storage` | CoreDNS · kube-apiserver `:6443`                             |
+| `cert-manager`       | CoreDNS · kube-apiserver `:6443` — kein Internet, die CA ist intern |
 | `cnpg-system`        | CoreDNS · kube-apiserver `:6443` · Instanzen `:5432`/`:8000` |
 | `traefik-internal`   | + headlamp `:4466` · whoami `:80` · Internet `:443`/`:53`    |
 | `traefik-public`     | + LAPI · whoami · Internet `:443`/`:53`                      |
@@ -61,7 +62,7 @@ selbst anlegt, bekommen sie über [namespaces.yaml](namespaces.yaml).
 
 | Stufe | Namespaces | Warum |
 |---|---|---|
-| `restricted` | `headlamp`, `reloader`, `traefik-internal`, `traefik-public`, `whoami`, `cnpg-system` | Brauchen nichts davon |
+| `restricted` | `headlamp`, `reloader`, `traefik-internal`, `traefik-public`, `whoami`, `cnpg-system`, `cert-manager` | Brauchen nichts davon |
 | `restricted` | `default`, `kube-public`, `kube-node-lease` | Leer, und sollen es bleiben |
 | `privileged` | `crowdsec` | Agent liest Container-Logs per hostPath |
 | `privileged` | `csi-driver-nfs` | `mount(8)` im Host-Namespace, Bidirectional Mount Propagation |
@@ -117,7 +118,7 @@ Quelle ist damit gleichbedeutend mit fremdem Code als Cluster-Admin.
 |---|---|
 | `local-path-provisioner` | GitRepository auf **Tag** `v0.0.37` |
 | `csi-driver-nfs` | GitRepository auf **Tag** `v4.13.4`, Chart aus `charts/v4.13.4/` |
-| Traefik, CrowdSec, Headlamp, metrics-server, Reloader, CloudNativePG | HelmRepository über HTTPS, Chart-Version exakt gepinnt |
+| Traefik, CrowdSec, Headlamp, metrics-server, Reloader, CloudNativePG, cert-manager | HelmRepository über HTTPS, Chart-Version exakt gepinnt |
 | Container-Images | Tag, teils zusätzlich Digest |
 
 

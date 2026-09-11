@@ -453,6 +453,48 @@ spec:
 
 ---
 #
+# Die CA-Kopie fuer diesen Namespace.
+#
+# Das Plugin muss der LAPI vertrauen, seit die HTTPS spricht. Die CA liegt
+# aber als Secret im Namespace `cert-manager`, und ein Pod liest keine
+# Secrets aus fremden Namespaces.
+#
+# Statt ein Secret zu kopieren - wofuer der CrowdSec-Chart den
+# emberstack-Reflector voraussetzen wuerde, also einen weiteren Controller -
+# laesst sich cert-manager hier einfach ein eigenes Zertifikat ausstellen.
+# Jedes von `homelab-ca` signierte Secret enthaelt neben tls.crt und tls.key
+# auch ca.crt, und genau das wird gemountet.
+#
+# Das heisst: tls.crt und tls.key werden hier nicht gebraucht und nicht
+# benutzt. Das ist der Preis dieses Weges und bewusst so - ein ungenutztes
+# Schluesselpaar im Namespace ist billiger als ein Controller, der Secrets
+# clusterweit kopieren darf.
+#
+# Sollte die LAPI doch ein Client-Zertifikat verlangen (siehe die Gegenprobe
+# in crowdsec.yaml), ist genau dieses Objekt schon die halbe Antwort: Dann
+# wandern tls.crt und tls.key zusaetzlich in die Middleware oben, als
+# crowdsecLapiTlsCertificateBouncer und -BouncerKey.
+#
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: traefik-public-crowdsec-ca
+  namespace: traefik-public
+spec:
+  commonName: traefik-public bouncer
+  secretName: traefik-public-crowdsec-ca
+  duration: 2160h      # 90 Tage
+  renewBefore: 720h    # 30 Tage vorher
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: homelab-ca
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+---
+#
 # Der CrowdSec-Bouncer.
 #
 # Er fragt vor jeder Anfrage die LAPI, ob die Quelladresse gesperrt ist.
@@ -482,9 +524,26 @@ spec:
     crowdsec-bouncer:
       enabled: true
       crowdsecMode: live
-      crowdsecLapiScheme: http
+      #
+      # `https`, seit die LAPI mit `tls.enabled` arbeitet (crowdsec.yaml).
+      # Der Port bleibt 8080 - CrowdSec wechselt das Schema, nicht den Port.
+      #
+      # Die CA kommt aus einer Datei und nicht als PEM-Block hierher: Ein
+      # Zertifikat im Manifest laeuft irgendwann ab, und der Fehler zeigt
+      # sich dann als 403 im Anfragepfad des exponiertesten Pods. So haelt
+      # cert-manager es aktuell, und hier steht nur ein Pfad.
+      #
+      # Ohne CA startet das Plugin nicht: Bei `https` und ohne
+      # `crowdsecLapiTlsInsecureVerify` prueft es beim Laden, dass ein
+      # Vertrauensanker da ist (validateParamsTLS in der Plugin-Quelle).
+      # `insecureVerify` waere die Abkuerzung gewesen - sie haette
+      # verschluesselt, aber ungeprueft verbunden, und dafuer gibt es hier
+      # keinen Grund: Die CA liegt eine Zeile weiter unten bereit.
+      #
+      crowdsecLapiScheme: https
       crowdsecLapiHost: crowdsec-service.crowdsec.svc.cluster.local:8080
       crowdsecLapiKeyFile: /crowdsec/traefik_public
+      crowdsecLapiTlsCertificateAuthorityFile: /crowdsec-ca/ca.crt
       clientTrustedIPs:
         - 192.168.178.0/24
       logLevel: INFO
@@ -724,6 +783,20 @@ spec:
             secretName: crowdsec-bouncer-key
             defaultMode: 0400
 
+        #
+        # Die CA, gegen die das Plugin die LAPI prueft. Das Secret entsteht
+        # aus dem `Certificate` weiter unten in dieser Datei - cert-manager
+        # legt darin neben tls.crt/tls.key auch ca.crt ab, und nur das
+        # letzte wird hier gebraucht.
+        #
+        - name: crowdsec-ca
+          secret:
+            secretName: traefik-public-crowdsec-ca
+            items:
+              - key: ca.crt
+                path: ca.crt
+            defaultMode: 0444
+
     #
     # Recreate, wie beim internen Controller und aus demselben Grund:
     # acme.json liegt auf einem ReadWriteOnce-PVC, das local-path auf diesem
@@ -774,6 +847,9 @@ spec:
     additionalVolumeMounts:
       - name: crowdsec-key
         mountPath: /crowdsec
+        readOnly: true
+      - name: crowdsec-ca
+        mountPath: /crowdsec-ca
         readOnly: true
 
     ports:

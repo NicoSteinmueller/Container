@@ -1,0 +1,251 @@
+#
+# cert-manager - und eine eigene CA fuer clusterinterne Zertifikate.
+#
+# ---------------------------------------------------------------------------
+# Warum er zurueckkommt
+#
+# Nicht fuer die oeffentlichen Zertifikate: Die holen sich die beiden
+# Traefik-Controller weiter selbst per ACME/DNS-01 bei Let's Encrypt
+# (ingress-internal.yaml, ingress-public.yaml). Daran aendert diese Datei
+# nichts, und cert-manager bekommt deshalb auch keinen DNS-Provider-Token.
+#
+# Der Anlass ist CrowdSec. Der Agent registriert sich beim Start mit seinem
+# Pod-Namen bei der LAPI:
+#
+#   cscli lapi register --machine "$USERNAME" ...
+#
+# Das ist im Chart bedingungslos - in 0.24.0 wie in 0.24.2. Startet der
+# Container neu, ohne dass der Pod neu entsteht, sind die lokalen
+# Zugangsdaten weg, der Name in der LAPI aber noch da. Die Antwort ist dann
+#
+#   403 Forbidden: user 'crowdsec-agent-xxxxx': user already exist
+#
+# und der Init-Container haengt fuer immer im CrashLoopBackOff. Am 2026-09-11
+# waren es 65 Versuche; der Agent war seit dem VM-Neustart tot, und die
+# Registrierungen von vier laengst geloeschten Pods lagen noch in der LAPI.
+#
+# Der Chart hat dafuer genau einen Ausweg, und der haengt an TLS:
+#
+#   {{- if or (not .Values.tls.enabled) (not .Values.tls.agent.tlsClientAuth) }}
+#
+# Mit `tls.enabled` weist sich der Agent per Client-Zertifikat aus statt per
+# registriertem Passwort. Der Init-Container faellt in den `else`-Zweig, der
+# nur noch auf die LAPI wartet - kein `register`, kein 403, und das Problem
+# ist weg statt nur diesmal geloest.
+#
+# ---------------------------------------------------------------------------
+# Was hier NICHT passiert
+#
+# Keine oeffentlichen Zertifikate, kein ACME, kein DNS-Token. Diese CA ist
+# clusterintern und signiert Verbindungen zwischen Pods. Kein Browser kennt
+# sie, und das ist richtig so - sie hat im Internet nichts zu suchen.
+#
+# Die offene Entscheidung E4 aus dem Sicherheitskonzept (wo der
+# DNS-Provider-Token liegt) beruehrt das nicht. Wer sie spaeter zugunsten von
+# cert-manager aufloest, findet hier den Unterbau schon vor.
+#
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: jetstack
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://charts.jetstack.io
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+  labels:
+    #
+    # Alle drei Komponenten (controller, webhook, cainjector) sprechen
+    # ausschliesslich mit der API und brauchen weder Host-Zugriff noch
+    # Privilegien. Die Chart-Defaults erfuellen `restricted` bereits.
+    #
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+#
+# Egress-Default-Deny.
+#
+# cert-manager haelt die privaten Schluessel jeder Identitaet, die er
+# ausstellt. Was daraus im Heimnetz zu suchen waere, faellt niemandem ein -
+# also nichts.
+#
+# Kein Internet-Egress, und das ist eine Aussage ueber den Zweck: Diese
+# Installation macht ausschliesslich interne CA-Zertifikate. Kaeme spaeter
+# ein ACME-Issuer dazu, braeuchte er eine `toCIDRSet`-Regel auf 443 wie in
+# ingress-internal.yaml - und das waere der Moment, diese Datei noch einmal
+# zu lesen, statt die Regel nebenbei zu ergaenzen.
+#
+# Nur Egress, kein Ingress: Der kube-apiserver muss den Webhook auf 10250
+# erreichen, sonst wird jedes Certificate-Objekt abgelehnt. Dieselbe
+# Ueberlegung wie bei cnpg-system.
+#
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: cert-manager-egress
+  namespace: cert-manager
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    # `toPorts` ist Pflicht, nicht Kosmetik - Begruendung in headlamp.yaml.
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cert-manager
+  namespace: flux-system
+spec:
+  interval: 10m
+  releaseName: cert-manager
+  targetNamespace: cert-manager
+  storageNamespace: cert-manager
+  chart:
+    spec:
+      chart: cert-manager
+      #
+      # Nicht die allerneueste: v1.21.2 ist am 2026-09-11 erschienen, am Tag
+      # dieses Commits. Eine Version mit ein paar Wochen Liegezeit ist hier
+      # mehr wert als der neueste Stand - Renovate hebt sie ohnehin, dann mit
+      # Review.
+      #
+      version: "1.21.1"
+      sourceRef:
+        kind: HelmRepository
+        name: jetstack
+        namespace: flux-system
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+    timeout: 10m
+  upgrade:
+    remediation:
+      retries: 3
+    timeout: 10m
+  values:
+    #
+    # Die CRDs kommen aus dem Chart. Frueher hiess der Wert `installCRDs`;
+    # seit v1.15 ist es `crds.enabled`, und `crds.keep` sorgt dafuer, dass
+    # ein versehentliches Entfernen der HelmRelease nicht jedes Certificate-
+    # Objekt im Cluster mitnimmt.
+    #
+    crds:
+      enabled: true
+      keep: true
+
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        memory: 192Mi
+
+    webhook:
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          memory: 96Mi
+
+    #
+    # Der cainjector ist der Speicherhungrigste der drei, weil er alle
+    # Secrets und Webhook-Konfigurationen im Cache haelt. Gebraucht wird er
+    # fuer cert-managers eigenen Webhook - abschalten spart RAM, kostet aber
+    # genau die Selbstverwaltung, die ihn betriebssicher macht.
+    #
+    cainjector:
+      resources:
+        requests:
+          cpu: 25m
+          memory: 96Mi
+        limits:
+          memory: 256Mi
+
+    # Es gibt keinen Prometheus in diesem Cluster - siehe reloader.yaml.
+    prometheus:
+      enabled: false
+---
+#
+# Die Wurzel: ein selbstsignierter Issuer, der genau eine Sache tut - das
+# CA-Zertifikat unten signieren.
+#
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-root
+spec:
+  selfSigned: {}
+---
+#
+# Das CA-Zertifikat des Homelabs.
+#
+# Es liegt im Namespace `cert-manager`, und das ist keine Willkuer: Ein
+# ClusterIssuer sucht sein Secret immer im "Cluster Resource Namespace", und
+# der ist per Voreinstellung der Namespace, in dem cert-manager laeuft. Ein
+# Secret anderswo findet er nicht, und der Fehler dabei ist leise - der
+# Issuer bleibt schlicht nicht `Ready`.
+#
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: homelab-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: homelab-ca
+  secretName: homelab-ca
+  #
+  # Fuenf Jahre. Eine interne CA, die niemand ausserhalb kennt, gewinnt
+  # nichts durch kurze Laufzeiten - aber jeder Wechsel kostet einen
+  # gleichzeitigen Neustart aller Beteiligten. Die Blaetter darunter rotieren
+  # kurz (siehe `duration` in crowdsec.yaml), die Wurzel selten.
+  #
+  duration: 43800h
+  renewBefore: 8760h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-root
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+#
+# Der Issuer, den die Dienste benutzen. Bewusst ein ClusterIssuer und kein
+# Issuer je Namespace: Genau daran haengt, dass `traefik-public` sich vom
+# selben Vertrauensanker ein `ca.crt` ausstellen lassen kann wie die LAPI in
+# `crowdsec` - ohne dass ein Secret zwischen Namespaces kopiert werden muss
+# und ohne einen Reflector-Controller dafuer.
+#
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: homelab-ca
+spec:
+  ca:
+    secretName: homelab-ca
