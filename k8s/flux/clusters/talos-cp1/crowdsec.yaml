@@ -350,16 +350,17 @@ spec:
     # dort nichts aendert, nimmt den oeffentlichen Ingress den Schutz weg.
     #
     # Der Bouncer behaelt seinen API-Schluessel; er bekommt kein
-    # Client-Zertifikat. Die LAPI prueft ein vorgelegtes Zertifikat, verlangt
-    # aber keines - das ist die Annahme hinter dieser Aufteilung und die
-    # erste Gegenprobe nach dem Rollout:
+    # Client-Zertifikat. Das geht, weil die LAPI ein vorgelegtes Zertifikat
+    # zwar prueft, aber keines verlangt - nachgemessen am 2026-09-11 in ihrem
+    # eigenen Log:
     #
-    #   kubectl -n traefik-public logs deploy/traefik-public | grep -i crowdsec
-    #   kubectl -n crowdsec exec deploy/crowdsec-lapi -- cscli bouncers list
+    #   (tls) Client Auth Type set to VerifyClientCertIfGiven
     #
-    # Faellt sie anders aus, braucht auch der Bouncer ein Zertifikat aus
-    # demselben ClusterIssuer - der Weg dafuer steht in ingress-public.yaml
-    # bereits, es waere ein zweites `Certificate` statt nur der CA.
+    # Das war beim Bau noch eine Annahme und ist jetzt eine Feststellung.
+    # Sollte sich das mit einer kuenftigen Version aendern, braucht auch der
+    # Bouncer ein Zertifikat aus demselben ClusterIssuer - der Weg dafuer
+    # steht in cert-manager-issuers/issuers.yaml bereits, es waere ein
+    # zweites `Certificate` statt nur der CA.
     # ---------------------------------------------------------------------
     #
     tls:
