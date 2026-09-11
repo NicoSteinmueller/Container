@@ -1,0 +1,473 @@
+#
+# Monitoring - VictoriaMetrics-Stack mit Grafana.
+#
+# Was hier laeuft: der VM-Operator, `vmsingle` als Speicher, `vmagent` als
+# Sammler, `vmalert` und Alertmanager fuer Regeln und Alarme, dazu
+# kube-state-metrics, node-exporter und Grafana. Dashboards und der
+# kube-prometheus-Regelsatz bringt der Chart mit.
+#
+# ---------------------------------------------------------------------------
+# Warum VictoriaMetrics und nicht kube-prometheus-stack
+#
+# Das RAM. Gemessen am 2026-09-11, vor jeder migrierten Anwendung:
+#
+#   Node:  2717 MiB von 3276 MiB allocatable belegt - 83 %
+#   Host:  available 3559 MiB, kein Swap
+#
+# Deshalb steht `vm_memory_mib` jetzt auf 6144 statt 4096 (homelab-values,
+# vm/talos/terraform.tfvars - dort auch die Rechnung dazu). Damit sind rund
+# 2,5 GiB frei. Ein kube-prometheus-stack liegt realistisch bei 1,5-2,5 GiB
+# und haette das komplett aufgebraucht; dieser Stack kommt mit grob 800 MiB
+# Requests aus.
+#
+# Zwei Dinge kommen dazu, die nichts mit Speicher zu tun haben:
+#
+#   - Der Operator konvertiert Prometheus-Operator-Objekte von selbst
+#     (`disable_prometheus_converter: false`, Chart-Default). Die Schalter
+#     `serviceMonitor.enabled` in reloader.yaml und `podMonitorEnabled` in
+#     cloudnative-pg.yaml bleiben damit gueltig - sie muessen nur von `false`
+#     auf `true` gedreht werden, nicht umgeschrieben.
+#   - Der Chart buendelt seine Subcharts (Operator, Grafana,
+#     kube-state-metrics, node-exporter) im Archiv. Die gepinnte
+#     Chart-Version pinnt sie damit mit, ohne dass helm-controller zur
+#     Renderzeit fremde Repositories anfassen muss.
+#
+#     Das gilt aber *nicht* fuer Dashboards und Alarmregeln. Die liefert
+#     dieser Chart seit 0.9x ueber einen Sync-Job (`syncJob` unten), der sie
+#     beim Deployen aus dem Netz holt und als ConfigMaps und VMRules in den
+#     Cluster schreibt. Das ist eine bewegliche Quelle - genau das, was
+#     "Woher die Charts kommen" in README.md sonst ausschliesst. Hier
+#     hingenommen, weil der Regelsatz der Grund fuer diesen Chart ist; wer
+#     das nicht will, setzt `syncJob.enabled: false` und hat dann einen
+#     leeren Grafana und einen vmalert ohne Regeln.
+#
+# ---------------------------------------------------------------------------
+# Was diese Entscheidung kostet, und das ist kein kleiner Punkt
+#
+# Der Speicher liegt *im* Cluster. Faellt der Cluster aus, schweigt genau das,
+# was den Ausfall zeigen soll - dieselbe Ueberlegung, aus der Gitea und Kopia
+# ausserhalb laufen. Hier ist es trotzdem so gebaut, weil der Stack auf Unraid
+# nicht laeuft und ein zweiter Betriebsort mehr kostet als er hier bringt.
+#
+# Die Gegenmassnahme ist nicht dieser Stack, sondern das, was von aussen
+# schaut: Uptime Kuma auf die Ingress-Adressen und Flux-Alarme nach ntfy
+# (k8s/CHECKLISTE.md, Abschnitt B). Ohne die beiden ist ein Cluster-Ausfall
+# unsichtbar, mit Monitoring im Cluster erst recht.
+#
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: victoria-metrics
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://victoriametrics.github.io/helm-charts/
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    #
+    # "privileged", und der Grund ist genau eine Komponente: node-exporter.
+    # Er laeuft als DaemonSet mit hostNetwork, hostPID und hostPath auf /proc,
+    # /sys und / - hostPath allein lehnt `baseline` schon ab. Ohne ihn gibt es
+    # keine Metriken zu Platte, Netz und Load des Nodes, also genau die, wegen
+    # derer man nachts nachsieht.
+    #
+    # Dieselbe Bauart wie crowdsec: ein Namespace auf `privileged`, weil eine
+    # Komponente darin es braucht. Der Preis ist derselbe - die Stufe erlaubt
+    # es allen Pods hier, auch vmsingle und Grafana. Erlaubt heisst nicht
+    # gesetzt: Die Charts setzen ihre eigenen securityContexts, und die sind
+    # bei den VM-Komponenten `restricted`-tauglich.
+    #
+    # Die saubere Alternative waere `namespaceOverride` am node-exporter-
+    # Subchart und ein zweiter Namespace nur fuer ihn. Das ist bewusst nicht
+    # gemacht: Es verteilt einen Stack auf zwei Namespaces und die
+    # VMNodeScrape-Objekte muessten hinterhergezogen werden. Wenn hier einmal
+    # etwas laufen soll, das nicht zum Stack gehoert, ist das der Moment,
+    # diese Entscheidung noch einmal anzusehen.
+    #
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: privileged
+    pod-security.kubernetes.io/audit: privileged
+---
+#
+# Ingress-Default-Deny. Erreichbar sein muss von aussen nur Grafana, und zwar
+# ausschliesslich ueber `ingress-internal` - nicht aus dem LAN direkt.
+#
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-ingress-internal
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik-internal
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+#
+# Egress-Default-Deny.
+#
+# Der Sammler ist die Komponente, die per Bauart ueberallhin sprechen will -
+# und genau deshalb gehoert sie eingegrenzt. Ins Heimnetz darf auch sie
+# nicht: Es gibt hier keine `toCIDRSet`-Regel und keine `world`-Entitaet.
+#
+# Die Namespace-Liste unten ist dieselbe Bauart wie in ingress-internal.yaml,
+# mit einem angenehmen Unterschied: Ein vergessener Eintrag faellt hier von
+# selbst auf. Das Target steht in Grafana auf DOWN, statt still zu fehlen.
+#
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: monitoring-egress
+  namespace: monitoring
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    # Service-Discovery und der Operator selbst.
+    # `toPorts` ist Pflicht, nicht Kosmetik - Begruendung in headlamp.yaml.
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+
+    #
+    # Das Kubelet - cAdvisor, /metrics/resource und /metrics/probes. Es laeuft
+    # auf dem Node, traegt also die Identitaet `host` und ist ueber
+    # `toEndpoints` nicht erreichbar.
+    #
+    # Der Port macht die Regel eng, und das ist hier wichtiger als anderswo:
+    # `toEntities: [host]` ohne Port waere auch apid auf 50000 und alles
+    # andere, was auf dem Node lauscht.
+    #
+    - toEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "10250"
+              protocol: TCP
+
+    # Innerhalb des eigenen Namespace: vmagent -> vmsingle, Grafana ->
+    # vmsingle, vmalert -> Alertmanager, und die Scrapes von
+    # kube-state-metrics und node-exporter.
+    - toEndpoints:
+        - {}
+
+    #
+    # Die Namespaces mit Scrape-Zielen. Kommt ein Dienst dazu, gehoert er
+    # hierher - sein Target steht sonst auf DOWN.
+    #
+    # Ohne Portangabe, anders als sonst in diesem Repo: Welchen Port ein
+    # Exporter hat, entscheidet das jeweilige Chart, und die Liste waere nach
+    # dem ersten Chart-Update falsch. Die Grenze ist hier der Namespace.
+    #
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+        - matchLabels:
+            io.kubernetes.pod.namespace: cnpg-system
+        - matchLabels:
+            io.kubernetes.pod.namespace: crowdsec
+        - matchLabels:
+            io.kubernetes.pod.namespace: csi-driver-nfs
+        - matchLabels:
+            io.kubernetes.pod.namespace: flux-system
+        - matchLabels:
+            io.kubernetes.pod.namespace: headlamp
+        - matchLabels:
+            io.kubernetes.pod.namespace: local-path-storage
+        - matchLabels:
+            io.kubernetes.pod.namespace: reloader
+        - matchLabels:
+            io.kubernetes.pod.namespace: traefik-internal
+        - matchLabels:
+            io.kubernetes.pod.namespace: traefik-public
+        - matchLabels:
+            io.kubernetes.pod.namespace: whoami
+---
+#
+# Der Sync-Job darf ins Internet - und nur er.
+#
+# Er ist ein Helm-Hook (`post-install,post-upgrade`), Helm wartet auf ihn.
+# Ohne diese Regel laeuft er in den Timeout, der Hook scheitert, und damit
+# scheitert die ganze HelmRelease - nicht nur die Dashboards. Das ist der
+# Fehler, den man beim ersten Rollout bekommt und dann im falschen Ordner
+# sucht.
+#
+# `except` ist auch hier die eigentliche Regel, gleiche Bauart wie die
+# ACME-Regel in ingress-internal.yaml: Internet ja, Heimnetz nein. Der
+# Selektor grenzt sie zusaetzlich auf den Job ein - vmagent, vmsingle und
+# Grafana bleiben ohne Weg nach draussen.
+#
+# Cilium-Policies sind additiv: DNS und die uebrigen Ziele hat der Job schon
+# ueber `monitoring-egress` oben, hier steht nur, was dazukommt.
+#
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: monitoring-syncjob-egress
+  namespace: monitoring
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/component: syncJob
+  egress:
+    - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+            - 169.254.0.0/16
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: victoria-metrics-k8s-stack
+  namespace: flux-system
+spec:
+  interval: 10m
+  releaseName: victoria-metrics-k8s-stack
+  targetNamespace: monitoring
+  storageNamespace: monitoring
+  chart:
+    spec:
+      chart: victoria-metrics-k8s-stack
+      version: "0.92.1"
+      sourceRef:
+        kind: HelmRepository
+        name: victoria-metrics
+        namespace: flux-system
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+    # Der Chart legt CRDs und Operator gemeinsam an; der erste Lauf braucht
+    # laenger als die voreingestellten fuenf Minuten.
+    timeout: 15m
+  upgrade:
+    remediation:
+      retries: 3
+    timeout: 15m
+  values:
+    victoria-metrics-operator:
+      enabled: true
+      #
+      # Der Konverter bleibt an (Chart-Default). Er uebersetzt ServiceMonitor,
+      # PodMonitor und PrometheusRule in die VM-eigenen Objekte - deshalb
+      # genuegt es, in reloader.yaml und cloudnative-pg.yaml den vorhandenen
+      # Schalter auf `true` zu drehen.
+      #
+      operator:
+        disable_prometheus_converter: false
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          memory: 192Mi
+
+    #
+    # Der Speicher. Ein Binary, ein PVC - kein WAL-Verschnitt und keine
+    # HA-Annahmen, die auf einem Node ohnehin nicht greifen.
+    #
+    vmsingle:
+      spec:
+        # 30 Tage. Laenger kostet vor allem RAM, nicht nur Platte: Der
+        # Speicherbedarf haengt an der Zahl aktiver Zeitreihen.
+        retentionPeriod: "30d"
+        storage:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              # Ohne storageClassName - also `local-path`, die Default-Klasse.
+              # Richtig so: Das hier ist eine Datenbank mit fsync, und genau
+              # dafuer ist die vDisk da (README.md, Abschnitt Speicher).
+              storage: 20Gi
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 768Mi
+
+    vmagent:
+      spec:
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            memory: 384Mi
+
+    vmalert:
+      spec:
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            memory: 128Mi
+
+    #
+    # Alertmanager laeuft, hat aber noch keinen Empfaenger - ohne Route ist
+    # ein Alarm ein Eintrag in einer Oberflaeche, die niemand ansieht.
+    #
+    # Der Weg dahin ist ein Webhook-Receiver auf ntfy (ntfy/ im Repo). Die
+    # Adresse gehoert nach homelab-secrets und nicht hierher; solange sie
+    # fehlt, ist das hier bewusst unvollstaendig und nicht "fertig".
+    #
+    alertmanager:
+      enabled: true
+      spec:
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            memory: 128Mi
+
+    #
+    # ---------------------------------------------------------------------
+    # Talos: was es hier nicht zu scrapen gibt
+    #
+    # Diese drei stehen im Chart auf `true` und waeren dauerhaft rot. Ein
+    # Monitoring, dessen Startzustand kaputte Targets sind, bringt niemandem
+    # bei, auf rote Targets zu achten - deshalb aus und nicht ignoriert.
+    #
+    #   kubeEtcd              etcd lauscht auf 2379 mit Client-Zertifikaten,
+    #                         und die Talos-Ingress-Firewall haelt den Port
+    #                         ohnehin zu (vm/talos/patches/firewall.yaml.tftpl).
+    #   kubeControllerManager Talos bindet den Static Pod auf 127.0.0.1.
+    #   kubeScheduler         dasselbe.
+    #
+    # Fuer die letzten beiden gaebe es einen Weg ueber einen Machine-Config-
+    # Patch auf `--bind-address=0.0.0.0`. Das ist eine Entscheidung an der
+    # Talos-Seite und gehoert dann nach vm/talos, nicht in diese Datei.
+    #
+    # kubeProxy steht im Chart schon auf `false` und bleibt es: Cilium
+    # ersetzt ihn in diesem Cluster.
+    # ---------------------------------------------------------------------
+    #
+    kubeEtcd:
+      enabled: false
+    kubeControllerManager:
+      enabled: false
+    kubeScheduler:
+      enabled: false
+
+    #
+    # Das Kubelet wird ueber HTTPS gescrapt, aber ungeprueft
+    # (`insecureSkipVerify: true`, Chart-Default). Das ist dieselbe Luecke wie
+    # beim metrics-server und hat denselben Grund: Es gibt keinen
+    # kubelet-csr-approver, also auch kein pruefbares Serverzertifikat. Die
+    # Begruendung steht in metrics-server.yaml, der offene Punkt in
+    # k8s/CHECKLISTE.md, Abschnitt F.
+    #
+    kubelet:
+      enabled: true
+
+    kube-state-metrics:
+      resources:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+        limits:
+          memory: 192Mi
+
+    prometheus-node-exporter:
+      resources:
+        requests:
+          cpu: 25m
+          memory: 32Mi
+        limits:
+          memory: 64Mi
+
+    grafana:
+      enabled: true
+
+      #
+      # Das Passwort kommt aus homelab-secrets, nicht aus den Werten hier -
+      # ein Default-`admin` waere in einem Repo, das oeffentlich einsehbar
+      # ist, kein Passwort. Das Secret `grafana-admin` mit den Schluesseln
+      # `admin-user` und `admin-password` muss dort angelegt sein, sonst
+      # startet der Pod nicht.
+      #
+      admin:
+        existingSecret: grafana-admin
+        userKey: admin-user
+        passwordKey: admin-password
+
+      #
+      # Dashboards und Einstellungen ueberleben einen Neustart. Ohne das
+      # legt der Chart ein emptyDir an, und jede von Hand gebaute Ansicht ist
+      # beim naechsten Rollout weg.
+      #
+      persistence:
+        enabled: true
+        size: 4Gi
+
+      ingress:
+        enabled: true
+        ingressClassName: internal
+        hosts:
+          - grafana.k8s.nico-steinmueller.de
+        #
+        # Kein `tls`-Block: Der interne Controller haelt ein Wildcard-
+        # Zertifikat ueber seinen certResolver und braucht kein Secret je
+        # Ingress. Genauso wie bei Headlamp und whoami.
+        #
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 384Mi
+
+    # Dashboards und der kube-prometheus-Regelsatz - der Grund, diesen Chart
+    # zu nehmen statt die Komponenten einzeln.
+    defaultDashboards:
+      enabled: true
+    defaultRules:
+      enabled: true
