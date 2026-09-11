@@ -261,9 +261,48 @@ spec:
     createNamespace: false
     remediation:
       retries: 3
+  #
+  # KEIN Rollback bei fehlgeschlagenem Upgrade - und das ist hier kein
+  # Detail, sondern der Ausweg aus einer Schleife.
+  #
+  # Der Grund haengt am persistenten Config-Volume. Die Datei
+  # local_api_credentials.yaml darauf kann Passwort-Zugangsdaten ODER
+  # Zertifikatspfade tragen; beides zusammen lehnt CrowdSec ab:
+  #
+  #   fatal: loading api client: user/password authentication and
+  #          TLS authentication are mutually exclusive
+  #
+  # Das Start-Skript des Charts raeumt nur in eine Richtung auf: Der
+  # Nicht-TLS-Zweig loescht die Zertifikatspfade, der TLS-Zweig laesst
+  # login/password aber stehen. Eine mit Passwort beschriebene Datei bleibt
+  # damit dauerhaft ein Startfehler.
+  #
+  # Beim Umbau am 2026-09-11 ergab das eine Schleife: Upgrade auf TLS ->
+  # LAPI faellt ueber die alte Datei -> Helm wartet 5 Minuten -> Timeout ->
+  # Rollback auf die Nicht-TLS-Version -> die registriert sich mit Passwort
+  # und schreibt die Datei neu -> naechster Versuch scheitert genauso.
+  #
+  # Ohne Rollback bleibt eine fehlgeschlagene Version einfach stehen. Ein
+  # abstuerzender TLS-Pod ist harmlos - er schreibt nichts. Damit laesst sich
+  # die Datei in Ruhe bereinigen, und der naechste Neustart traegt.
+  #
+  # Der Preis ist benannt: Ein kaputtes Upgrade heilt sich hier nicht selbst.
+  # Bei einem Dienst, dessen Vorgaengerversion beim Zurueckrollen Daten
+  # veraendert, ist das die bessere Seite des Tauschs.
+  #
   upgrade:
     remediation:
-      retries: 3
+      #
+      # `retries: 0` zusammen mit `remediateLastFailure: false` heisst: gar
+      # keine Remediation. Mit `retries: 3` waere zwischen den Versuchen
+      # jeweils zurueckgerollt worden - genau das, was die Schleife oben
+      # angetrieben hat.
+      #
+      retries: 0
+      remediateLastFailure: false
+    # Die LAPI braucht nach einem Wechsel des Auth-Verfahrens laenger als die
+    # voreingestellten fuenf Minuten, bis Hub und Zertifikate stehen.
+    timeout: 10m
   values:
     #
     # Talos faehrt containerd, nicht Docker - und der Chart-Default ist
