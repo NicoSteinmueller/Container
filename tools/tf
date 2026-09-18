@@ -50,14 +50,50 @@ case "${1:-}" in
     ;;
   apply | destroy)
     add=1
+    #
+    # Ein Positionsargument ist die Plandatei - dann kommen die Werte von dort
+    # und ein zweites -var-file waere ein Fehler.
+    #
+    # Der Haken daran: `-var wait_for_health=false` sind *zwei* Argumente, und
+    # das zweite sieht wie ein Positionsargument aus. Wer die Trennung nicht
+    # mitzaehlt, verliert die tfvars still - und der Apply laeuft gegen den
+    # libvirt der Arbeitsstation statt gegen Unraid, weil `libvirt_uri` einen
+    # Default hat. Genau so ist es einmal passiert.
+    #
+    # Deshalb die Optionen auflisten, die ihren Wert getrennt nehmen koennen.
+    # Boolesche Schalter (-auto-approve, -refresh=false, -no-color) stehen
+    # nicht dabei: die verlangen ohnehin die =-Form.
+    #
+    skip_value=0
     for arg in "${@:2}"; do
+      if [ "$skip_value" = 1 ]; then
+        skip_value=0
+        continue
+      fi
       case "$arg" in
+        -var | -var-file | -target | -exclude | -replace | -state | -state-out | -backup | -lock-timeout | -parallelism)
+          skip_value=1
+          ;;
         -*) ;;
-        *) add=0 ;; # ein Positionsargument = Plandatei
+        *)
+          add=0
+          plan_file="$arg"
+          ;;
       esac
     done
     ;;
 esac
+
+#
+# Der Fall oben bleibt richtig, aber er darf nicht stumm sein: Ein Lauf ohne
+# Werte sieht bis zum Plan aus wie jeder andere, und der Unterschied faellt
+# erst an den angelegten Objekten auf. Eine Zeile reicht, um ihn sichtbar zu
+# machen.
+#
+if [ "$add" = 0 ] && [ -n "${plan_file:-}" ] && [ -f "$var_file" ]; then
+  echo "tf: $1 mit Plandatei '$plan_file' - die Werte kommen von dort, nicht aus" >&2
+  echo "tf: $var_file" >&2
+fi
 
 if [ "$add" = 1 ]; then
   if [ -f "$var_file" ]; then
