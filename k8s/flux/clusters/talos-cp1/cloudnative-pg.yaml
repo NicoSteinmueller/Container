@@ -222,12 +222,11 @@ spec:
       limits:
         memory: 256Mi
 
-    #
-    # Kein PodMonitor und kein Dashboard - es gibt keinen Prometheus in
-    # diesem Cluster (siehe reloader.yaml, gleiche Stelle). Kommt einer,
-    # gehoert hier podMonitorEnabled: true hin; die Metriken der Instanzen
-    # kommen dann aus deren eigenem Port 9187, nicht von hier.
-    #
+    # Wirksam, seit monitoring.yaml auf kube-prometheus-stack steht. Aus, bis
+    # der erste Postgres-Dienst umgezogen ist - ein PodMonitor auf null
+    # Instanzen beschreibt nichts. Dann braucht es zusaetzlich eine
+    # Ingress-Regel hier (wie bei reloader.yaml); die Metriken kommen aus Port
+    # 9187 der Instanzen, nicht vom Operator.
     monitoring:
       podMonitorEnabled: false
       grafanaDashboard:

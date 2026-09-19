@@ -26,7 +26,7 @@ jeweiligen Datei.
 | `local-path-storage` | CoreDNS · kube-apiserver `:6443`                             |
 | `cert-manager`       | CoreDNS · kube-apiserver `:6443` — kein Internet, die CA ist intern |
 | `cnpg-system`        | CoreDNS · kube-apiserver `:6443` · Instanzen `:5432`/`:8000` |
-| `monitoring`         | CoreDNS · kube-apiserver `:6443` · Kubelet `:10250` · Scrape-Ziele je Namespace · Sync-Job zusätzlich Internet `:443` |
+| `monitoring`         | CoreDNS · kube-apiserver `:6443` · Kubelet `:10250` · node-exporter `:9100` · Scrape-Ziele je Namespace — **kein Internet** |
 | `traefik-internal`   | + headlamp `:4466` · whoami `:80` · Internet `:443`/`:53`    |
 | `traefik-public`     | + LAPI · whoami · Internet `:443`/`:53`                      |
 | `whoami`             | CoreDNS (`kind: NetworkPolicy`, aus dem Chart)               |
@@ -120,8 +120,8 @@ Quelle ist damit gleichbedeutend mit fremdem Code als Cluster-Admin.
 |---|---|
 | `local-path-provisioner` | GitRepository auf **Tag** `v0.0.37` |
 | `csi-driver-nfs` | GitRepository auf **Tag** `v4.13.4`, Chart aus `charts/v4.13.4/` |
-| Traefik, CrowdSec, Headlamp, metrics-server, Reloader, CloudNativePG, cert-manager, VictoriaMetrics | HelmRepository über HTTPS, Chart-Version exakt gepinnt |
-| Grafana-Dashboards und Alarmregeln | **nicht gepinnt** — ein Sync-Job holt sie beim Deployen aus dem Netz, siehe [monitoring.yaml](monitoring.yaml) |
+| Traefik, CrowdSec, Headlamp, metrics-server, Reloader, CloudNativePG, cert-manager, kube-prometheus-stack, Loki, Alloy | HelmRepository über HTTPS, Chart-Version exakt gepinnt |
+| Grafana-Dashboards und Alarmregeln | in der Chart, also mit `version:` mitgepinnt — eigene dazu über [grafana-dashboards.yaml](grafana-dashboards.yaml) |
 | Container-Images | Tag, teils zusätzlich Digest |
 
 
@@ -945,20 +945,63 @@ kubectl -n kube-system exec ds/cilium -- \
 
 ## `monitoring.yaml`
 
-VictoriaMetrics-Stack mit Grafana: VM-Operator, `vmsingle` als Speicher,
-`vmagent` als Sammler, `vmalert` und Alertmanager, dazu kube-state-metrics,
-node-exporter und Grafana unter `grafana.k8s.nico-steinmueller.de`.
+`kube-prometheus-stack`: Operator, Prometheus als Speicher und Regelauswerter,
+Alertmanager, kube-state-metrics, node-exporter, Grafana unter
+`grafana.k8s.nico-steinmueller.de`. Logs in [logs.yaml](logs.yaml) — gleiche
+Namespace, also gilt `monitoring-egress` von hier für beide.
 
-**Warum nicht `kube-prometheus-stack`:** das RAM. Gemessen am 2026-09-11, vor
-jeder migrierten Anwendung, lag der Node bei 2717 von 3276 MiB — 83 %. Deshalb
-steht `vm_memory_mib` jetzt auf 6144; dieser Stack kommt mit grob 800 MiB
-Requests aus, der Prometheus-Stack läge beim Doppelten bis Dreifachen.
+**Vorher lief hier VictoriaMetrics**, und die Begründung war ausschließlich das
+RAM: Am 2026-09-11 lag der Node bei 2717 von 3276 MiB — 83 %, vor jeder
+migrierten Anwendung. Seit die VM auf 24 GiB steht (2026-09-18, Requests bei
+15 %), ist das Argument weg. Umgestellt am 2026-09-19.
 
-Der Operator konvertiert Prometheus-Operator-Objekte selbst
-(`disable_prometheus_converter: false`). Die Schalter `serviceMonitor.enabled`
-in [reloader.yaml](reloader.yaml) und `podMonitorEnabled` in
-[cloudnative-pg.yaml](cloudnative-pg.yaml) bleiben damit gültig — sie müssen
-nur auf `true` gedreht werden.
+Was der Wechsel einbrachte:
+
+- **Kein Sync-Job.** Der VM-Chart holte Dashboards und Regeln beim Deployen aus
+  dem Netz — eine bewegliche Quelle, also das, was „Woher die Charts kommen"
+  ausschließt. Jetzt liegen beide in der gepinnten Chart.
+- **Die `monitoring.coreos.com`-CRDs kommen mit.** Vorher fehlten sie;
+  `serviceMonitor.enabled: true` in [reloader.yaml](reloader.yaml) wäre kein
+  Schalter gewesen, sondern ein Fehlschlag der HelmRelease.
+- **Kein Internet-Egress mehr im Namespace.**
+- **Loki für die Logs**, als Grafana-Core-Datasource ohne Plugin.
+
+Dass in [../../../../grafana/](../../../../grafana/) derselbe Stack als
+Docker-Compose schon gebaut ist — acht Alloy-Pipelines, Loki, Prometheus —
+machte das zu bekanntem Terrain.
+
+**Eine Einstellung trägt das Ganze:**
+`serviceMonitorSelectorNilUsesHelmValues` und die drei Geschwister stehen auf
+`false`. Ab Werk `true`, und dann beachtet Prometheus nur Objekte mit dem
+Release-Label dieser Chart — alles aus fremden Charts würde stillschweigend
+ignoriert, ohne Fehler oder Warnung.
+
+### Was die Umstellung zurücklässt
+
+HelmRelease und HelmRepository des alten Stacks entfernt Flux selbst. **Zwei
+PVCs bleiben**, weil sie aus `volumeClaimTemplates` stammen:
+`vm-stack-grafana` (4Gi) und `vmsingle-…` (20Gi). Ihr Inhalt ist nicht mehr
+lesbar — Prometheus kann das VictoriaMetrics-Format nicht lesen, und das neue
+Grafana bekommt ein eigenes PVC. Von Hand angelegte Dashboards im alten Grafana
+gehen damit verloren; deshalb gehören sie ab jetzt nach Git
+([grafana-dashboards.yaml](grafana-dashboards.yaml)).
+
+```bash
+kubectl -n monitoring get pvc   # nach dem Umstieg von Hand löschen
+```
+
+Dazu verwaiste RBAC-Objekte aus einem früheren Release-Namen
+(`monitoring:monitoring:vmagent-…`) — harmlos, aber Rauschen.
+
+### Was noch fehlt
+
+**Ein Empfänger für Alarme.** Alertmanager läuft ohne Route, jeder Alarm endet
+im `null`-Receiver. Der Weg dahin — ntfy im Cluster, `ntfy-alertmanager` als
+Brücke, `Watchdog` auf einen Push-Monitor in Uptime Kuma — steht in
+[../../../../uptime-kuma/todo.md](../../../../uptime-kuma/todo.md).
+
+**Ein Blick von außen.** Weder Metriken von innen noch Logs beantworten, ob der
+Ingress aus dem Internet antwortet. Uptime Kuma liegt im Repo, läuft nicht.
 
 ### Was auf Talos nicht scrapebar ist
 
@@ -967,24 +1010,31 @@ nur auf `true` gedreht werden.
 ist von der Ingress-Firewall ohnehin zu, die beiden Static Pods bindet Talos
 auf `127.0.0.1`. Sie sind deshalb **aus** und nicht ignoriert — ein Monitoring,
 dessen Startzustand kaputte Targets sind, bringt niemandem bei, auf rote
-Targets zu achten. `kubeProxy` bleibt aus, weil Cilium ihn ersetzt.
+Targets zu achten. `kubeProxy` muss hier *aktiv* aus, weil Cilium ihn ersetzt.
 
 Das Kubelet wird über HTTPS, aber ungeprüft gescrapt
 (`insecureSkipVerify: true`) — dieselbe Lücke wie beim metrics-server, mit
 demselben Grund: kein kubelet-csr-approver.
 
-### Der Sync-Job
+### Der Admission-Webhook
 
-Dashboards und Alarmregeln liefert der Chart nicht als Template, sondern über
-einen Job, der sie beim Deployen aus dem Netz holt. Zwei Folgen:
+Der Operator validiert `PrometheusRule`- und `ServiceMonitor`-Objekte über einen
+Webhook, den der **kube-apiserver anruft**. Bei einem Namespace mit
+`default-deny-ingress` braucht das eine eigene Regel:
+`monitoring-operator-webhook`, `fromEntities: [kube-apiserver, host]` auf Port
+`10250`. `fromEntities`, weil eine `kind: NetworkPolicy` es nicht kann — der
+kube-apiserver ist auf Talos ein Static Pod mit hostNetwork. Und `10250` ist hier
+der Webhook, nicht das Kubelet.
 
-- Es ist eine **bewegliche Quelle**, anders als alles andere in diesem
-  Verzeichnis. Bewusst hingenommen, weil der Regelsatz der Grund für diesen
-  Chart ist.
-- Der Job ist ein Helm-Hook (`post-install,post-upgrade`), Helm wartet auf ihn.
-  Ohne Egress ins Internet scheitert **die ganze HelmRelease**, nicht nur die
-  Dashboards. Dafür gibt es `monitoring-syncjob-egress` — auf den Job
-  eingegrenzt, `except` auf RFC 1918 wie bei der ACME-Regel.
+Fehlt die Regel, nimmt der Cluster keine Monitoring-CRs mehr an, und die Meldung
+redet von einem Timeout gegen einen Service, der läuft. cert-manager und
+CloudNativePG lösen dasselbe anders: Ihre Namespaces haben gar kein
+Ingress-Default-Deny. Hier ist das keine Option, weil Grafana ausschließlich über
+`traefik-internal` erreichbar sein soll.
+
+Die Zertifikate stellt **cert-manager** aus, nicht die beiden Helm-Hook-Jobs der
+Chart — die ziehen `ghcr.io/jkroepke/kube-webhook-certgen`, einen Fork eines
+Dritten, der mit Cluster-Admin-Rechten läuft.
 
 ### Voraussetzung
 
@@ -993,10 +1043,66 @@ Das Secret `grafana-admin` mit `admin-user` und `admin-password` muss in
 
 ```bash
 kubectl -n monitoring get pods
-kubectl -n monitoring get vmsingle,vmagent,vmalert,vmalertmanager
-kubectl -n flux-system get helmrelease victoria-metrics-k8s-stack
+kubectl -n monitoring get prometheus,alertmanager,servicemonitor
+kubectl -n flux-system get helmrelease kube-prometheus-stack loki alloy
 
 # Targets, die nicht antworten - die erste Stelle ist monitoring-egress
 kubectl -n kube-system exec ds/cilium -- \
   hubble observe --namespace monitoring --type drop --last 100
 ```
+
+## `logs.yaml`
+
+Loki als Speicher, Alloy als Sammler — beide in der Namespace `monitoring` aus
+[monitoring.yaml](monitoring.yaml); `logs.yaml` bringt keine eigenen Netzregeln
+mit.
+
+**Warum Loki:** Grafana kennt genau zwei Log-Datasources ohne Plugin, Loki und
+Elasticsearch. VictoriaLogs wäre als Dienst einfacher, braucht aber ein Plugin —
+und damit ein eigenes Grafana-Image, eine Registry und ein Pull-Secret.
+Elasticsearch ist deutlich schwerer.
+
+**Warum die Loki-Werte so ausführlich sind:** Die Chart rendert mit ihren
+Defaults nicht einmal (`Please define loki.storage.bucketNames.chunks`). Sie ist
+auf `SimpleScalable` mit Object Storage ausgelegt — `read`/`write`/`backend` je 3
+Replicas, zwei memcached-Caches, nginx-Gateway, Canary und Test-Pod, alle auf
+`true`. Abgeräumt bleibt **ein StatefulSet mit einem Pod**, neun Objekte. Der
+Aufwand liegt einmalig in der Chart, nicht im Betrieb.
+
+Zwei Fallen darin bleiben still: `retention_enabled: true` am Compactor — ohne
+das ist `retention_period` wirkungslos und Loki sammelt für immer. Und
+`auth_enabled: false`, weil Loki sonst pro Abfrage einen `X-Scope-OrgID`-Header
+erwartet und ohne ihn mit „no org id" antwortet, was in Grafana wie ein kaputter
+Datasource aussieht.
+
+**Alloy und nicht Promtail:** Promtail ist seit 2026-03-02 End-of-Life.
+
+Alloy liest die Container-Logs als Dateien unter `/var/log/pods` (hostPath, daher
+`privileged` am Namespace) und nicht über `loki.source.kubernetes` — letzteres
+liest sie durch den kube-apiserver, und damit hinge die Log-Sammlung an der
+Komponente, deren Aussetzer man untersuchen will. Dazu
+`loki.source.kubernetes_events`: was `kubectl get events` zeigt, aber mit
+Geschichte statt nach einer Stunde verfallen.
+
+Der Alloy-Config ist mit `alloy validate` gegen `grafana/alloy:v1.19.2` geprüft.
+
+## `grafana-dashboards.yaml`
+
+Eine eigene Kustomization auf [../../grafana-dashboards/](../../grafana-dashboards/),
+gleiche Bauart wie `cert-manager-issuers`. Dort liegen Dashboards als JSON, ein
+`configMapGenerator` macht ConfigMaps mit dem Label `grafana_dashboard: "1"`
+daraus, und der Sidecar der Chart liest sie ein — dieselbe Mechanik, über die
+auch deren eigene 25 Dashboards hereinkommen.
+
+**Warum nicht „Import via grafana.com" in der Oberfläche:** ein so importiertes
+Dashboard liegt nur im PVC, ist nicht reviewbar und nicht gepinnt — und bräuchte
+einen Weg ins Internet für Grafana, den es hier bewusst nicht gibt. So braucht
+das Netz nur die Arbeitsstation, einmal beim Herunterladen.
+
+**Warum ein eigenes Verzeichnis:** Dieses hat keine `kustomization.yaml`, Flux
+erzeugt sie sich aus allen YAML-Dateien im Pfad. Ein `configMapGenerator` braucht
+aber eine — läge sie hier, müsste jede Datei von Hand eingetragen werden, mit
+einer vergessenen Zeile als stiller Fehlerquelle.
+
+Anleitung zum Dazunehmen in
+[../../grafana-dashboards/kustomization.yaml](../../grafana-dashboards/kustomization.yaml).

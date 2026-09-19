@@ -251,7 +251,11 @@ spec:
             drop:
               - ALL
 
-      # Braucht kein ServiceMonitor - es gibt keinen Prometheus in diesem
-      # Cluster. Kommt einer, gehört hier serviceMonitor.enabled: true hin.
+      # Seit monitoring.yaml auf kube-prometheus-stack steht, ist dieser
+      # Schalter wirksam. `true` allein genügt aber nicht: Dieser Namespace hat
+      # ein eigenes default-deny-ingress und braucht dann zusätzlich eine
+      # Ingress-Regel für Pods aus `monitoring`, sonst steht das Target still
+      # auf DOWN. Die Gegenrichtung ist offen — monitoring-egress führt
+      # `reloader` bereits.
       serviceMonitor:
         enabled: false
