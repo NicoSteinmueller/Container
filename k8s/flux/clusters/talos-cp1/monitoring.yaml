@@ -351,13 +351,33 @@ spec:
           reporting_enabled: false
         news:
           news_feed_enabled: false
+        plugins:
+          #
+          # Ohne das startet Grafana nicht. Grafana 13 versucht beim Start eine
+          # Liste von Plugins von grafana.com nachzuladen - darunter
+          # `prometheus`, `loki`, `jaeger`, `mysql`, `tempo`. Dieser Namespace
+          # hat keinen Weg ins Internet, jeder Versuch laeuft in einen Timeout,
+          # und die Datasource-Provisionierung greift auf den noch leeren
+          # Plugin-Store zu:
+          #
+          #   Failed to provision data sources: data source not found
+          #   Error: invalid service state: Failed ... starting module provisioning
+          #
+          # Danach beendet sich der Prozess. Die Plugins selbst fehlen nicht -
+          # prometheus, loki und alertmanager liegen im Image unter
+          # public/app/plugins/datasource/. Es ist Grafanas eingebaute
+          # `preinstall`-Liste, nicht ein Update: `preinstall_auto_update`
+          # setzt die Chart ohnehin schon auf `false`. Nur
+          # `preinstall_disabled` schaltet das Nachladen selbst ab.
+          #
+          preinstall_disabled: true
 
       resources:
         requests:
           cpu: 50m
-          memory: 128Mi
+          memory: 192Mi
         limits:
-          memory: 384Mi
+          memory: 768Mi
 
     #
     # Auf Talos nicht scrapebar, waeren also dauerhaft rote Targets: etcd
