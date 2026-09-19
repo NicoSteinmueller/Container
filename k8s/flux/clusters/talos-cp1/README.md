@@ -978,20 +978,37 @@ ignoriert, ohne Fehler oder Warnung.
 
 ### Was die Umstellung zurücklässt
 
-HelmRelease und HelmRepository des alten Stacks entfernt Flux selbst. **Zwei
-PVCs bleiben**, weil sie aus `volumeClaimTemplates` stammen:
-`vm-stack-grafana` (4Gi) und `vmsingle-…` (20Gi). Ihr Inhalt ist nicht mehr
-lesbar — Prometheus kann das VictoriaMetrics-Format nicht lesen, und das neue
-Grafana bekommt ein eigenes PVC. Von Hand angelegte Dashboards im alten Grafana
-gehen damit verloren; deshalb gehören sie ab jetzt nach Git
-([grafana-dashboards.yaml](grafana-dashboards.yaml)).
+**Der Uninstall blieb hängen.** Der VM-Operator-Chart hat einen
+`pre-delete`-Hook, der per `kubectl delete` alle VM-Objekte entfernt und auf
+deren Verschwinden wartet. Helm hatte den Operator zu diesem Zeitpunkt aber
+schon gelöscht — und damit den einzigen Controller, der den Finalizer
+`apps.victoriametrics.com/finalizer` von `VMSingle`, `VMAgent`, `VMAlert` und
+`VMAlertmanager` entfernen konnte. Der Hook wartete ewig, Helm auf den Hook,
+Flux' Finalizer auf Helm.
+
+Folge: Der alte node-exporter lief weiter und belegte hostPort `9100`, der neue
+blieb `Pending` mit „didn't have free ports". Aufgelöst durch Entfernen der
+Finalizer:
 
 ```bash
-kubectl -n monitoring get pvc   # nach dem Umstieg von Hand löschen
+for k in vmsingle vmagent vmalert vmalertmanager; do
+  kubectl -n monitoring patch $k vm-stack-victoria-metrics-k8s-stack \
+    --type=merge -p '{"metadata":{"finalizers":null}}'
+done
 ```
 
-Dazu verwaiste RBAC-Objekte aus einem früheren Release-Namen
-(`monitoring:monitoring:vmagent-…`) — harmlos, aber Rauschen.
+Danach lief der Uninstall in Sekunden durch, PVCs eingeschlossen.
+
+**Was Helm liegen ließ**, von Hand nachgeräumt: 25 CRDs der Gruppe
+`operator.victoriametrics.com` (Helm entfernt CRDs aus einem
+`crds/`-Verzeichnis beim Uninstall grundsätzlich nicht), dazu vier
+ClusterRole/ClusterRoleBinding-Paare und zwei ServiceAccounts aus zwei
+verschiedenen früheren Release-Namen. Vor dem Löschen der CRDs geprüft, dass
+keine Objekte mehr darin lagen. Der Cluster ist jetzt frei davon:
+
+```bash
+kubectl get crd,clusterrole,clusterrolebinding -o name | grep -ci victoria   # 0
+```
 
 ### Was noch fehlt
 
