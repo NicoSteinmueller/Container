@@ -186,7 +186,10 @@ spec:
         limits:
           memory: 256Mi
 
-    # Es gibt keinen Prometheus in diesem Cluster - siehe reloader.yaml.
+    # Aus, obwohl es seit monitoring.yaml einen Prometheus gibt - hier eine
+    # Nutzenfrage und keine Netzfrage: Dieser Namespace hat kein
+    # Ingress-Default-Deny. Die passenden Alarmregeln (Ablauf naht, Ausstellung
+    # scheitert) liefert der Chart nicht mit; einschalten lohnt erst mit ihnen.
     prometheus:
       enabled: false
 ---
