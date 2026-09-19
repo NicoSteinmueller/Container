@@ -4,7 +4,7 @@ services:
   sftpgo:
     # ------------ Identität ------------------------
     container_name: sftpgo
-    image: drakkan/sftpgo:v2.7.5-alpine@sha256:d1e2877600aba270ac395bf76fc7c8a2a0bb4ac83c3e6c180a0540f5d4c3efb2
+    image: drakkan/sftpgo:v2.7.6-alpine@sha256:484f430b2115ec8e015644b1a5e54a5f5b8568f883cb5146e9043885f691d8f7
 
     # ------------ Abhängigkeiten & Start -----------
     init: true
@@ -294,7 +294,7 @@ services:
 
   database:
     # ------------ Identität ------------------------
-    image: postgres:18.6-alpine3.23@sha256:697c180dbf244d3ce4a8f4cbc0156cde840af055c1bf8b76aebe422a4822086f
+    image: postgres:18.6-alpine3.23@sha256:8c80c49c67052d82f9aaf4ee1f1881c8926b445a1cc916892934845eb8c24204
     container_name: sftpgo_postgres
 
     # ------------ Abhängigkeiten & Start -----------
