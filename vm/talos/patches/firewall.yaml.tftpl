@@ -88,6 +88,34 @@ ingress:
 
 ---
 #
+# node-exporter.
+#
+# Dieselbe Ueberlegung wie beim Kubelet darueber: Er laeuft als DaemonSet mit
+# `hostNetwork` und ist damit fuer Talos ein Host-Prozess, nicht ein Pod - der
+# Scrape aus dem Pod-Netz faellt also unter diese Kette und nicht unter die
+# NetworkPolicies.
+#
+# Ohne diese Regel steht das Target dauerhaft auf DOWN, und zwar mit
+# `context deadline exceeded` statt mit "connection refused": Talos verwirft
+# still, und Hubble zeigt nichts, weil Cilium das Paket durchgelassen hat. Die
+# Egress-Regel in k8s/flux/clusters/talos-cp1/monitoring.yaml ist die *andere*
+# Haelfte davon - beide sind noetig.
+#
+# Nur `pod_subnet`: Von aussen gibt es keinen Grund, die Node-Metriken zu
+# lesen. Wer sie sehen will, nimmt Grafana.
+#
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: node-exporter
+portSelector:
+  ports:
+    - 9100
+  protocol: tcp
+ingress:
+  - subnet: ${pod_subnet}
+
+---
+#
 # Cilium-Health.
 #
 # Der Agent prüft die Erreichbarkeit jedes Nodes über dessen LAN-Adresse auf

@@ -298,6 +298,13 @@ spec:
           memory: 192Mi
       admissionWebhooks:
         enabled: true
+        #
+        # Beim Install `Ignore`, danach `Fail`. Noetig, weil Helm die
+        # PrometheusRules im selben Durchlauf anwendet wie das
+        # Operator-Deployment und nicht auf dessen Readiness wartet - der
+        # Webhook antwortet dann noch nicht.
+        #
+        failurePolicy: IgnoreOnInstallOnly
         # Zertifikate vom vorhandenen cert-manager
         certManager:
           enabled: true
