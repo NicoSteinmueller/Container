@@ -44,22 +44,7 @@
 #     zuletzt.
 #
 ---
-#
-# PodSecurity `restricted`, ohne Ausnahme.
-#
-# Der exponierteste Pod des Clusters laeuft damit unter der
-# strengsten Stufe, die Kubernetes kennt - das ist die richtige Reihenfolge.
-#
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: traefik-public
-  labels:
-    homelab.io/zone: public
-    pod-security.kubernetes.io/enforce: restricted
-    pod-security.kubernetes.io/warn: restricted
-    pod-security.kubernetes.io/audit: restricted
-
+# Namespace `traefik-public`: ../core/namespaces.yaml
 ---
 #
 # Die IngressClass `public`.

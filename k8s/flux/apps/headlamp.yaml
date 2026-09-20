@@ -12,28 +12,7 @@
 #                     erzeugt sich eines für eine Stunde.
 #
 
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: headlamp
-  labels:
-    #
-    # Die Zone ist hier eine Eigenschaft, keine Einstellung: An diesem
-    # Namespace haengt ein ClusterRoleBinding, das clusterweit lesen darf.
-    # Ein Dashboard mit Cluster-Lesezugriff hinter dem Ingress, der aus dem
-    # Internet erreichbar ist, waere genau der Fall, den die Trennung
-    # verhindern soll.
-    #
-    # Ausgewertet wird das Label noch von niemandem - der Waechter dazu war
-    # Kyverno, und der kam mit dem Plattform-Stack weg. Bis er zurueck ist,
-    # ist es eine Markierung, keine Kontrolle. Die tatsaechliche Grenze zieht
-    # unten die NetworkPolicy.
-    #
-    homelab.io/zone: internal
-    pod-security.kubernetes.io/enforce: restricted
-    pod-security.kubernetes.io/enforce-version: latest
-    pod-security.kubernetes.io/warn: restricted
-    pod-security.kubernetes.io/audit: restricted
+# Namespace `headlamp`: ../core/namespaces.yaml
 ---
 # Spricht als dieser ServiceAccount mit der API - braucht das Token im Pod,
 # anders als headlamp-admin unten.
@@ -70,7 +49,7 @@ rules:
   - apiGroups: [""]
     resources: ["nodes", "persistentvolumes"]
     verbs: ["get", "list", "watch"]
-  # Auslastung - wirkungslos ohne metrics-server (metrics-server.yaml),
+  # Auslastung - wirkungslos ohne metrics-server (../observability/metrics-server.yaml),
   # nicht falsch.
   - apiGroups: ["metrics.k8s.io"]
     resources: ["nodes", "pods"]

@@ -1,0 +1,27 @@
+#
+# observability - kube-prometheus-stack, Loki/Alloy, metrics-server.
+#
+# `dependsOn: storage` wegen der Default-StorageClass: Prometheus und Loki
+# fordern PVCs ohne `storageClassName` an. Fehlt die Klasse, bleiben sie
+# Pending - und zwar lautlos.
+#
+# Kein `wait`: Der Stack braucht Minuten bis Ready, und niemand wartet darauf.
+# Die Reihenfolge innerhalb der Gruppe regeln die HelmReleases selbst
+# (alloy dependsOn loki und kube-prometheus-stack).
+#
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: observability
+  namespace: flux-system
+spec:
+  interval: 1h
+  retryInterval: 2m
+  path: ./k8s/flux/observability
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: storage
+  prune: true
+  timeout: 10m

@@ -1,0 +1,24 @@
+#
+# core - Namespaces und die Admission-Policy.
+#
+# Die Wurzel des Abhaengigkeitsbaums: Jede andere Gruppe wartet hierauf, weil
+# hier ihre Namespaces entstehen (../core/namespaces.yaml). Damit haengt keine
+# Gruppe an einer anderen.
+#
+# `wait: true` mit kurzem Timeout - es sind nur API-Objekte, die stehen sofort.
+#
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: core
+  namespace: flux-system
+spec:
+  interval: 1h
+  retryInterval: 1m
+  path: ./k8s/flux/core
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  prune: true
+  wait: true
+  timeout: 2m

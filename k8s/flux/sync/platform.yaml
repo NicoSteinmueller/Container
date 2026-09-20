@@ -1,0 +1,27 @@
+#
+# platform - cert-manager, CloudNativePG, Reloader.
+#
+# `wait: true`, und hier ist es die nuetzliche Richtung: cert-manager-issuers
+# wartet darauf. Ohne diese Zusage liefe es in "no matches for kind
+# Certificate", weil die CRDs erst mit dem Helm-Release entstehen.
+#
+# Der Preis: Haengt einer der drei Releases, kommen auch die Issuer nicht -
+# und hinter ihnen `network`. Die Kette ist echt, nicht vorsichtshalber.
+#
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform
+  namespace: flux-system
+spec:
+  interval: 1h
+  retryInterval: 2m
+  path: ./k8s/flux/platform
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: core
+  prune: true
+  wait: true
+  timeout: 10m

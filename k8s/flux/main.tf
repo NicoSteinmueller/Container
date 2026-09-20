@@ -88,7 +88,7 @@ resource "kubernetes_secret" "flux_git_auth" {
 }
 
 #
-# Zugang zum Secrets-Repo im Gitea (clusters/talos-cp1/secrets.yaml). Gleiche
+# Zugang zum Secrets-Repo im Gitea (sync/secrets.yaml). Gleiche
 # Bauart und gleicher Grund wie oben: leer angelegt, von Hand gefuellt (der
 # Befehl steht im README), ignore_changes haelt den Wert.
 #

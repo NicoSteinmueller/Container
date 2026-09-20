@@ -3,8 +3,8 @@
 # kube-prometheus-stack ohnehin fahrt, liest jede ConfigMap in `monitoring` mit
 # dem Label `grafana_dashboard: "1"`.
 #
-# Warum aus Git und nicht per "Import via grafana.com": README.md im
-# Cluster-Verzeichnis, Abschnitt grafana-dashboards.yaml.
+# Warum aus Git und nicht per "Import via grafana.com":
+# ../observability/README.md.
 #
 # Ein Dashboard dazunehmen:
 #
@@ -36,7 +36,8 @@ generatorOptions:
 
 configMapGenerator:
   # Node Exporter Full (grafana.com ID 1860). Das Gegenstueck zur
-  # node-exporter-Regel in monitoring.yaml: Ohne Port 9100 im Egress bleibt es
+  # node-exporter-Regel in ../observability/monitoring.yaml: Ohne Port 9100 im
+  # Egress bleibt es
   # leer. Waehlt seine Datasource selbst.
   - name: dashboard-node-exporter-full
     files:

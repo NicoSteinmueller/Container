@@ -6,7 +6,7 @@
 #
 # Nicht fuer die oeffentlichen Zertifikate: Die holen sich die beiden
 # Traefik-Controller weiter selbst per ACME/DNS-01 bei Let's Encrypt
-# (ingress-internal.yaml, ingress-public.yaml). Daran aendert diese Datei
+# (../network/ingress-internal.yaml, ../network/ingress-public.yaml). Daran aendert diese Datei
 # nichts, und cert-manager bekommt deshalb auch keinen DNS-Provider-Token.
 #
 # Der Anlass ist CrowdSec. Der Agent registriert sich beim Start mit seinem
@@ -54,20 +54,7 @@ spec:
   interval: 1h
   url: https://charts.jetstack.io
 ---
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: cert-manager
-  labels:
-    #
-    # Alle drei Komponenten (controller, webhook, cainjector) sprechen
-    # ausschliesslich mit der API und brauchen weder Host-Zugriff noch
-    # Privilegien. Die Chart-Defaults erfuellen `restricted` bereits.
-    #
-    pod-security.kubernetes.io/enforce: restricted
-    pod-security.kubernetes.io/enforce-version: latest
-    pod-security.kubernetes.io/warn: restricted
-    pod-security.kubernetes.io/audit: restricted
+# Namespace `cert-manager`: ../core/namespaces.yaml
 ---
 #
 # Egress-Default-Deny.
@@ -79,7 +66,7 @@ metadata:
 # Kein Internet-Egress, und das ist eine Aussage ueber den Zweck: Diese
 # Installation macht ausschliesslich interne CA-Zertifikate. Kaeme spaeter
 # ein ACME-Issuer dazu, braeuchte er eine `toCIDRSet`-Regel auf 443 wie in
-# ingress-internal.yaml - und das waere der Moment, diese Datei noch einmal
+# ../network/ingress-internal.yaml - und das waere der Moment, diese Datei noch einmal
 # zu lesen, statt die Regel nebenbei zu ergaenzen.
 #
 # Nur Egress, kein Ingress: Der kube-apiserver muss den Webhook auf 10250
@@ -105,7 +92,7 @@ spec:
             - port: "53"
               protocol: TCP
 
-    # `toPorts` ist Pflicht, nicht Kosmetik - Begruendung in headlamp.yaml.
+    # `toPorts` ist Pflicht, nicht Kosmetik - Begruendung in ../apps/headlamp.yaml.
     - toEntities:
         - kube-apiserver
       toPorts:
@@ -186,40 +173,9 @@ spec:
         limits:
           memory: 256Mi
 
-    # Aus, obwohl es seit monitoring.yaml einen Prometheus gibt - hier eine
+    # Aus, obwohl es seit ../observability/monitoring.yaml einen Prometheus gibt - hier eine
     # Nutzenfrage und keine Netzfrage: Dieser Namespace hat kein
     # Ingress-Default-Deny. Die passenden Alarmregeln (Ablauf naht, Ausstellung
     # scheitert) liefert der Chart nicht mit; einschalten lohnt erst mit ihnen.
     prometheus:
       enabled: false
----
-#
-# Die zweite Kustomization fuer die Issuer - Begruendung in
-# ../../cert-manager-issuers/issuers.yaml.
-#
-# Kein `dependsOn` auf flux-system: Diese Kustomization entsteht selbst aus
-# flux-system, und flux-system wartet auf die Gesundheit seiner eigenen
-# Objekte. Die Abhaengigkeit waere ein Kreis. Stattdessen laeuft sie in ihren
-# eigenen Retry, bis die CRDs da sind - `retryInterval` macht das kurz genug,
-# dass es beim Zusehen nicht auffaellt.
-#
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: cert-manager-issuers
-  namespace: flux-system
-spec:
-  interval: 1h
-  retryInterval: 1m
-  path: ./k8s/flux/cert-manager-issuers
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  prune: true
-  #
-  # wait: Die Kustomization meldet sich erst fertig, wenn die Zertifikate
-  # tatsaechlich ausgestellt sind. Damit ist "gruen" hier eine Aussage und
-  # nicht nur "angewendet".
-  #
-  wait: true
-  timeout: 5m

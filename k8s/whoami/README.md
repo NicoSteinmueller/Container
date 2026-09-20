@@ -32,7 +32,7 @@ helm upgrade --install whoami k8s/whoami/chart \
   -f k8s/whoami/chart/values-minikube.yaml
 ```
 
-**Im Produktiv-Cluster (talos-cp1):** über Flux, nicht von Hand – siehe `k8s/flux/clusters/talos-cp1/whoami.yaml` und `k8s/flux/clusters/talos-cp1/README.md`. Push auf den Sync-Branch reicht. Erreichbar danach unter `https://whoami.k8s.nico-steinmueller.de` aus dem LAN – der Name muss dort auf die LAN-Adresse des Nodes zeigen, und der Namespace `whoami` muss in der Namespace-Liste von ingress-internal stehen.
+**Im Produktiv-Cluster (talos-cp1):** über Flux, nicht von Hand – siehe `k8s/flux/apps/whoami.yaml` und `k8s/flux/apps/README.md`. Push auf den Sync-Branch reicht. Erreichbar danach unter `https://whoami.k8s.nico-steinmueller.de` aus dem LAN – der Name muss dort auf die LAN-Adresse des Nodes zeigen, und der Namespace `whoami` muss in der Namespace-Liste von ingress-internal stehen.
 
 ## Sicherheits-Mapping gegenüber Docker Compose
 

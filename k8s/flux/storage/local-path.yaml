@@ -55,25 +55,7 @@ spec:
     /*
     !/deploy/chart
 ---
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: local-path-storage
-  labels:
-    #
-    # "privileged", und hier ist der Grund noch direkter als beim
-    # NFS-Treiber: Der Provisioner startet Helfer-Pods, die das Verzeichnis
-    # eines Volumes per hostPath anlegen und wieder loeschen. hostPath auf
-    # einen beschreibbaren Pfad lehnt "baseline" ab.
-    #
-    # Eingegrenzt wird das ueber den Pfad, nicht ueber die Policy: Die
-    # Helfer-Pods sehen nur /var/mnt/local-path, weil nodePathMap unten nichts
-    # anderes nennt.
-    #
-    pod-security.kubernetes.io/enforce: privileged
-    pod-security.kubernetes.io/enforce-version: latest
-    pod-security.kubernetes.io/warn: privileged
-    pod-security.kubernetes.io/audit: privileged
+# Namespace `local-path-storage`: ../core/namespaces.yaml
 ---
 #
 # Egress-Default-Deny.
@@ -106,7 +88,7 @@ spec:
             - port: "53"
               protocol: TCP
 
-    # `toPorts` ist Pflicht, nicht Kosmetik - Begruendung in headlamp.yaml.
+    # `toPorts` ist Pflicht, nicht Kosmetik - Begruendung in ../apps/headlamp.yaml.
     - toEntities:
         - kube-apiserver
       toPorts:

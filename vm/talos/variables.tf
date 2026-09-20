@@ -321,7 +321,7 @@ variable "vm_data_disk_gib" {
     Datenbanken und alles andere liegen, das fsync und Locking braucht. Talos
     reicht sie als User-Volume unter /var/mnt/local-path durch, local-path-
     provisioner macht daraus die Default-StorageClass (siehe
-    k8s/flux/clusters/talos-cp1/local-path.yaml).
+    k8s/flux/storage/local-path.yaml).
 
     Getrennt von der System-Disk, und zwar nicht wegen Geschwindigkeit -
     physisch ist es dieselbe SSD des Hypervisors. Der Grund ist die Kopplung:

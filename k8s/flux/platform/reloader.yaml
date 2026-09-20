@@ -53,20 +53,7 @@ spec:
   interval: 1h
   url: https://stakater.github.io/stakater-charts
 ---
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: reloader
-  labels:
-    #
-    # Der Controller braucht weder Privilegien noch Host-Zugriff - er spricht
-    # ausschließlich mit der API. "restricted" ist deshalb kein Zugeständnis,
-    # sondern der Normalfall.
-    #
-    pod-security.kubernetes.io/enforce: restricted
-    pod-security.kubernetes.io/enforce-version: latest
-    pod-security.kubernetes.io/warn: restricted
-    pod-security.kubernetes.io/audit: restricted
+# Namespace `reloader`: ../core/namespaces.yaml
 ---
 #
 # Egress-Default-Deny. Derselbe Satz wie bei den Berechtigungen weiter unten,
@@ -93,7 +80,7 @@ spec:
             - port: "53"
               protocol: TCP
 
-    # `toPorts` ist Pflicht, nicht Kosmetik - Begruendung in headlamp.yaml.
+    # `toPorts` ist Pflicht, nicht Kosmetik - Begruendung in ../apps/headlamp.yaml.
     - toEntities:
         - kube-apiserver
       toPorts:
@@ -251,7 +238,7 @@ spec:
             drop:
               - ALL
 
-      # Seit monitoring.yaml auf kube-prometheus-stack steht, ist dieser
+      # Seit ../observability/monitoring.yaml auf kube-prometheus-stack steht, ist dieser
       # Schalter wirksam. `true` allein genügt aber nicht: Dieser Namespace hat
       # ein eigenes default-deny-ingress und braucht dann zusätzlich eine
       # Ingress-Regel für Pods aus `monitoring`, sonst steht das Target still

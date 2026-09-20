@@ -103,7 +103,7 @@ locals {
   #
   # Name des User-Volumes. Er bestimmt den Mountpfad in Talos
   # (/var/mnt/<name>) und muss deshalb mit nodePath in
-  # k8s/flux/clusters/talos-cp1/local-path.yaml uebereinstimmen.
+  # k8s/flux/storage/local-path.yaml uebereinstimmen.
   #
   local_path_volume = "local-path"
 
