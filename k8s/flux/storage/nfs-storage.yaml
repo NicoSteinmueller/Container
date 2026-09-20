@@ -71,42 +71,19 @@ spec:
 ---
 #
 # Hier steht bewusst keine Egress-Policy, anders als in crowdsec, headlamp,
-# reloader, local-path-storage und traefik-internal.
-#
-# Der Grund ist keine Abwaegung, sondern eine Tatsache: Beide Pods des Treibers
+# reloader, local-path-storage und traefik-internal: Beide Pods des Treibers
 # laufen auf hostNetwork. Sie haben damit keine eigene Cilium-Identitaet,
-# sondern die des Nodes - und auf die greift keine NetworkPolicy, weder die
-# von Kubernetes noch die von Cilium. Gegenprobe:
+# sondern die des Nodes - und auf die greift keine NetworkPolicy. Gegenprobe:
 #
 #   kubectl -n csi-driver-nfs get pods \
 #     -o jsonpath='{.items[*].spec.hostNetwork}'
 #
-# Eine Policy hier waere gueltig, wuerde angelegt, saehe richtig aus und taete
-# nichts - genau die Sorte Einstellung, die spaeter eine halbe Stunde
-# Fehlersuche in der falschen Richtung kostet. Was den ausgehenden Verkehr des
-# Nodes begrenzen koennte, ist Ciliums Host-Firewall
-# (`enable-host-firewall`), die in diesem Cluster aus ist. Das waere die
+# Eine Policy hier waere gueltig, saehe richtig aus und taete nichts. Was den
+# Egress des Nodes begrenzen koennte, ist Ciliums Host-Firewall
+# (`enable-host-firewall`), die in diesem Cluster aus ist - das waere die
 # Stelle, nicht diese Datei.
 #
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: csi-driver-nfs
-  labels:
-    #
-    # "privileged", und das ist hier keine Bequemlichkeit: Der Node-Plugin-Pod
-    # ruft mount(8) im Namespace des Hosts auf und reicht die entstandenen
-    # Mounts per bidirektionaler Mount-Propagation an das kubelet weiter. Beides
-    # - hostPath auf /var/lib/kubelet und Bidirectional - lehnt "baseline"
-    # bereits ab.
-    #
-    # Das ist der Preis fuer jeden CSI-Treiber, der echte Kernel-Mounts macht.
-    # Eingegrenzt wird er ueber den Namespace: hier steht nur dieser Treiber.
-    #
-    pod-security.kubernetes.io/enforce: privileged
-    pod-security.kubernetes.io/enforce-version: latest
-    pod-security.kubernetes.io/warn: privileged
-    pod-security.kubernetes.io/audit: privileged
+# Namespace `csi-driver-nfs`: ../core/namespaces.yaml
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease

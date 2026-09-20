@@ -52,7 +52,7 @@ variable "git_branch" {
 variable "sync_path" {
   description = "Pfad im Repo, den die FluxInstance als Wurzel-Kustomization anwendet."
   type        = string
-  default     = "k8s/flux/clusters/talos-cp1"
+  default     = "k8s/flux/sync"
 }
 
 variable "git_secret_name" {
@@ -70,7 +70,7 @@ variable "git_secret_name" {
 # Secrets - das zweite Repo und sein Schluessel
 #
 # Die Adresse des Repos steht nicht hier, sondern in
-# clusters/talos-cp1/secrets.yaml: Sie ist Teil dessen, was Flux anwendet, und
+# sync/secrets.yaml: Sie ist Teil dessen, was Flux anwendet, und
 # nicht Teil dessen, womit Terraform Flux einrichtet. Terraform legt hier nur
 # die Gefaesse an, die vor dem ersten Sync existieren muessen.
 #

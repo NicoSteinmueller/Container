@@ -30,35 +30,14 @@ spec:
 
 ---
 #
-# PodSecurity `privileged`, und anders als beim frueheren hostPort des
-# internen Ingress ist das hier kein Uebergang, sondern dauerhaft:
+# Namespace `crowdsec`: ../core/namespaces.yaml - `privileged`, dauerhaft und
+# nicht als Uebergang, weil der Agent die Container-Logs des Nodes per
+# hostPath liest.
 #
-# Der Agent laeuft als DaemonSet und liest die Container-Logs des Nodes unter
-# /var/log/pods. Das ist ein hostPath, und hostPath-Volumes zaehlen schon ab
-# `baseline` als Verstoss. Einen anderen Weg an die Logs gibt es nicht -
-# Traefik schreibt sie nach stdout, und was von dort im Cluster ankommt,
-# liegt auf dem Node.
-#
-# `warn` und `audit` bleiben auf `baseline`: Jede andere Abweichung -
-# privilegierte Container, Host-Namespaces - taucht weiterhin als Warnung
-# auf. Nur der hostPath ist die Ausnahme.
-#
-# Die LAPI selbst braucht davon nichts. Sie in einen eigenen, strengeren
-# Namespace zu legen waere moeglich - dann muesste die Agent-zu-LAPI-
-# Verbindung aber ueber eine Namespace-Grenze und durch zwei weitere
-# NetworkPolicies. Ein Namespace, in dem nur CrowdSec liegt, ist die
-# ehrlichere Grenze.
-#
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: crowdsec
-  labels:
-    homelab.io/zone: internal
-    pod-security.kubernetes.io/enforce: privileged
-    pod-security.kubernetes.io/warn: baseline
-    pod-security.kubernetes.io/audit: baseline
-
+# Die LAPI braucht davon nichts. Sie in einen eigenen, strengeren Namespace zu
+# legen waere moeglich - dann liefe die Agent-zu-LAPI-Verbindung aber ueber
+# eine Namespace-Grenze und durch zwei weitere NetworkPolicies. Ein Namespace,
+# in dem nur CrowdSec liegt, ist die ehrlichere Grenze.
 ---
 #
 # Der `default`-ServiceAccount, nur um ihm den Token wegzunehmen.
@@ -359,7 +338,7 @@ spec:
     # Das war beim Bau noch eine Annahme und ist jetzt eine Feststellung.
     # Sollte sich das mit einer kuenftigen Version aendern, braucht auch der
     # Bouncer ein Zertifikat aus demselben ClusterIssuer - der Weg dafuer
-    # steht in cert-manager-issuers/issuers.yaml bereits, es waere ein
+    # steht in ../cert-manager-issuers/issuers.yaml bereits, es waere ein
     # zweites `Certificate` statt nur der CA.
     # ---------------------------------------------------------------------
     #
@@ -368,7 +347,7 @@ spec:
 
       #
       # Nicht der chart-eigene selbstsignierte Issuer, sondern der
-      # ClusterIssuer aus cert-manager.yaml. Der Unterschied ist praktisch:
+      # ClusterIssuer aus ../platform/cert-manager.yaml. Der Unterschied ist praktisch:
       # Nur so kann sich traefik-public dieselbe CA ausstellen lassen, ohne
       # dass ein Secret zwischen Namespaces kopiert werden muss - der Chart
       # wuerde dafuer sonst den emberstack-Reflector voraussetzen

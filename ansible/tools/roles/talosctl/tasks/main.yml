@@ -7,7 +7,7 @@
 # Volumes des Nodes, die Machine-Config, Logs der Static Pods, Reboot und
 # Upgrade. `kubectl` reicht dafuer nicht - der Fall, an dem das zuletzt hing,
 # war ein User-Volume in `phase: failed`, das ausserhalb der Talos-API
-# nirgends sichtbar war (k8s/flux/clusters/talos-cp1/README.md).
+# nirgends sichtbar war (k8s/flux/storage/README.md).
 #
 # Die Pruefsumme kommt aus dem Release selbst; github_binary bricht ab, wenn
 # checksums_asset fehlt oder das Release keine passende Zeile enthaelt.

@@ -1,0 +1,241 @@
+#
+# Alle Namespaces des Clusters - und ihre Pod-Security-Stufe.
+#
+# Warum an einem Ort und nicht bei der jeweiligen Komponente: Jede Gruppe
+# haengt damit nur an `core` statt kreuz und quer aneinander. Die RoleBindings
+# in `network` etwa liegen in `monitoring` und `headlamp` - ohne diese Datei
+# muesste `network` auf `observability` und `apps` warten.
+#
+# Der zweite Gewinn ist die Uebersicht: Wer wissen will, wo im Cluster etwas
+# Privilegiertes laufen darf, liest eine Datei statt zehn.
+#
+#   restricted   default, kube-public, kube-node-lease, cert-manager,
+#                cnpg-system, reloader, traefik-internal, traefik-public,
+#                headlamp
+#   privileged   crowdsec, local-path-storage, csi-driver-nfs, monitoring
+#
+# `privileged` steht nirgends aus Bequemlichkeit; der Grund steht jeweils am
+# Namespace. Erlaubt heisst ausserdem nicht gesetzt - die Charts bringen ihre
+# eigenen securityContexts mit.
+#
+# Nicht hier: `whoami`. Den legt das lokale Chart selbst an
+# (k8s/whoami/chart/templates/namespace.yaml), Helm besitzt ihn damit.
+#
+# Ohne Stufe bleiben bewusst drei:
+#
+#   kube-system     Cilium laeuft dort privilegiert (mount-bpf-fs) mit einem
+#                   Capability-Satz, den schon `baseline` ablehnt. Eine Stufe
+#                   waere kein Zugewinn, sondern ein Ausfall des CNI.
+#   flux-system     Die Controller muessen anwenden duerfen, was im Repo
+#                   steht - siehe ../README.md.
+#   cilium-secrets  Kommt aus dem Inline-Manifest der Talos-Machine-Config,
+#                   nicht aus Flux. Ihn von hier zu bearbeiten hiesse, zwei
+#                   Schreiber auf ein Objekt zu setzen; Talos macht seit v1.13
+#                   Server-Side-Apply auf seine Bootstrap-Manifeste. Pods
+#                   laufen dort keine.
+#
+---
+#
+# Die drei, die Kubernetes selbst anlegt.
+#
+# `default` ist der Fall, auf den es ankommt: Ein Manifest ohne `namespace:`
+# landet genau hier und duerfte ohne `enforce`-Label alles - privilegiert
+# laufen, Host-Namespaces betreten, hostPath mounten. Das ist die Sorte
+# Fehler, die niemand absichtlich macht.
+#
+# `restricted` statt `baseline`, weil hier gar nichts laufen soll. Soll doch
+# einmal etwas hinein, ist die Absage der PSS-Admission die richtige Antwort -
+# sie zwingt zur Entscheidung, statt sie stillschweigend zu treffen.
+# Nebenwirkung: `kubectl run` und `kubectl debug` ohne securityContext werden
+# hier abgelehnt. Fuer einen schnellen Testpod laestig, deshalb steht es hier.
+#
+# `prune: disabled`, weil diese drei aelter sind als dieses Repo und es
+# ueberleben sollen - ein geloeschter Namespace nimmt alles mit, was darin
+# liegt. Ein Sicherheitsnetz, kein Verlass: `default` und `kube-public`
+# schuetzt die NamespaceLifecycle-Admission ohnehin, `kube-node-lease` nicht.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: default
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-public
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-node-lease
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+#
+# platform
+#
+# Alle drei sprechen ausschliesslich mit der API und brauchen weder
+# Host-Zugriff noch Privilegien; die Chart-Defaults erfuellen `restricted`
+# bereits. Es ist keine Zumutung, sondern eine Feststellung.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+# Die Postgres-Instanzen laufen *nicht* hier, sondern im Namespace ihres
+# Dienstes. Auch die vertragen `restricted` - CNPG-Instanzen laufen als UID 26
+# ohne Capabilities.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cnpg-system
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: reloader
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+#
+# network
+#
+# `homelab.io/zone` sagt, welcher Ingress-Controller einen Namespace bedienen
+# darf.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: traefik-internal
+  labels:
+    homelab.io/zone: internal
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+# Der exponierteste Pod des Clusters laeuft unter der strengsten Stufe, die
+# Kubernetes kennt.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: traefik-public
+  labels:
+    homelab.io/zone: public
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+# `privileged` wegen des Agenten: Er liest die Container-Logs des Nodes per
+# hostPath, und hostPath allein lehnt `baseline` schon ab. `warn`/`audit`
+# stehen trotzdem auf `baseline` - so faellt auf, wenn ausser dem Agenten
+# etwas die Stufe braucht.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: crowdsec
+  labels:
+    homelab.io/zone: internal
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/audit: baseline
+---
+#
+# storage
+#
+# `privileged` ist hier der Preis fuer echte Kernel-Mounts: Der
+# NFS-Node-Plugin ruft mount(8) im Namespace des Hosts auf und reicht die
+# Mounts per bidirektionaler Propagation an das kubelet weiter. Der
+# local-path-Provisioner startet Helfer-Pods, die Volume-Verzeichnisse per
+# hostPath anlegen und loeschen. Beides lehnt `baseline` bereits ab.
+#
+# Eingegrenzt wird es nicht ueber die Policy, sondern ueber den Inhalt: In
+# beiden Namespaces steht genau ein Treiber, und local-path sieht nur
+# /var/mnt/local-path, weil `nodePathMap` nichts anderes nennt.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: local-path-storage
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: privileged
+    pod-security.kubernetes.io/audit: privileged
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: csi-driver-nfs
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: privileged
+    pod-security.kubernetes.io/audit: privileged
+---
+#
+# observability
+#
+# `privileged` wegen zweier DaemonSets: node-exporter (hostNetwork, hostPID,
+# hostPath auf /proc, /sys, /) und Alloy (hostPath auf /var/log).
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: privileged
+    pod-security.kubernetes.io/audit: privileged
+---
+#
+# apps
+#
+# Die Zone ist hier eine Eigenschaft, keine Einstellung: An diesem Namespace
+# haengt ein ClusterRoleBinding, das clusterweit lesen darf. Ein Dashboard mit
+# Cluster-Lesezugriff hinter dem Ingress aus dem Internet waere genau der Fall,
+# den die Trennung verhindern soll.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: headlamp
+  labels:
+    homelab.io/zone: internal
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted

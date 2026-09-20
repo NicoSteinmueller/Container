@@ -1,7 +1,7 @@
 #
 # Die zweite Sperre gegen "privater Dienst versehentlich oeffentlich".
 #
-# Ohne sie gibt es genau eine: die Namespace-Liste in ingress-public.yaml.
+# Ohne sie gibt es genau eine: die Namespace-Liste in ../network/ingress-public.yaml.
 # Ein Namespace zu viel in dieser Liste, und ein interner Dienst haengt am
 # oeffentlichen Controller. Mit dieser Regel muessen es zwei Fehler
 # gleichzeitig sein - der Eintrag in der Liste UND das Label am Namespace -,
@@ -82,7 +82,7 @@ spec:
         ingressClassName "public" ist nur in Namespaces mit dem Label
         homelab.io/zone=public erlaubt. Dieser Ingress waere aus dem Internet
         erreichbar gewesen. Gewollt? Dann das Label am Namespace setzen UND
-        den Namespace in ingress-public.yaml eintragen - beides, sonst wird
+        den Namespace in ../network/ingress-public.yaml eintragen - beides, sonst wird
         er ohnehin nicht bedient.
 
 ---

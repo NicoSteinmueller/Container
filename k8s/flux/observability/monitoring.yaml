@@ -15,21 +15,7 @@ spec:
   interval: 1h
   url: https://prometheus-community.github.io/helm-charts
 ---
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: monitoring
-  labels:
-    #
-    # `privileged` wegen zweier DaemonSets: node-exporter (hostNetwork,
-    # hostPID, hostPath auf /proc, /sys, /) und Alloy (hostPath auf /var/log).
-    # hostPath allein lehnt `baseline` schon ab. Erlaubt heisst nicht gesetzt -
-    # die Charts setzen ihre eigenen securityContexts.
-    #
-    pod-security.kubernetes.io/enforce: privileged
-    pod-security.kubernetes.io/enforce-version: latest
-    pod-security.kubernetes.io/warn: privileged
-    pod-security.kubernetes.io/audit: privileged
+# Namespace `monitoring`: ../core/namespaces.yaml
 ---
 # Von aussen erreichbar ist nur Grafana, und nur ueber ingress-internal.
 apiVersion: networking.k8s.io/v1
@@ -115,7 +101,7 @@ spec:
 #
 # Egress-Default-Deny. Dieser Namespace hat **keinen Weg ins Internet**, fuer
 # keinen Pod - Dashboards und Regeln kommen aus der Chart und aus
-# grafana-dashboards.yaml.
+# ../sync/grafana-dashboards.yaml.
 #
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
@@ -137,7 +123,7 @@ spec:
               protocol: TCP
 
     # Prometheus (Targets), Operator (CRs), kube-state-metrics, Alloy
-    # (Pod-Metadaten und Events). `toPorts` ist Pflicht, siehe headlamp.yaml.
+    # (Pod-Metadaten und Events). `toPorts` ist Pflicht, siehe ../apps/headlamp.yaml.
     - toEntities:
         - kube-apiserver
       toPorts:
@@ -243,7 +229,7 @@ spec:
         # Ab Werk `true`, und dann beachtet Prometheus nur Objekte mit dem
         # Release-Label dieser Chart. Alles aus fremden Charts wuerde
         # stillschweigend ignoriert - kein Fehler, das Target erscheint einfach
-        # nicht. Deshalb ist `serviceMonitor.enabled: true` in reloader.yaml
+        # nicht. Deshalb ist `serviceMonitor.enabled: true` in ../platform/reloader.yaml
         # ueberhaupt erst wirksam.
         #
         serviceMonitorSelectorNilUsesHelmValues: false
@@ -260,7 +246,7 @@ spec:
               resources:
                 requests:
                   # Ohne storageClassName, also `local-path` - die vDisk fuer
-                  # alles mit fsync (README.md, Abschnitt Speicher).
+                  # alles mit fsync (../storage/README.md).
                   storage: 20Gi
 
         resources:

@@ -23,8 +23,8 @@
 #   volumeSnapshot      braucht den snapshot-controller, eine
 #                       VolumeSnapshotClass und einen CSI-Treiber, der
 #                       Snapshots kann. `local-path` kann es nicht - und dort
-#                       liegt PGDATA, aus den Gruenden in README.md,
-#                       Abschnitt "local-path.yaml, nfs-storage.yaml".
+#                       liegt PGDATA, aus den Gruenden in
+#                       ../storage/README.md.
 #
 # Ein `ScheduledBackup` auf ein `nfs-unraid`-PVC gibt es also nicht; wer es
 # hinschreibt, bekommt von der Admission eine Absage. Der Weg hier ist
@@ -41,7 +41,7 @@
 # Der CronJob steht **nicht** in dieser Datei. Er braucht das Secret
 # `<cluster>-app`, und das ist namespace-gebunden - er gehoert also je Dienst
 # in dessen Namespace. Die vollstaendige Vorlage (Cluster, Dump-PVC, CronJob,
-# NetworkPolicies) steht in README.md, Abschnitt "cloudnative-pg.yaml".
+# NetworkPolicies) steht in README.md.
 # ---------------------------------------------------------------------------
 #
 # Was gesichert werden muss, ist damit wenig: nur der Dump. Nicht das PGDATA,
@@ -65,26 +65,7 @@ spec:
   #
   url: https://cloudnative-pg.io/charts
 ---
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: cnpg-system
-  labels:
-    #
-    # Der Operator selbst braucht weder Privilegien noch Host-Zugriff - er
-    # spricht mit der API und mit den Instanzen. Die Chart-Defaults erfuellen
-    # `restricted` bereits (runAsNonRoot, runAsUser 10001, seccompProfile
-    # RuntimeDefault, capabilities drop ALL, readOnlyRootFilesystem), es ist
-    # also keine Zumutung, sondern eine Feststellung.
-    #
-    # Wichtig fuer spaeter: Die Postgres-Instanzen laufen **nicht** hier,
-    # sondern im Namespace des jeweiligen Dienstes. Auch die vertragen
-    # `restricted` - CNPG-Instanzen laufen als UID 26 ohne Capabilities.
-    #
-    pod-security.kubernetes.io/enforce: restricted
-    pod-security.kubernetes.io/enforce-version: latest
-    pod-security.kubernetes.io/warn: restricted
-    pod-security.kubernetes.io/audit: restricted
+# Namespace `cnpg-system`: ../core/namespaces.yaml
 ---
 #
 # Egress-Default-Deny, dieselbe Bauart wie reloader-egress und
@@ -119,7 +100,7 @@ spec:
             - port: "53"
               protocol: TCP
 
-    # `toPorts` ist Pflicht, nicht Kosmetik - Begruendung in headlamp.yaml.
+    # `toPorts` ist Pflicht, nicht Kosmetik - Begruendung in ../apps/headlamp.yaml.
     - toEntities:
         - kube-apiserver
       toPorts:
@@ -137,7 +118,7 @@ spec:
     # und kommt nicht weiter.
     #
     # Dieselbe Richtung des Vergessens wie bei den Namespace-Listen in
-    # ingress-internal.yaml: Ein fehlender Eintrag faellt sofort auf, weil die
+    # ../network/ingress-internal.yaml: Ein fehlender Eintrag faellt sofort auf, weil die
     # Datenbank gar nicht erst hochkommt. Deshalb hier eine Liste und nicht
     # ein Selektor ueber alle Namespaces.
     #
@@ -222,7 +203,7 @@ spec:
       limits:
         memory: 256Mi
 
-    # Wirksam, seit monitoring.yaml auf kube-prometheus-stack steht. Aus, bis
+    # Wirksam, seit ../observability/monitoring.yaml auf kube-prometheus-stack steht. Aus, bis
     # der erste Postgres-Dienst umgezogen ist - ein PodMonitor auf null
     # Instanzen beschreibt nichts. Dann braucht es zusaetzlich eine
     # Ingress-Regel hier (wie bei reloader.yaml); die Metriken kommen aus Port

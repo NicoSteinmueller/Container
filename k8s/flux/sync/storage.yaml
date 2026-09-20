@@ -1,0 +1,22 @@
+#
+# storage - local-path (Default-Klasse) und der NFS-Treiber fuer Unraid.
+#
+# Kein `wait`: Die StorageClass steht mit dem Apply, und darauf kommt es an.
+# Ob die Treiber-Pods laufen, entscheidet sich am PVC, nicht hier.
+#
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: storage
+  namespace: flux-system
+spec:
+  interval: 1h
+  retryInterval: 1m
+  path: ./k8s/flux/storage
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: core
+  prune: true
+  timeout: 5m
