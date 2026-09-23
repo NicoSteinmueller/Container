@@ -31,7 +31,7 @@ Ein Ordner nur, wenn er mehr als eine Datei hält - sonst wäre er Ordner um
 eine Datei:
 
 - **Komponente mit einer Datei** liegt als `<Komponente>.yaml` direkt in der
-  Gruppe (`apps/Whoami.yaml`, `core/Namespaces.yaml`,
+  Gruppe (`apps/Whoami.yaml`, `core/PublicIngressPolicy.yaml`,
   `observability/Loki.yaml`).
 - **Gruppe aus einer Komponente** trägt deren Dateien selbst
   (`cert-manager-issuers/`, `grafana-dashboards/`).

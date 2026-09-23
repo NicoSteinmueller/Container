@@ -1,8 +1,7 @@
-# Alle Namespaces des Clusters - und ihre Pod-Security-Stufe.
+# namespaces - Stufe `restricted`, der Normalfall.
 #
-# An einem Ort, damit jede Gruppe nur an `core` hängt; der Grund für
-# `privileged` steht jeweils am Namespace.
-#
+# An einem Ort, damit jede Gruppe nur an `core` hängt. Braucht ein Namespace
+# mehr, gehört er nach Privileged.yaml - mit dem Grund am Namespace.
 ---
 # Die drei, die Kubernetes selbst anlegt.
 #
@@ -89,6 +88,7 @@ metadata:
   labels:
     homelab.io/zone: internal
     pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
 ---
@@ -101,55 +101,9 @@ metadata:
   labels:
     homelab.io/zone: public
     pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
----
-# `privileged` wegen des Agenten: Er liest die Container-Logs per hostPath.
-# `warn`/`audit` auf `baseline`, damit auffällt, wenn sonst etwas sie braucht.
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: crowdsec
-  labels:
-    homelab.io/zone: internal
-    pod-security.kubernetes.io/enforce: privileged
-    pod-security.kubernetes.io/warn: baseline
-    pod-security.kubernetes.io/audit: baseline
----
-# storage - `privileged` als Preis für echte Kernel-Mounts: Das NFS-Plugin
-# mountet im Host-Namespace, local-path legt Volumes per hostPath an.
-# Eingegrenzt wird über den Inhalt, nicht über die Policy: je ein Treiber.
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: local-path-storage
-  labels:
-    pod-security.kubernetes.io/enforce: privileged
-    pod-security.kubernetes.io/enforce-version: latest
-    pod-security.kubernetes.io/warn: privileged
-    pod-security.kubernetes.io/audit: privileged
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: csi-driver-nfs
-  labels:
-    pod-security.kubernetes.io/enforce: privileged
-    pod-security.kubernetes.io/enforce-version: latest
-    pod-security.kubernetes.io/warn: privileged
-    pod-security.kubernetes.io/audit: privileged
----
-# observability - `privileged` wegen zweier DaemonSets: node-exporter
-# (hostNetwork, hostPID, /proc, /sys) und Alloy (/var/log).
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: monitoring
-  labels:
-    pod-security.kubernetes.io/enforce: privileged
-    pod-security.kubernetes.io/enforce-version: latest
-    pod-security.kubernetes.io/warn: privileged
-    pod-security.kubernetes.io/audit: privileged
 ---
 # Das Cluster-Dashboard.
 apiVersion: v1
