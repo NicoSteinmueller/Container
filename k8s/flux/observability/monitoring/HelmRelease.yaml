@@ -6,10 +6,10 @@ metadata:
   name: kube-prometheus-stack
   namespace: flux-system
 spec:
-  interval: 1h
-  targetNamespace: monitoring
-  # Kurz
+  interval: 10m
   releaseName: kube-prometheus-stack
+  targetNamespace: monitoring
+  storageNamespace: monitoring
   chart:
     spec:
       chart: kube-prometheus-stack
@@ -18,7 +18,6 @@ spec:
         kind: HelmRepository
         name: prometheus-community
         namespace: flux-system
-      interval: 1h
   install:
     crds: Create
     remediation:

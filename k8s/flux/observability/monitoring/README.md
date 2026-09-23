@@ -1,7 +1,8 @@
 # monitoring
 
-kube-prometheus-stack, Grafana unter `grafana.k8s.nico-steinmueller.de`. Dashboards 
-nd Regeln kommen gepinnt mit der Chart, die `monitoring.coreos.com`-CRDs sind da, 
+kube-prometheus-stack, Grafana unter `grafana.k8s.nico-steinmueller.de`. Dashboards
+und Regeln kommen gepinnt mit der Chart, eigene Dashboards in
+[`dashboards/`](dashboards/kustomization.yaml), die `monitoring.coreos.com`-CRDs sind da, 
 kein Internet-Egress.
 
 - **`serviceMonitorSelectorNilUsesHelmValues: false`** (und die drei

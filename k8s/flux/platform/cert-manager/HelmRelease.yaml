@@ -26,11 +26,10 @@ spec:
     createNamespace: false
     remediation:
       retries: 3
-    timeout: 10m
   upgrade:
     remediation:
       retries: 3
-    timeout: 10m
+  timeout: 10m
   values:
     # `crds.keep` sorgt dafür, dass ein versehentlich entferntes HelmRelease
     # nicht jedes Certificate-Objekt im Cluster mitnimmt.
