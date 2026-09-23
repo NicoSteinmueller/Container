@@ -11,7 +11,7 @@ kein Internet-Egress.
 - **Auf Talos nicht scrapebar** und deshalb aus statt dauerhaft rot: etcd,
   Controller-Manager, Scheduler (an `127.0.0.1` gebunden), kube-proxy (ersetzt
   durch Cilium).
-- **Kubelet** über HTTPS, aber ungeprüft (`insecureSkipVerify`) - wie beim
+- **Kubelet** über HTTPS, aber ungeprüft (`insecureSkipVerify`, Chart-Default) - wie beim
   metrics-server, mangels kubelet-csr-approver.
 - **Admission-Webhook** des Operators braucht `monitoring-operator-webhook`
   (siehe [../../core/README.md](../../core/README.md)). Seine Zertifikate kommen

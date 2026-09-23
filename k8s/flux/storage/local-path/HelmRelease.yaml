@@ -37,7 +37,6 @@ spec:
         name: local-path-provisioner
         namespace: flux-system
   install:
-    createNamespace: false
     remediation:
       retries: 3
   upgrade:
