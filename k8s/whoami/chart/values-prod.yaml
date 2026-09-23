@@ -48,17 +48,8 @@ ingressPublic:
   host: whoami.nico-steinmueller.de
 
 #
-# Und damit wird der Namespace `public`.
+# Der Namespace steht in k8s/flux/core/namespaces/Restricted.yaml (mit
+# `homelab.io/zone: public`): Traefiks RoleBindings liegen darin, und
+# `network` soll nur an `core` hängen, nicht an `apps`.
 #
-# Das ist keine Kosmetik. Die Kyverno-Regel aus Schritt 9 der Inbetriebnahme
-# soll `ingressClassName: public` nur in Namespaces mit
-# `homelab.io/zone: public` zulassen - bliebe der Wert hier auf `internal`,
-# wäre whoami genau der Fall, den die Regel fangen soll, und sie ließe sich
-# nicht einführen, ohne den Testdienst mitzunehmen.
-#
-# whoami hängt an beiden Controllern, hat also beide Zonen. Die Zuordnung
-# nimmt trotzdem die stärkere: Ein Namespace mit einem einzigen öffentlichen
-# Ingress ist öffentlich, und die Regel muss die Zone gegen die riskantere
-# Seite auslegen, nicht gegen die häufigere.
-#
-zone: public
+createNamespace: false
