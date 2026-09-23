@@ -12,7 +12,7 @@ darf scheitern.
 ## `Whoami.yaml`
 
 HelmRelease auf das lokale Chart über die `GitRepository flux-system`. Den
-Namespace legt das Chart selbst an. Werte je Umgebung: `k8s/whoami/README.md`.
+Namespace legt `core` an (`createNamespace: false` in `values-prod.yaml`). Werte je Umgebung: `k8s/whoami/README.md`.
 
 > **`reconcileStrategy: Revision`** ist Pflicht: Mit der Voreinstellung
 > `ChartVersion` bleibt jede Änderung am Chart still wirkungslos, solange

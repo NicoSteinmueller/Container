@@ -54,9 +54,9 @@ darf keiner: Internet-Regeln sind `toCIDRSet` auf `0.0.0.0/0` ohne RFC 1918 und
 | `crowdsec` | LAPI `:8080` · Internet `:443` (CAPI, Hub) |
 | `headlamp`, `reloader`, `local-path-storage`, `cert-manager` | kube-apiserver `:6443` |
 | `cnpg-system` | kube-apiserver · Instanzen `:5432`/`:8000` |
-| `monitoring` | kube-apiserver · Kubelet `:10250` · node-exporter `:9100` · Scrape-Ziele - **kein Internet** |
+| `monitoring` | kube-apiserver · Kubelet `:10250` · node-exporter `:9100` · Scrape-Ziele in `kube-system`/`flux-system` - **kein Internet** |
 | `traefik-internal` | kube-apiserver · headlamp `:4466` · Grafana `:3000` · whoami `:80` · Internet `:443`/`:53` (ACME) |
-| `traefik-public` | Node (`host`, darüber die API) · LAPI `:8080` · whoami `:80` · Internet `:443`/`:53` (ACME) |
+| `traefik-public` | kube-apiserver · LAPI `:8080` · whoami `:80` · Internet `:443`/`:53` (ACME) |
 
 Keine Regel greift auf hostNetwork-Pods (`csi-driver-nfs`, node-exporter, die
 meisten in `kube-system`). `kube-system` ist zudem ausgenommen: CoreDNS braucht

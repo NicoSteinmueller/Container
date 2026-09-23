@@ -3,6 +3,10 @@
 
 namespace: whoami
 
+# Den Namespace selbst anlegen. Im Produktiv-Cluster aus: Dort steht er in
+# k8s/flux/core/namespaces/Restricted.yaml, wie alle anderen.
+createNamespace: true
+
 # "internal" = nur aus dem Heimnetz erreichbar, "public" = aus dem Internet.
 # Bestimmt, welche IngressClass in diesem Namespace zulässig sein soll.
 zone: internal
