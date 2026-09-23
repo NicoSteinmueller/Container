@@ -1,46 +1,37 @@
 # core
 
-Der Boden, auf dem alle anderen Gruppen stehen — und deshalb die einzige, auf
-die alle warten ([`../sync/Core.yaml`](../sync/Core.yaml)).
+Der Boden, auf dem alle Gruppen stehen - und die einzige, auf die alle warten.
 
-| Komponente | Inhalt |
+| Komponente | Was |
 |---|---|
-| [`namespaces/`](namespaces/Restricted.yaml) | alle Namespaces des Clusters, nach Pod-Security-Stufe: `Restricted.yaml`, `Privileged.yaml` |
-| [`DefaultDenyIngress.yaml`](DefaultDenyIngress.yaml) | `CiliumClusterwideNetworkPolicy`: eingehend zu für jeden Pod außer in `kube-system` und `flux-system` |
-| [`DefaultDenyEgress.yaml`](DefaultDenyEgress.yaml) | dasselbe ausgehend, nur DNS zu CoreDNS ist frei |
-| [`PublicIngressPolicy.yaml`](PublicIngressPolicy.yaml) | `ValidatingAdmissionPolicy`: `ingressClassName: public` nur in Namespaces mit `homelab.io/zone=public` |
+| [`namespaces/`](namespaces/Restricted.yaml) | alle Namespaces mit Pod-Security-Stufe: `Restricted.yaml`, `Privileged.yaml` |
+| [`DefaultDenyIngress.yaml`](DefaultDenyIngress.yaml) | eingehend zu für jeden Pod außer in `kube-system`, `flux-system` |
+| [`DefaultDenyEgress.yaml`](DefaultDenyEgress.yaml) | ausgehend zu bis auf DNS, für dieselben Pods |
+| [`PublicIngressPolicy.yaml`](PublicIngressPolicy.yaml) | `ingressClassName: public` nur in Namespaces mit `homelab.io/zone=public` |
 
-## Default-Deny, clusterweit
+**Alle Namespaces hier**, damit jede Gruppe nur an `core` hängt: Traefiks
+RoleBindings liegen z. B. in `monitoring` und `headlamp` - sonst hinge `network`
+an `observability` und `apps`.
 
-Zwei `CiliumClusterwideNetworkPolicy` statt einer Sperre je Namespace und
-Richtung: eingehend alles zu, ausgehend alles bis auf DNS. Damit ist auch ein
-Namespace zu, den ein Chart selbst anlegt oder den man in `namespaces/`
-vergisst. Freigaben stehen bei der Komponente in `NetworkPolicies.yaml` und
-addieren sich dazu - erlaubt ist, was irgendeine Policy erlaubt.
+## Default-Deny
 
-- **Ausgenommen** sind `kube-system` (CoreDNS - ein Fehler träfe jeden Pod) und
+Zwei `CiliumClusterwideNetworkPolicy` statt einer Sperre je Namespace - auch ein
+Namespace, den ein Chart anlegt oder den man vergisst, ist zu. Freigaben stehen
+in `NetworkPolicies.yaml` der Komponente und addieren sich.
+
+- **Ausgenommen:** `kube-system` (ein Fehler träfe CoreDNS und damit jeden Pod),
   `flux-system` (ein Fehler sperrte den Weg, auf dem er repariert würde).
-- **Webhooks brauchen eine Freigabe.** Der kube-apiserver ist für Cilium nicht
-  der eigene Node, sondern `kube-apiserver`. Jede Komponente mit
-  Admission-Webhook trägt deshalb eine `CiliumNetworkPolicy` mit
-  `fromEntities: [kube-apiserver, host]` auf den Webhook-Port: cert-manager
-  (`10250`), CloudNativePG (`9443`), kube-prometheus-stack (`10250`).
-- **Probes des kubelet** kommen ohne Freigabe durch, Cilium lässt `host` zu.
-- **Ausgehend ist nur DNS pauschal frei.** Die API dagegen nicht: Längst nicht
-  jeder Pod braucht sie, und eine pauschale Freigabe öffnete sie jedem
-  kompromittierten. Sie steht wie alles Weitere in `<name>-egress` der
-  Komponente.
-- **Fehlt eine Egress-Freigabe**, hängt die Anwendung in einem Timeout statt
-  einer Fehlermeldung. Zu sehen nur mit `hubble observe --type drop`.
-
-Gegenprobe nach einer Änderung - jeder Webhook wird dabei tatsächlich
-angerufen:
+- **Webhooks** brauchen eine Freigabe `fromEntities: [kube-apiserver, host]`
+  auf ihren Port: cert-manager `10250`, CloudNativePG `9443`,
+  kube-prometheus-stack `10250`. kubelet-Probes kommen ohne durch.
+- **Ausgehend** ist nur DNS pauschal frei. Die API nicht - nicht jeder Pod
+  braucht sie; sie steht in `<name>-egress` der Komponente.
+- **Fehlt eine Freigabe**, gibt es einen Timeout statt einer Fehlermeldung.
 
 ```bash
-kubectl -n flux-system get kustomization core platform
 kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop
 
-# Beide Webhooks - ein Timeout hier heißt: Freigabe fehlt
+# Beide Webhooks - ein Timeout heißt: Freigabe fehlt
 kubectl create --dry-run=server -f - <<'Y'
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -56,63 +47,25 @@ Y
 
 ## Pod Security
 
-Ohne `pod-security.kubernetes.io/enforce`-Label gilt **`privileged`** — ein Pod
-dort dürfte privilegiert laufen, Host-Namespaces betreten und hostPath mounten.
-Jeder Namespace trägt seine Stufe deshalb ausdrücklich. Welche, und warum,
-steht an den Objekten selbst; hier nur die beiden Punkte, die man kennen sollte:
+Ohne `enforce`-Label gilt `privileged`, deshalb trägt jeder Namespace seine
+Stufe ausdrücklich. Die Ausnahmen stehen in
+[`namespaces/Privileged.yaml`](namespaces/Privileged.yaml), jede mit Grund -
+hostPath verbietet schon `baseline`.
 
-**hostPath ist schon ab `baseline` ein Verstoß**, nicht erst ab `restricted`.
-Das ist der Grund, warum `crowdsec`, `local-path-storage`, `csi-driver-nfs` und
-`monitoring` auf `privileged` stehen und nicht eine Stufe tiefer:
+- **`default`** ist leer, aber ein Manifest ohne `namespace:` landet dort. Als
+  Nebenwirkung scheitern `kubectl run`/`debug` ohne securityContext - gewollt.
+- **Ohne Stufe:** `kube-system` (Cilium bräuche mehr als `baseline`),
+  `flux-system` (die Controller müssen anwenden, was im Repo steht),
+  `cilium-secrets` (gehört der Talos-Machine-Config, keine Pods), `whoami`
+  (legt das Chart an).
 
-```bash
-kubectl label --dry-run=server --overwrite ns crowdsec \
-  pod-security.kubernetes.io/enforce=baseline
-# Warning: crowdsec-agent-…: hostPath volumes
-```
+## Zweite Sperre gegen „versehentlich öffentlich“
 
-**`default` ist der Fall, auf den es ankommt.** Er ist leer — aber ein Manifest
-ohne `namespace:` landet genau dort. Nebenwirkung: `kubectl run` und
-`kubectl debug` ohne securityContext werden dort abgelehnt. Für einen schnellen
-Testpod lästig, und genau so gemeint.
-
-**Nach Stufe getrennt**, damit die Ausnahmen auffallen:
-[`namespaces/Privileged.yaml`](namespaces/Privileged.yaml) ist die kurze Liste,
-die man bei einer Prüfung liest, jeder Eintrag mit seinem Grund. Die Labels
-stehen an jedem Namespace ausgeschrieben statt über eine Kustomize-Komponente -
-bei Sicherheits-Labels ist sichtbar wichtiger als kurz.
-
-Bewusst ohne Stufe und nicht in `namespaces/`:
-
-| Namespace | warum |
-|---|---|
-| `kube-system` | Cilium läuft dort mit Capabilities, die schon `baseline` ablehnt - eine Stufe wäre ein Ausfall des CNI |
-| `flux-system` | die Controller müssen anwenden dürfen, was im Repo steht ([`../../bootstrap/README.md`](../../bootstrap/README.md)) |
-| `cilium-secrets` | kommt aus der Talos-Machine-Config; von hier bearbeitet hätte er zwei Schreiber. Pods laufen dort keine |
-| `whoami` | legt das lokale Chart selbst an, Helm besitzt ihn |
-
-## Warum alle Namespaces hier liegen
-
-Damit keine Gruppe auf eine andere warten muss. Die RoleBindings für Traefik
-liegen in `monitoring` und `headlamp`, die Egress-Policies bei ihren
-Komponenten — lägen die Namespaces jeweils bei der Komponente, hinge `network`
-an `observability` und `apps`. So hängt alles an `core` und sonst nichts
-aneinander.
-
-Ausnahme ist `whoami`, siehe oben.
-
-## Die zweite Sperre gegen „versehentlich öffentlich"
-
-Ohne `PublicIngressPolicy.yaml` gäbe es genau eine: die Namespace-Liste in
-[`../network/ingress-public/`](../network/ingress-public/HelmRelease.yaml). Ein
-Namespace zu viel darin, und ein interner Dienst hängt am öffentlichen
-Controller. Mit der Policy müssen es zwei Fehler gleichzeitig sein — der Eintrag
-in der Liste **und** das Label am Namespace —, und beide stehen in Git.
-
-Nativ und nicht Kyverno: dieselbe Bedingung in derselben Sprache (CEL), nur ohne
-Pod, CRD, Webhook und zweiten Controller. Der API-Server wertet sie selbst aus.
+Ohne `PublicIngressPolicy.yaml` reichte ein Namespace zu viel in der Liste von
+`ingress-public`. Mit ihr müssen es zwei Fehler sein: der Listeneintrag **und**
+das Label. Native `ValidatingAdmissionPolicy` statt Kyverno - dieselbe CEL-Regel
+ohne eigenen Controller.
 
 ```bash
-# Beweisfall - erwartet: Ablehnung
-kubectl -n headlamp create ingress test --class=public --rule='x.invalid/*=y:80'
+kubectl -n headlamp create ingress test --class=public --rule='x.invalid/*=y:80'   # erwartet: Ablehnung
 ```
