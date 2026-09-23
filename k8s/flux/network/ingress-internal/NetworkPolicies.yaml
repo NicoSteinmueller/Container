@@ -1,17 +1,8 @@
 # ingress-internal - Netzwerkregeln im Namespace `traefik-internal`
 ---
-# Sonst umgeht jeder Pod über die Pod-Adresse die Policies der Anwendungen.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny-ingress
-  namespace: traefik-internal
-spec:
-  podSelector: {}
-  policyTypes:
-    - Ingress
-
----
+# Der Namespace ist eingehend zu (core/DefaultDenyIngress.yaml) - sonst umginge
+# jeder Pod über die Pod-Adresse die Policies der Anwendungen.
+#
 # ipBlock greift nur, weil der Client als `world` ankommt - das hängt an
 # `externalTrafficPolicy: Local` in HelmRelease.yaml.
 apiVersion: networking.k8s.io/v1
@@ -29,7 +20,7 @@ spec:
             cidr: 192.168.178.0/24
 
 ---
-# Egress-Default-Deny.
+# Ausgehend erlaubt; Sperre und DNS kommen aus (core/DefaultDenyEgress.yaml).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -43,17 +34,6 @@ spec:
       toPorts:
         - ports:
             - port: "6443"
-              protocol: TCP
-
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: UDP
-            - port: "53"
               protocol: TCP
 
     # Die bedienten Namespaces - fehlt einer, nimmt der Controller den Ingress

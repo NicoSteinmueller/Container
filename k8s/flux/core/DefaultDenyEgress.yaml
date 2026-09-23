@@ -1,0 +1,47 @@
+# DefaultDenyEgress - ausgehend geschlossen bis auf DNS.
+# Gilt für alle Pods außer in kube-system und flux-system.
+#
+# Ausgehend ist die gefährlichere Richtung: Ein Pod ohne Egress-Regel erreicht
+# das ganze Heimnetz. Mit dieser Regel ist ein neuer Namespace direkt zu.
+#
+# Erlaubt ist hier nur DNS, weil es jeder Pod braucht. Alles andere steht bei
+# der Komponente, in der `<name>-egress` ihrer NetworkPolicies.yaml.
+#
+# Fehlt eine Freigabe, hängt die Anwendung in einem Timeout statt einer klaren
+# Fehlermeldung. Nachsehen mit
+#
+#   kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop
+#
+# Pods mit hostNetwork trifft die Regel nicht.
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: default-deny-egress
+spec:
+  # Derselbe Selektor wie in DefaultDenyIngress.yaml.
+  endpointSelector:
+    matchExpressions:
+      - key: io.kubernetes.pod.namespace
+        operator: Exists
+      - key: io.kubernetes.pod.namespace
+        operator: NotIn
+        values:
+          - kube-system
+          - flux-system
+
+  # Ausdrücklich nur ausgehend - eingehend regelt DefaultDenyIngress.yaml.
+  enableDefaultDeny:
+    ingress: false
+    egress: true
+
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP

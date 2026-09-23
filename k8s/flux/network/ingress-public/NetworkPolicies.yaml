@@ -1,17 +1,7 @@
 # ingress-public - Netzwerkregeln im Namespace `traefik-public`
 ---
-# Ohne Default-Deny wären auch Ping- und Metrik-Port clusterweit erreichbar.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny-ingress
-  namespace: traefik-public
-spec:
-  podSelector: {}
-  policyTypes:
-    - Ingress
-
----
+# Der Namespace ist eingehend zu (core/DefaultDenyIngress.yaml) - sonst wären
+# auch Ping- und Metrik-Port clusterweit erreichbar.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -30,7 +20,7 @@ spec:
           port: 8443
 
 ---
-# Egress-Default-Deny.
+# Ausgehend erlaubt; Sperre und DNS kommen aus (core/DefaultDenyEgress.yaml).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -41,18 +31,6 @@ spec:
   egress:
     - toEntities:
         - host
-
-    # Ohne Auflösung kein ACME und kein Backend.
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: UDP
-            - port: "53"
-              protocol: TCP
 
     # Die LAPI, die der Bouncer fragt.
     - toEndpoints:

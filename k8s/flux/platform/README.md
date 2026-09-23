@@ -177,8 +177,13 @@ Dazu je Dienst:
 - **`cnpg-egress` erweitern** — der Namespace mit `cnpg.io/podRole: instance` auf
   `5432` und `8000`, sonst kommt die Datenbank nicht hoch. Der Block steht
   auskommentiert in [`cloudnative-pg/NetworkPolicies.yaml`](cloudnative-pg/NetworkPolicies.yaml).
-- **Egress im Dienst-Namespace** — CoreDNS und die eigene Instanz auf `5432`.
+- **Egress im Dienst-Namespace** — die eigene Instanz auf `5432` (DNS ist
+  clusterweit frei, [`../core/DefaultDenyEgress.yaml`](../core/DefaultDenyEgress.yaml)).
   Der CronJob-Pod fällt unter dieselbe Regel wie die Anwendung.
+- **Ingress im Dienst-Namespace** — eingehend ist jeder Namespace zu
+  ([`../core/DefaultDenyIngress.yaml`](../core/DefaultDenyIngress.yaml)). Die
+  Instanz braucht eine Freigabe für den Operator aus `cnpg-system` auf `5432`
+  und `8000` und für die Anwendung auf `5432`.
 - **Reloader** — der Namespace gehört in die Liste in [`reloader/HelmRelease.yaml`](reloader/HelmRelease.yaml),
   sobald ein Secret aus `homelab-secrets` dort in `env` hängt. Für das
   `-app`-Secret ist er *nicht* nötig: Rotiert der Operator es über

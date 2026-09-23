@@ -1,8 +1,8 @@
 # local-path - Netzwerkregeln im Namespace `local-path-storage`
 ---
-# Egress-Default-Deny, gerade hier, wo `enforce: privileged` stehen muss: Was
-# nicht heraus kann, trägt einen übernommenen Helfer-Pod nicht weiter als bis
-# zum Node. Der Provisioner spricht nur mit CoreDNS und dem kube-apiserver.
+# Ausgehend nur die API; Sperre und DNS kommen aus core/DefaultDenyEgress.yaml.
+# Gerade hier wichtig, wo `enforce: privileged` stehen muss: Was nicht heraus
+# kann, trägt einen übernommenen Helfer-Pod nicht weiter als bis zum Node.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -11,17 +11,6 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: UDP
-            - port: "53"
-              protocol: TCP
-
     - toEntities:
         - kube-apiserver
       toPorts:

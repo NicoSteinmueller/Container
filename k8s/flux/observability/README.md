@@ -51,8 +51,9 @@ kubelet-csr-approver.
 ### Der Admission-Webhook
 
 Der Operator validiert `PrometheusRule`- und `ServiceMonitor`-Objekte über einen
-Webhook, den der **kube-apiserver anruft**. Bei einem Namespace mit
-`default-deny-ingress` braucht das eine eigene Regel:
+Webhook, den der **kube-apiserver anruft**. Weil jeder Namespace eingehend zu
+ist ([`../core/DefaultDenyIngress.yaml`](../core/DefaultDenyIngress.yaml)),
+braucht das eine eigene Regel:
 `monitoring-operator-webhook`, `fromEntities: [kube-apiserver, host]` auf Port
 `10250`. `fromEntities`, weil eine `kind: NetworkPolicy` es nicht kann — der
 kube-apiserver ist auf Talos ein Static Pod mit hostNetwork. Und `10250` ist
@@ -60,9 +61,8 @@ hier der Webhook, nicht das Kubelet.
 
 Fehlt die Regel, nimmt der Cluster keine Monitoring-CRs mehr an, und die Meldung
 redet von einem Timeout gegen einen Service, der läuft. cert-manager und
-CloudNativePG lösen dasselbe anders: Ihre Namespaces haben gar kein
-Ingress-Default-Deny. Hier ist das keine Option, weil Grafana ausschließlich über
-`traefik-internal` erreichbar sein soll.
+CloudNativePG haben dieselbe Regel für ihre Webhooks (`cert-manager-webhook`,
+`cnpg-webhook`).
 
 Die Zertifikate stellt **cert-manager** aus, nicht die beiden Helm-Hook-Jobs der
 Chart — die ziehen `ghcr.io/jkroepke/kube-webhook-certgen`, einen Fork eines

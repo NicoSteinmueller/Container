@@ -47,10 +47,9 @@ beschreibt den `hostIP`-Weg und seine Folgekosten — das Chart schreibt `hostIP
 auch in die Entrypoint-Adresse, Traefik scheitert dann im Pod-Netz am Binden,
 Ausweg ist `hostNetwork` plus `net.ipv4.ip_unprivileged_port_start=0`. Dazu
 kommt eine Folge, die dort nicht steht: **Mit `hostNetwork` liegt der Pod im
-Host-Namespace und trägt die Cilium-Identität `host`.** Die NetworkPolicies
-`default-deny-ingress` und `allow-from-lan` in derselben Datei greifen dann
-nicht mehr wie heute — Cilium erzwingt Policies gegen Host-Netzwerk-Pods nur
-mit aktivierter Host-Firewall und `CiliumClusterwideNetworkPolicy`. Der
+Host-Namespace und trägt die Cilium-Identität `host`.** Das Default-Deny
+und `allow-from-lan` greifen dann nicht mehr wie heute — Cilium erzwingt
+Policies gegen Host-Netzwerk-Pods nur mit aktivierter Host-Firewall und `CiliumClusterwideNetworkPolicy`. Der
 LoadBalancer-Weg lässt die Pods im Pod-Netz und damit alle Policies so gültig,
 wie sie heute begründet sind.
 
@@ -776,7 +775,7 @@ gebaut wie `ingress-internal`, mit fünf Unterschieden:
 NetworkPolicies im neuen Namespace:
 
 ```
-default-deny-ingress          wie im internen Namespace
+(eingehend zu über core/DefaultDenyIngress.yaml)
 allow-from-world              ingress auf 8000/8443 ohne ipBlock
 traefik-public-egress         CiliumNetworkPolicy, siehe unten
 ```
