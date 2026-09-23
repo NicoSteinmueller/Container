@@ -1,5 +1,6 @@
 # Die zweite Sperre gegen "privater Dienst versehentlich öffentlich": Neben dem
 # Eintrag in ../network/ingress-public/ braucht es das Label am Namespace.
+# Gilt für Ingress und Traefiks IngressRoute(TCP/UDP) gleichermaßen.
 #
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
@@ -20,18 +21,34 @@ spec:
           - UPDATE
         resources:
           - ingresses
+      - apiGroups:
+          - traefik.io
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - ingressroutes
+          - ingressroutetcps
+          - ingressrouteudps
+
+  variables:
+    # Wie Traefik die Klasse liest: das Feld, sonst die veraltete Annotation.
+    - name: klasse
+      expression: >-
+        object.spec.?ingressClassName.orValue("") != ""
+        ? object.spec.ingressClassName
+        : object.metadata.?annotations[?"kubernetes.io/ingress.class"].orValue("")
+    - name: publicZone
+      expression: >-
+        namespaceObject.metadata.?labels[?"homelab.io/zone"].orValue("") == "public"
 
   validations:
-    # Zulässig, wenn die Klasse nicht `public` ist oder der Namespace
-    # homelab.io/zone=public trägt.
-    - expression: >-
-        object.spec.?ingressClassName.orValue("") != "public" ||
-        (has(namespaceObject.metadata.labels) &&
-        "homelab.io/zone" in namespaceObject.metadata.labels &&
-        namespaceObject.metadata.labels["homelab.io/zone"] == "public")
+    - expression: variables.klasse != "public" || variables.publicZone
       message: >-
-        ingressClassName "public" ist nur in Namespaces mit dem Label
-        homelab.io/zone=public erlaubt. Dieser Ingress waere aus dem Internet
+        Die Klasse "public" ist nur in Namespaces mit dem Label
+        homelab.io/zone=public erlaubt. Dieses Objekt waere aus dem Internet
         erreichbar gewesen. Gewollt? Dann das Label am Namespace setzen UND
         den Namespace in network/ingress-public/ eintragen - beides, sonst wird
         er ohnehin nicht bedient.
