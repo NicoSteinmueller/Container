@@ -1,44 +1,21 @@
+# Eigene Grafana-Dashboards als ConfigMaps; der Sidecar liest jede in
+# `monitoring` mit dem Label `grafana_dashboard: "1"`.
 #
-# Eigene Grafana-Dashboards als ConfigMaps. Der Sidecar, den
-# kube-prometheus-stack ohnehin fahrt, liest jede ConfigMap in `monitoring` mit
-# dem Label `grafana_dashboard: "1"`.
-#
-# Warum aus Git und nicht per "Import via grafana.com":
-# ../observability/README.md.
-#
-# Ein Dashboard dazunehmen:
-#
-#   1. curl -sfL "https://grafana.com/api/dashboards/<ID>/revisions/latest/download" \
-#        -o k8s/flux/grafana-dashboards/<name>.json
-#   2. Datasource pruefen. Neuere Revisionen waehlen selbst; aeltere haben
-#      `${DS_PROMETHEUS}` im JSON und brauchen die uid - `prometheus` fuer
-#      Metriken, `loki` fuer Logs:
-#        grep -o '\${DS_[A-Z_]*}' <name>.json | sort -u
-#        sed -i 's/\${DS_PROMETHEUS}/prometheus/g' <name>.json
-#   3. unten eintragen
-#   4. kubectl kustomize k8s/flux/grafana-dashboards | head -20
-#
-# Beim Testen gegen den Cluster `--server-side` mitgeben, sonst scheitert es an
-# `metadata.annotations: Too long` - das clientseitige apply legt das ganze
-# Objekt zusaetzlich in einer Annotation ab, und ein Dashboard-JSON ist dafuer
-# zu gross. kustomize-controller nutzt Server-Side-Apply.
-#
+# Dazunehmen: JSON von # grafana.com holen, `${DS_*}` durch die uid ersetzen
+# (`prometheus`/`loki`), unten eintragen. Testen braucht `kubectl kustomize --server-side`.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: monitoring
 
 generatorOptions:
-  # Der Sidecar findet die ConfigMaps ueber das Label, der Name ist ihm gleich.
+  # Der Sidecar findet die ConfigMaps über das Label, der Name ist ihm gleich.
   disableNameSuffixHash: true
   labels:
     grafana_dashboard: "1"
 
 configMapGenerator:
-  # Node Exporter Full (grafana.com ID 1860). Das Gegenstueck zur
-  # node-exporter-Regel in ../observability/monitoring.yaml: Ohne Port 9100 im
-  # Egress bleibt es
-  # leer. Waehlt seine Datasource selbst.
+  # Node Exporter Full (grafana.com ID 1860), bleibt ohne Port 9100 im Egress leer.
   - name: dashboard-node-exporter-full
     files:
       - node-exporter-full.json

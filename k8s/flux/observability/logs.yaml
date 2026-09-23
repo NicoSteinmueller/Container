@@ -1,7 +1,4 @@
-#
-# Logs - Loki als Speicher, Alloy als Sammler. Beide in der Namespace
-# `monitoring` aus monitoring.yaml; Netzregeln stehen dort.
-#
+# Logs - Loki als Speicher, Alloy als Sammler. Beide im Namespace `monitoring`
 ---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -39,28 +36,19 @@ spec:
       retries: 3
   timeout: 15m
   values:
-    # Ein Binary statt der verteilten Bauart; der Compactor steckt darin.
     deploymentMode: SingleBinary
 
     loki:
-      # Sonst erwartet Loki pro Anfrage einen X-Scope-OrgID-Header und
-      # antwortet ohne ihn mit "no org id" - was in Grafana wie ein kaputter
-      # Datasource aussieht.
+      # Sonst erwartet Loki pro Anfrage einen X-Scope-OrgID-Header
       auth_enabled: false
 
       commonConfig:
-        # Chart-Default 3; der Ring wird auf einem Node damit nie gesund.
         replication_factor: 1
 
       storage:
-        # Ohne das rendert die Chart nicht einmal:
-        # "Please define loki.storage.bucketNames.chunks".
         type: filesystem
 
-      # Muss ausdruecklich dastehen, sonst nimmt die Chart ihre Vorgabe mit
-      # Object Storage. `from` ist ein Stichtag, nicht der Beginn der Daten -
-      # beim Aendern eines Schemas nicht zurueckdrehen, sonst sind alte Bloecke
-      # unlesbar.
+      # sonst nimmt das Chart seine Vorgabe mit Object Storage.
       schemaConfig:
         configs:
           - from: "2026-01-01"
@@ -72,13 +60,10 @@ spec:
               period: 24h
 
       limits_config:
-        # 30 Tage, wie bei den Metriken - damit ein Vorfall in beiden Quellen
-        # denselben Zeitraum hat.
-        retention_period: 720h
+        retention_period: 720h     # 30 Tage
 
       compactor:
-        # Retention ist ab Werk aus. Ohne diese Zeile ist retention_period eine
-        # Angabe ohne Wirkung und Loki sammelt fuer immer.
+        # Ohne diese Zeile sammelt Loki für immer Logs.
         retention_enabled: true
         delete_request_store: filesystem
 
@@ -86,8 +71,8 @@ spec:
       replicas: 1
       persistence:
         enabled: true
-        # Ohne storageClassName, also `local-path`. Die Zeitgrenze oben ist die
-        # eigentliche Bremse - diese Groesse wird nicht erzwungen.
+        # Storage-Klasse: `local-path`. Die Zeitgrenze oben ist die
+        # eigentliche Bremse - diese Größe wird nicht erzwungen.
         size: 20Gi
       resources:
         requests:
@@ -96,8 +81,7 @@ spec:
         limits:
           memory: 1Gi
 
-    # Ohne diese drei Nullen: "You have more than zero replicas configured for
-    # both the single binary and simple scalable targets".
+    # Replikation deaktivieren
     read:
       replicas: 0
     write:
@@ -105,31 +89,28 @@ spec:
     backend:
       replicas: 0
 
-    # Zwei memcached-Instanzen, ab Werk an - bei dieser Datenmenge zwei Pods
-    # ohne Gegenwert.
+    # memcached ohne Gegenwert bei der Datenmenge
     chunksCache:
       enabled: false
     resultsCache:
       enabled: false
 
-    # Buendelt die Endpunkte der verteilten Bauart. Bei einem Binary gibt es
-    # nichts zu buendeln.
+    # Bündlung der Endpunkte nicht nötig.
     gateway:
       enabled: false
 
-    # Der Canary prueft die Kette mit eigenen Logs. Hier ist der Sammler selbst
-    # der Beweis: Faellt Alloy aus, fehlen die Logs aller Pods.
+    # Der Canary prüft die Kette mit eigenen Logs.
     lokiCanary:
       enabled: false
     test:
       enabled: false
 
-    # Sidecar fuer Lokis eigenen Ruler. Die Alarme kommen aus Prometheus.
+    # Sidecar für Lokis eigenen Ruler. Die Alarme kommen aus Prometheus.
     sidecar:
       rules:
         enabled: false
 ---
-# Alloy und nicht Promtail: Promtail ist seit 2026-03-02 End-of-Life.
+# Alloy
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -139,11 +120,7 @@ spec:
   interval: 1h
   targetNamespace: monitoring
   releaseName: alloy
-  #
-  # kube-prometheus-stack bringt die monitoring.coreos.com-CRDs mit - ohne sie
-  # scheitert der ServiceMonitor unten mit "no matches for kind". loki ist das
-  # Ziel von loki.write; fehlt es, rauschen die Pushes in Fehler.
-  #
+  # kube-prometheus-stack bringt die monitoring.coreos.com-CRDs mit
   dependsOn:
     - name: kube-prometheus-stack
       namespace: flux-system
@@ -167,14 +144,14 @@ spec:
   timeout: 10m
   values:
     alloy:
-      # Schickt ab Werk anonyme Nutzungsstatistik an Grafana Labs.
+      # anonyme Nutzungsstatistik an Grafana Labs
       enableReporting: false
 
-      # /var/log als hostPath - der Grund fuer `privileged` am Namespace.
+      # /var/log als hostPath - der Grund für `privileged` am Namespace.
       mounts:
         varlog: true
 
-      # Fuer die keep-Regel im Config: Ein DaemonSet-Pod soll nur die Logs
+      # Für die keep-Regel im Config: Ein DaemonSet-Pod soll nur die Logs
       # seines Nodes verfolgen. HOSTNAME ist in einem Pod der Pod-Name.
       extraEnv:
         - name: NODE_NAME
@@ -189,7 +166,6 @@ spec:
         limits:
           memory: 384Mi
 
-      # Geprueft mit `alloy validate` gegen grafana/alloy:v1.19.2.
       configMap:
         content: |-
           logging {
@@ -270,7 +246,7 @@ spec:
     controller:
       type: daemonset
 
-    # Bringt ab Werk Requests mit, aber kein Limit - also Burstable.
+    # Werk Requests kein Limit
     configReloader:
       resources:
         requests:
@@ -279,8 +255,7 @@ spec:
         limits:
           memory: 128Mi
 
-    # Alloys eigene CRDs sind fuer Operator-Kompatibilitaet; hier scrapt
-    # Prometheus selbst, Alloy sammelt nur Logs.
+    # Prometheus scrapt selbst, Alloy sammelt nur Logs.
     crds:
       create: false
 

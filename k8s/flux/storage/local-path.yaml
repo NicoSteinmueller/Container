@@ -1,39 +1,9 @@
-#
 # Der lokale Speicher des Clusters und seine Default-StorageClass.
 #
-# Die Aufteilung zwischen diesem Manifest und nfs-storage.yaml folgt dem
-# Zugriffsmuster, nicht der Groesse:
-#
-#   hier   - alles mit fsync und Locking: Datenbanken, Suchindizes, Queues
-#   NFS    - Bestaende: Medien, Uploads, Sicherungen
-#
-# Der Unterschied ist der Weg dorthin und was er mit der Semantik macht:
-#
-#   - Jeder Commit einer Datenbank ist ein fsync. Ueber NFS geht jeder einzelne
-#     davon durch den Netzwerk-Stack.
-#   - NFSv4 kann Locking, aber nach einem Neustart des Servers bleiben stale
-#     locks zurueck. SQLite - Paperless und viele kleine Dienste - raet von NFS
-#     ausdruecklich ab, weil das Korruption bedeutet.
-#   - Die Option `hard` bei den NFS-Mounts ist fuer Mediendaten richtig, heisst
-#     hier aber: Bei einer Stoerung *haengt* die Datenbank, statt abzustuerzen.
-#     Kein Crash-Loop, den jemand sieht, sondern Stille.
-#
-# Was das nicht ersetzt: ein Backup. Diese Disk verschwindet mit der VM und mit
-# `tofu destroy`. Ein Sicherungsweg aus dem Cluster heraus steht noch aus - wenn
-# er kommt, nach Kopia auf dem Unraid-Host, bei Datenbanken als Dump und nicht
-# als Dateikopie.
-#
+# Die Aufteilung zu nfs-storage.yaml folgt dem Zugriffsmuster: hier alles mit
+# fsync und Locking (Datenbanken, Indizes, Queues), auf NFS die Bestände
+# (Medien, Uploads, Sicherungen).
 ---
-#
-# Rancher veroeffentlicht diesen Chart nicht in einem Helm-Repository, sondern
-# nur im Git. Deshalb eine GitRepository statt einer HelmRepository - die
-# Alternative waere ein Drittanbieter-Mirror gewesen, und die Herkunft eines
-# Charts, der auf jedem Node mit hostPath schreibt, gehoert nicht in fremde
-# Hand.
-#
-# `ref.tag` statt eines Branches: Flux zoege einem Branch sonst jede Aenderung
-# nach, sobald sie dort landet.
-#
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -43,32 +13,16 @@ spec:
   interval: 1h
   url: https://github.com/rancher/local-path-provisioner
   ref:
-    #
-    # Auf den Tag gepinnt.
-    #
-    # Beim Update aendert sich genau diese eine Zeile - anders als bei
-    # csi-driver-nfs, wo Chart- und ignore-Pfad die Version mittragen. Den
-    # Tag hebt der eingebaute `flux`-Manager von Renovate.
-    #
     tag: v0.0.37
   ignore: |
     /*
     !/deploy/chart
 ---
-# Namespace `local-path-storage`: ../core/namespaces.yaml
+# Namespace `local-path-storage`
 ---
-#
-# Egress-Default-Deny.
-#
-# Gerade hier, wo `enforce: privileged` stehen muss - der Provisioner startet
-# Helfer-Pods, die als root ein Verzeichnis auf der Host-Platte anlegen -
-# lohnt die Gegenrichtung: Was aus dem Netz nicht heraus kann, traegt einen
-# uebernommenen Helfer nicht weiter als bis zum Node.
-#
-# Der Provisioner selbst spricht nur mit CoreDNS und dem kube-apiserver. Die
-# Helfer-Pods laufen im selben Namespace, fallen also unter dieselbe Regel -
-# sie brauchen kein Netz, sie rufen `mkdir`.
-#
+# Egress-Default-Deny, gerade hier, wo `enforce: privileged` stehen muss: Was
+# nicht heraus kann, trägt einen übernommenen Helfer-Pod nicht weiter als bis
+# zum Node. Der Provisioner spricht nur mit CoreDNS und dem kube-apiserver.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -88,7 +42,6 @@ spec:
             - port: "53"
               protocol: TCP
 
-    # `toPorts` ist Pflicht, nicht Kosmetik - Begruendung in ../apps/headlamp.yaml.
     - toEntities:
         - kube-apiserver
       toPorts:
@@ -121,16 +74,7 @@ spec:
     remediation:
       retries: 3
   values:
-    #
-    # Der Pfad, den Talos bereitstellt. Er ergibt sich aus dem Namen des
-    # User-Volumes in vm/talos/patches/uservolume.yaml.tftpl - Talos mountet
-    # unter /var/mnt/<name> und laesst den Pfad nicht frei waehlen. Beide
-    # Stellen muessen zusammenpassen.
-    #
-    # Der Chart-Default /opt/local-path-provisioner waere hier falsch: In Talos
-    # ist /opt zwar beschreibbar, liegt aber auf derselben EPHEMERAL-Partition
-    # wie der Image-Cache - genau die Kopplung, welche die zweite Disk aufloest.
-    #
+    # Der Pfad, den Talos bereitstellt
     nodePathMap:
       - node: DEFAULT_PATH_FOR_NON_LISTED_NODES
         paths:
@@ -140,45 +84,20 @@ spec:
       create: true
       name: local-path
 
-      #
-      # Die Default-Klasse des Clusters. Das ist die eigentliche Aussage dieses
-      # Manifests: Ein Chart, der einen PVC ohne storageClassName anlegt - und
-      # das tun fast alle - bekommt lokalen Speicher, nicht NFS. Wer NFS will,
-      # muss es hinschreiben.
-      #
-      # nfs-storage.yaml traegt die Annotation deshalb nicht mehr. Zwei
-      # Default-Klassen waeren kein Fehler, den Kubernetes meldet: Es waehlt
-      # dann willkuerlich eine davon aus.
-      #
+      # Die Default-Klasse des Clusters: Ein PVC ohne storageClassName bekommt
+      # lokalen Speicher, nicht NFS.
       defaultClass: true
       defaultVolumeType: hostPath
 
-      #
-      # Retain, gegen den Chart-Default: Ein `kubectl delete pvc` darf hier
-      # keine Datenbank kosten. Das Verzeichnis bleibt liegen, das PV geht in
-      # Released - dieselbe Haltung wie onDelete: archive beim NFS-Speicher.
-      #
-      # Der Preis ist Platz, den niemand automatisch aufraeumt, und der ist
-      # sichtbar: `kubectl get pv` zeigt die Released-Eintraege.
-      #
+      # Retain gegen den Chart-Default: Ein `kubectl delete pvc` darf keine
+      # Datenbank kosten. Der Preis ist Platz, den niemand aufräumt.
       reclaimPolicy: Retain
 
-      #
-      # WaitForFirstConsumer, und das ist bei lokalem Speicher keine Feinheit:
-      # Das Volume ist ein Verzeichnis auf genau einem Node. Wird es gebunden,
-      # bevor der Scheduler den Pod platziert hat, kann der Pod auf einem
-      # anderen Node landen und kaeme nie an seine Daten.
-      #
-      # Auf einem Ein-Node-Cluster faellt das nicht auf. Beim zweiten Node
-      # sofort - deshalb steht es jetzt richtig.
-      #
+      # Das Volume ist ein Verzeichnis auf genau einem Node. Früher gebunden
+      # könnte der Pod woanders landen und käme nie an seine Daten - auf einem
+      # Ein-Node-Cluster unsichtbar, beim zweiten sofort.
       volumeBindingMode: WaitForFirstConsumer
 
-    #
-    # Der Chart zeigt hier auf busybox:latest. Ein unveraenderliches Tag statt
-    # eines beweglichen: Der Helfer-Pod legt Verzeichnisse an und loescht sie
-    # wieder - was er dabei ausfuehrt, soll sich nicht unbemerkt aendern.
-    #
     helperImage:
       repository: docker.io/library/busybox
       tag: "1.37.0"

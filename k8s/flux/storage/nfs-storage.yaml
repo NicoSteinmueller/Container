@@ -1,38 +1,7 @@
+# NFS zum Host - der Weg an die Dateien
 #
-# NFS zum Unraid-Host - der Weg, auf dem der Cluster an die Dateien kommt, die
-# heute den Containern auf dem Host gehoeren.
-#
-# Wer mountet, ist dabei nicht der Pod, sondern das kubelet auf dem Node. Die
-# Exporte auf dem Host stehen deshalb auf der Node-Adresse und nicht auf dem
-# Pod-CIDR - Cilium maskiert Pod-Egress ohnehin auf die Node-Adresse.
-#
-# Voraussetzung auf dem Host, ohne die hier nichts gruen wird (Handgriffe in
-# der Unraid-GUI, siehe README.md):
-#
-#   Settings -> NFS -> Enable NFS = Yes      (verlangt ein gestopptes Array)
-#   Shares -> <share> -> NFS Security Settings -> Export = Yes, Rule wie dort
-#
-# Dass der Weg ueber macvtap ueberhaupt traegt, haengt an Unraids
-# "Host access to custom networks" - siehe vm/talos/README.md, Abschnitt
-# "macvtap: wer wen erreicht". Wird die Einstellung zurueckgenommen, ist das
-# Fehlerbild kein sauberer Fehler, sondern haengende Mounts (`hard` unten).
-#
-# ---------------------------------------------------------------------------
-# Nachpruefen, ohne raten zu muessen.
-#
-# Der csi-nfs-node-Pod laeuft mit hostNetwork und bringt mount.nfs und
-# showmount mit - er steht also genau dort, wo das kubelet spaeter mountet:
-#
-#   kubectl -n csi-driver-nfs exec ds/csi-nfs-node -c nfs -- \
-#     timeout 10 showmount -e 192.168.178.3
-#
-# Die Ausgabe ist zugleich die Antwort auf die haeufigste Verwechslung: Ein
-# PVC auf "Bound" heisst bei einem statisch gebundenen PV nur "zugeordnet",
-# nicht "mountbar". Steht der Pfad des PV nicht in der Export-Liste, scheitert
-# erst der erste Pod, der ihn benutzt - mit
-# "reason given by server: No such file or directory".
-# ---------------------------------------------------------------------------
-#
+# Es mountet das kubelet, nicht der Pod: Die Exporte auf dem Host stehen
+# deshalb auf der Node-Adresse, nicht auf dem Pod-CIDR.
 ---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
@@ -43,47 +12,16 @@ spec:
   interval: 1h
   url: https://github.com/kubernetes-csi/csi-driver-nfs
   ref:
-    #
-    # Hier stand eine HelmRepository auf
-    #   raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
-    #
-    # Das war eine bewegliche Quelle in dreifacher Hinsicht, und die
-    # gepinnte Version "4.13.4" hat davon nichts aufgehalten - sie benennt
-    # einen Eintrag im Index, nicht dessen Inhalt:
-    #
-    #   1. Der Index kam aus dem Branch `master`.
-    #   2. Er loeste 4.13.4 auf .../release-4.12/charts/latest/... auf -
-    #      ein Verzeichnis, das jede Veroeffentlichung ueberschreibt.
-    #   3. Auch dieser Pfad liegt auf einem Branch, nicht auf einem Tag.
-    #
-    # Ein OCI-Chart gibt es nicht (weder registry.k8s.io noch ghcr.io), und
-    # der getaggte Index fuehrt 4.13.4 doppelt - einmal auf `latest/`, einmal
-    # auf `v4.13.4/`. Welchen Helm nimmt, ist nicht festgelegt.
-    #
-    # Deshalb die Chart-Quelle aus dem Repo statt aus einem Index: Sie liegt
-    # unter charts/v4.13.4/csi-driver-nfs, und die Version ist damit ein
-    # Verzeichnisstand statt ein Name, den ein Index umhaengen kann.
-    #
     tag: v4.13.4
   ignore: |
     /*
     !/charts/v4.13.4
 ---
+# Hier steht bewusst keine Egress-Policy: Beide Pods des Treibers laufen auf
+# hostNetwork und haben damit die Identität des Nodes - auf die greift keine
+# NetworkPolicy. Eine Policy hier wäre gültig und täte nichts.
 #
-# Hier steht bewusst keine Egress-Policy, anders als in crowdsec, headlamp,
-# reloader, local-path-storage und traefik-internal: Beide Pods des Treibers
-# laufen auf hostNetwork. Sie haben damit keine eigene Cilium-Identitaet,
-# sondern die des Nodes - und auf die greift keine NetworkPolicy. Gegenprobe:
-#
-#   kubectl -n csi-driver-nfs get pods \
-#     -o jsonpath='{.items[*].spec.hostNetwork}'
-#
-# Eine Policy hier waere gueltig, saehe richtig aus und taete nichts. Was den
-# Egress des Nodes begrenzen koennte, ist Ciliums Host-Firewall
-# (`enable-host-firewall`), die in diesem Cluster aus ist - das waere die
-# Stelle, nicht diese Datei.
-#
-# Namespace `csi-driver-nfs`: ../core/namespaces.yaml
+# Namespace `csi-driver-nfs`
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -97,11 +35,7 @@ spec:
   storageNamespace: csi-driver-nfs
   chart:
     spec:
-      #
-      # Pfad im Repo statt Name im Index - kein `version:` mehr, die steht in
-      # der Chart.yaml am Pfad. Muss beim Update mitgezogen werden, siehe
-      # GitRepository oben.
-      #
+      # Pfad im Repo statt Name im Index
       chart: ./charts/v4.13.4/csi-driver-nfs
       sourceRef:
         kind: GitRepository
@@ -115,25 +49,11 @@ spec:
     remediation:
       retries: 3
   values:
-    # Dieser Treiber deckt beide Faelle ab, die dieser Cluster
-    # braucht - dynamische PVCs *und* statische PVs auf bestehende Shares -
-    # und wird gepflegt.
-    #
     controller:
       replicas: 1
 
-      #
-      # Der csi-snapshotter-Sidecar bleibt draussen. Er setzt die CRDs
-      # VolumeSnapshot/-Content/-Class voraus, die dieser Chart nur mit
-      # externalSnapshotter.enabled mitbringt - sonst laeuft er gegen
-      # Ressourcen, die es nicht gibt, und protokolliert das im Takt seines
-      # Resync.
-      #
-      # Auch mit CRDs waere wenig gewonnen: Der Treiber "schnappschusst" NFS
-      # per tar in eine zweite Datei auf demselben Share. Das ist eine Kopie,
-      # keine Momentaufnahme - fuer Sicherungen ist Kopia der Weg. Ein
-      # Sidecar weniger zaehlt ausserdem in einem Node mit 4 GB.
-      #
+      # Der csi-snapshotter-Sidecar setzt CRDs voraus, die dieser Chart nur mit
+      # externalSnapshotter.enabled mitbringt.
       enableSnapshotter: false
 
       resources:
@@ -171,26 +91,17 @@ spec:
           limits:
             memory: 128Mi
 
-    #
-    # Der Chart bringt eine eigene StorageClass mit, wenn man ihn laesst. Sie
-    # bleibt aus: Der Server gehoert nicht in Chart-Werte, sondern sichtbar in
-    # die StorageClass unten - dort steht auch, was beim Loeschen passiert.
-    #
+    # Die StorageClass des Charts bleibt aus: Der Server gehört sichtbar in die
+    # StorageClass unten, nicht in Chart-Werte.
     storageClass:
       create: false
 ---
+# Dynamischer Speicher auf NFS - für Bestände, nicht für Datenbanken.
+# Ausdrücklich nicht die Default-Klasse (das ist local-path); wer sie will,
+# schreibt `storageClassName: nfs-unraid` hin.
 #
-# Dynamischer Speicher auf NFS - fuer Bestaende, nicht fuer Datenbanken.
-#
-# Ausdruecklich *nicht* die Default-Klasse: Die ist local-path (siehe
-# local-path.yaml), weil ein Chart, der einen PVC ohne storageClassName anlegt,
-# in aller Regel etwas mit fsync und Locking vorhat. Wer diese Klasse will,
-# schreibt sie hin - `storageClassName: nfs-unraid`.
-#
-# Was diese Klasse dafuer kann: ReadWriteMany. Mehrere Pods - auch auf
-# verschiedenen Nodes - koennen dasselbe Volume schreibend mounten. Lokaler
-# Speicher kann das nicht.
-#
+# Was sie dafür kann: ReadWriteMany - mehrere Pods mounten dasselbe Volume
+# schreibend. Lokaler Speicher kann das nicht.
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -199,103 +110,55 @@ provisioner: nfs.csi.k8s.io
 parameters:
   server: 192.168.178.3
 
-  #
   # Ein eigener Share, nicht ein Unterverzeichnis in "data": Was der Cluster
-  # sich selbst anlegt, soll nicht zwischen den Nutzerdaten liegen. Der Share
-  # muss auf dem Host existieren und exportiert sein - siehe README.md.
-  #
+  # sich anlegt, gehört nicht zwischen die Nutzerdaten.
   share: /mnt/user/k8s
 
-  #
-  # Wie das Unterverzeichnis je PVC heisst. Ohne diese Zeile nimmt der Treiber
-  # den PV-Namen - also `pvc-4bcbf944-b6f7-4bd0-b50f-3c3dd00efc64`.
-
-  # So entsteht /mnt/user/k8s/<namespace>/<pvc-name>, zum
-  # Beispiel /mnt/user/k8s/nextcloud/dumps.
-  #
-
+  # Ohne diese Zeile nimmt der Treiber den PV-Namen. So entsteht
+  # /mnt/user/k8s/<namespace>/<pvc-name>.
   subDir: ${pvc.metadata.namespace}/${pvc.metadata.name}
 
-  #
-  # Was beim Loeschen eines PVC mit dem Unterverzeichnis passiert: nichts.
-  #
-  # "retain" heisst woertlich das - der Treiber protokolliert
-  # "volume is set to retain, not deleting/archiving subdirectory" und ruehrt
-  # das Verzeichnis nicht an. Weder loeschen noch umbenennen.
-  #
+  # Der Treiber rührt das Verzeichnis beim Löschen des PVC nicht an.
   onDelete: retain
 
-# Es regelt das PV-*Objekt*, nicht das Verzeichnis: Das Objekt
-# verschwindet mit dem PVC, die Daten bleiben. Mit `Retain` bliebe
-# stattdessen ein PV in `Released` liegen, das nie wieder b
+# Regelt das PV-Objekt, nicht das Verzeichnis: Das Objekt verschwindet mit dem
+# PVC, die Daten bleiben. Mit `Retain` bliebe ein PV in `Released` liegen.
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 
-#
-# NFS hat kein Konzept von "diesem Node zugeordnet" - der Share ist von ueberall
-# gleich erreichbar. Immediate ist damit richtig und spart eine Runde Warten.
-#
+# NFS kennt kein "diesem Node zugeordnet" - der Share ist überall gleich
+# erreichbar, Immediate spart eine Runde Warten.
 volumeBindingMode: Immediate
 
 mountOptions:
-  #
-  # v4.1 festgenagelt statt ausgehandelt. NFSv3 braeuchte rpcbind auf Port 111
-  # und einen eigenen Lock-Daemon; v4 fuehrt alles ueber 2049 und macht Locking
-  # im Protokoll. Gegenprobe auf dem Node:
-  #   kubectl -n csi-driver-nfs exec ds/csi-nfs-node -c nfs -- mount | grep nfs4
-  #
+  # v4.1 festgenagelt statt ausgehandelt: NFSv3 bräuchte rpcbind und einen
+  # eigenen Lock-Daemon, v4 führt alles über 2049 und lockt im Protokoll.
   - nfsvers=4.1
 
-  #
   # hard, nicht soft: Bei einer Unterbrechung wiederholt der Client, statt der
-  # Anwendung einen EIO zu liefern. "soft" verwandelt eine kurze Netzstoerung in
-  # stillen Datenverlust - fuer Datenbanken und Immich-Uploads gleichermassen
-  # der schlechtere Ausgang.
-  #
+  # Anwendung EIO zu liefern - "soft" wäre stiller Datenverlust.
   - hard
   - noatime
 
-  #
-  # Die drei folgenden sind die eigentliche Absicherung dieser Strecke, und
-  # sie sind noetig, weil NFS hier ohne Authentisierung laeuft.
-  #
-  # NFSv4.1 ohne `sec=krb5` bedeutet AUTH_SYS: Der Server glaubt die UID, die
-  # der Client schickt. Wer den Export erreicht, ist wer er behauptet zu sein.
-  # Getragen wird das allein von der Export-Regel auf dem Unraid-Host, die auf
-  # die Node-Adresse begrenzt sein muss - nicht auf 192.168.178.0/24 und schon
-  # gar nicht auf *. Gegenprobe, die keinen Zugang zum Host braucht:
+  # Die eigentliche Absicherung dieser Strecke, nötig weil NFS hier ohne
+  # Authentisierung läuft: NFSv4.1 ohne `sec=krb5` heißt AUTH_SYS, der Server
+  # glaubt die UID des Clients. Getragen wird das allein von der Export-Regel
+  # auf dem Unraid-Host, die auf die Node-Adresse begrenzt sein muss - steht
+  # dort ein Netz, ist alles Weitere hinfällig:
   #
   #   kubectl -n csi-driver-nfs exec ds/csi-nfs-node -c nfs -- \
   #     showmount -e 192.168.178.3
-  #   Export list for 192.168.178.3:
-  #   /mnt/user/k8s 192.168.178.230
   #
-  # Steht dort ein Netz statt der einen Adresse, ist alles Weitere hinfaellig.
+  # nosuid  Sonst genügt Schreibrecht auf dem Share, um dem Node eine
+  #         setuid-root-Binary unterzuschieben. PSS `restricted` entschärft
+  #         das, aber nicht in den `privileged`-Namespaces.
+  # nodev   Ein mitgebrachtes /dev/sda wäre sonst ein Weg an die Platte des
+  #         Hosts vorbei am Dateisystem.
+  # noexec  Ein Datenspeicher ist kein Ort für Programme. Muss ein Dienst hier
+  #         doch etwas ausführen, diese Zeile bewusst entfernen.
   #
-  # nosuid  Ein setuid-Bit auf einer Datei im Share wirkt nicht mehr. Ohne
-  #         das genuegt Schreibrecht auf dem Share, um dem Node eine
-  #         setuid-root-Binary unterzuschieben. PSS `restricted` setzt zwar
-  #         no_new_privs und entschaerft das - aber nicht in crowdsec,
-  #         csi-driver-nfs und local-path-storage, die `privileged` sind.
-  # nodev   Geraetedateien auf dem Share bleiben wirkungslos. Sonst waere ein
-  #         mitgebrachtes /dev/sda ein Weg an die Platte des Hosts vorbei am
-  #         Dateisystem.
-  # noexec  Nichts wird von hier ausgefuehrt. Das ist ein Datenspeicher -
-  #         Nextcloud-Uploads, Immich-Bilder, Paperless-Scans -, kein Ort fuer
-  #         Programme.
-  #
-  # Zu noexec, weil es die einzige der drei ist, die etwas kaputtmachen kann:
-  # Der Fehler ist laut und eindeutig ("Permission denied" beim exec, nicht
-  # beim Lesen). Wenn ein Dienst hier doch etwas ausfuehren muss, gehoert das
-  # ausdruecklich entschieden - dann diese Zeile entfernen und im Kommentar
-  # festhalten, welcher Dienst es war.
-  #
-  # sec=sys steht ausdruecklich da, obwohl es die Voreinstellung ist: Diese
-  # Strecke hat keine Authentisierung, und das soll man beim Lesen sehen und
-  # nicht wissen muessen. Der Weg zu echter Authentisierung waere krb5 mit
-  # einem KDC - auf Unraid ein eigenes Projekt und fuer ein Heimnetz, dessen
-  # Export auf eine Adresse begrenzt ist, kein gutes Verhaeltnis.
-  #
+  # sec=sys steht da, obwohl es die Voreinstellung ist: Man soll beim Lesen
+  # sehen, dass diese Strecke keine Authentisierung hat.
   - nosuid
   - nodev
   - noexec
