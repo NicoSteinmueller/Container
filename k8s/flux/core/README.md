@@ -56,8 +56,7 @@ hostPath verbietet schon `baseline`.
   Nebenwirkung scheitern `kubectl run`/`debug` ohne securityContext - gewollt.
 - **Ohne Stufe:** `kube-system` (Cilium bräuche mehr als `baseline`),
   `flux-system` (die Controller müssen anwenden, was im Repo steht),
-  `cilium-secrets` (gehört der Talos-Machine-Config, keine Pods), `whoami`
-  (legt das Chart an).
+  `cilium-secrets` (gehört der Talos-Machine-Config, keine Pods).
 
 ## Zweite Sperre gegen „versehentlich öffentlich“
 

@@ -27,8 +27,6 @@ spec:
     remediation:
       retries: 3
   values:
-    # --kubelet-insecure-tls unten, weil ein echtes Kubelet-Zertifikat
-    # serverTLSBootstrap voraussetzt, das vm/talos bewusst weglässt -
     replicas: 1
 
     podDisruptionBudget:
@@ -39,6 +37,8 @@ spec:
       - --kubelet-preferred-address-types=InternalIP
       - --kubelet-use-node-status-port
       - --metric-resolution=15s
+      # Ein echtes Kubelet-Zertifikat setzte serverTLSBootstrap voraus, das
+      # vm/talos bewusst weglässt.
       - --kubelet-insecure-tls
 
     args: []

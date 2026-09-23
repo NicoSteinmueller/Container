@@ -94,28 +94,13 @@ spec:
     - toEndpoints:
         - {}
 
-    # Namespaces mit Scrape-Zielen. Kommt einer dazu, gehört er hierher, sonst
-    # steht sein Target auf DOWN. Ohne Portangabe - den bestimmt der Exporter.
+    # Namespaces mit Scrape-Zielen. Ohne Portangabe - den bestimmt der Exporter.
+    # Nur die beiden, die das Default-Deny nicht trifft; jeder andere bräuchte
+    # zusätzlich eine Ingress-Regel für `monitoring` in seiner
+    # NetworkPolicies.yaml. Beides zusammen eintragen, sonst steht das Target
+    # auf DOWN. hostNetwork-Pods (csi-driver-nfs) laufen als `host`, nicht hier.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: kube-system
         - matchLabels:
-            io.kubernetes.pod.namespace: cnpg-system
-        - matchLabels:
-            io.kubernetes.pod.namespace: crowdsec
-        - matchLabels:
-            io.kubernetes.pod.namespace: csi-driver-nfs
-        - matchLabels:
             io.kubernetes.pod.namespace: flux-system
-        - matchLabels:
-            io.kubernetes.pod.namespace: headlamp
-        - matchLabels:
-            io.kubernetes.pod.namespace: local-path-storage
-        - matchLabels:
-            io.kubernetes.pod.namespace: reloader
-        - matchLabels:
-            io.kubernetes.pod.namespace: traefik-internal
-        - matchLabels:
-            io.kubernetes.pod.namespace: traefik-public
-        - matchLabels:
-            io.kubernetes.pod.namespace: whoami
