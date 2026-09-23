@@ -1,7 +1,7 @@
 # Produktiv-Cluster (talos-cp1).
 #
 # Ingress statt NodePort, seit ingress-internal steht
-# (k8s/flux/network/ingress-internal.yaml). whoami ist der
+# (k8s/flux/network/ingress-internal/). whoami ist der
 # Testdienst, an dem sich der Weg von außen zeigen soll - und der Weg ist
 # jetzt der über den Controller, nicht mehr der über Port 30083.
 #

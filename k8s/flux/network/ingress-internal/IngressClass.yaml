@@ -1,0 +1,14 @@
+# ingress-internal - IngressClass `internal`
+---
+# Nicht vom Chart, weil namespaced RBAC nichts Clusterweites anlegen darf.
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: internal
+  labels:
+    homelab.io/zone: internal
+  annotations:
+    homelab.io/beschreibung: >-
+      Nur aus dem Heimnetz erreichbar. Kein Weg aus dem Internet hierher.
+spec:
+  controller: traefik.io/ingress-controller

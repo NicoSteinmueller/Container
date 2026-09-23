@@ -1,5 +1,5 @@
 # Die zweite Sperre gegen "privater Dienst versehentlich öffentlich": Neben dem
-# Eintrag in ../network/ingress-public.yaml braucht es das Label am Namespace.
+# Eintrag in ../network/ingress-public/ braucht es das Label am Namespace.
 #
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
@@ -33,7 +33,7 @@ spec:
         ingressClassName "public" ist nur in Namespaces mit dem Label
         homelab.io/zone=public erlaubt. Dieser Ingress waere aus dem Internet
         erreichbar gewesen. Gewollt? Dann das Label am Namespace setzen UND
-        den Namespace in ../network/ingress-public.yaml eintragen - beides, sonst wird
+        den Namespace in network/ingress-public/ eintragen - beides, sonst wird
         er ohnehin nicht bedient.
 
 ---

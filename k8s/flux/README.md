@@ -15,12 +15,57 @@ cert-manager-issuers/             eigener Pfad: CRDs entstehen erst mit dem Rele
 grafana-dashboards/               eigener Pfad: braucht eine kustomization.yaml
 ```
 
-Jede Gruppe mit fremden Charts trägt ihre `HelmRepository`-Objekte in einer
-eigenen `sources.yaml`, nicht bei der Komponente: Eine Quelle kann mehreren
-gehören (traefik), und wer eine Komponente entfernt, soll den anderen nicht die
-Quelle wegnehmen. Ausnahme sind die `GitRepository`-Quellen in `storage/`: Dort
-pinnt die Quelle selbst die Version (Tag und Chart-Pfad), sie gehört deshalb zur
-HelmRelease in dieselbe Datei.
+### Innerhalb einer Gruppe
+
+Alle Gruppen sind gleich gebaut: ein Ordner je Komponente, darin Dateien mit
+festen Namen. Flux sammelt die Unterordner von selbst ein, es braucht keine
+`kustomization.yaml`.
+
+**Dateinamen in PascalCase**, Ordner in kebab-case wie die Kubernetes-Namen
+(`ingress-public/HelmRelease.yaml`). Abkürzungen schreiben sich wie im Kind:
+`TLSOption.yaml`, `IPPool.yaml`, `RBAC.yaml`. Ausnahmen: `kustomization.yaml`,
+den Namen verlangt kustomize, und die Dashboard-JSONs in `grafana-dashboards/` -
+aus ihrem Dateinamen wird der Schlüssel in der ConfigMap.
+
+Ein Ordner nur, wenn er mehr als eine Datei hält - sonst wäre er Ordner um
+eine Datei:
+
+- **Komponente mit einer Datei** liegt als `<Komponente>.yaml` direkt in der
+  Gruppe (`apps/Whoami.yaml`, `core/Namespaces.yaml`,
+  `observability/Loki.yaml`).
+- **Gruppe aus einer Komponente** trägt deren Dateien selbst
+  (`cert-manager-issuers/`, `grafana-dashboards/`).
+
+```
+network/
+├── README.md                 Gruppe und Komponenten, das Warum
+├── Sources.yaml              die HelmRepositories der Gruppe
+├── lb-ipam/                  …
+└── ingress-public/
+    ├── HelmRelease.yaml      Kopfkommentar der Komponente, dann die HelmRelease
+    ├── NetworkPolicies.yaml  NetworkPolicy und CiliumNetworkPolicy
+    ├── RBAC.yaml             ServiceAccount, (Cluster)Role, Bindings
+    ├── Middlewares.yaml      alles Weitere: eine Datei je Art,
+    └── ...                   IngressClass.yaml, TLSOption.yaml, StorageClass.yaml …
+```
+
+- **`HelmRelease.yaml`** ist die Hauptdatei: Ihr Kopfkommentar sagt, was die
+  Komponente ist. Hat eine Komponente keine HelmRelease (`lb-ipam`,
+  `cert-manager-issuers`), trägt die erste Datei nach Art diesen Kopf.
+- **Andere Dateien** beginnen mit einer Zeile `# <komponente> - <was>`.
+- **Reihenfolge** der Objekte in einer Datei: was andere braucht, zuerst -
+  Quelle vor HelmRelease, ServiceAccount vor Rollen und Bindings. Gelesen wird
+  eine Komponente am besten in der Folge Policies → RBAC → Konfiguration →
+  HelmRelease.
+- **`Sources.yaml`** statt bei der Komponente: Eine Quelle kann mehreren
+  gehören (traefik), und wer eine Komponente entfernt, soll den anderen nicht
+  die Quelle wegnehmen. Ausnahme sind die `GitRepository`-Quellen in
+  `storage/`: Dort pinnt die Quelle selbst die Version (Tag und Chart-Pfad),
+  sie steht deshalb in `HelmRelease.yaml` direkt vor der HelmRelease.
+- **Verweise** zwischen Dateien nennen die Datei (`RBAC.yaml`,
+  `../lb-ipam/IPPool.yaml`), nicht „oben“ oder „unten“. Betrifft etwas mehrere
+  Dateien einer Komponente - etwa einen Namespace für Traefik freischalten -,
+  zeigt der Verweis auf den Ordner.
 
 Was in welcher Gruppe liegt, wie sie voneinander abhängen und welche Regeln für
 alle gelten (Egress, Herkunft der Charts), steht in
@@ -40,5 +85,6 @@ kommen, legt der Bootstrap an: [`../bootstrap/README.md`](../bootstrap/README.md
 
 Wert in `homelab-secrets` ändern, committen, pushen. Flux schreibt das Secret
 neu, und Reloader startet neu, was es benutzt
-([`platform/reloader.yaml`](platform/reloader.yaml)). Dafür ist in keinem Chart
-etwas einzutragen — aber der Namespace gehört in die Liste dort.
+([`platform/reloader/HelmRelease.yaml`](platform/reloader/HelmRelease.yaml)).
+Dafür ist in keinem Chart etwas einzutragen — aber der Namespace gehört in die
+Liste dort.

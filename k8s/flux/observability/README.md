@@ -1,18 +1,20 @@
 # observability
 
 Metriken, Logs und die Auslastungsanzeigen — alles im Namespace `monitoring`,
-für den `monitoring-egress` aus [`monitoring.yaml`](monitoring.yaml) gilt.
+für den `monitoring-egress` aus [`monitoring/NetworkPolicies.yaml`](monitoring/NetworkPolicies.yaml) gilt.
 
-| Datei | Was |
+| Komponente | Was |
 |---|---|
-| [`monitoring.yaml`](monitoring.yaml) | kube-prometheus-stack: Operator, Prometheus, Alertmanager, kube-state-metrics, node-exporter, Grafana |
-| [`logs.yaml`](logs.yaml) | Loki als Speicher, Alloy als Sammler |
-| [`metrics-server.yaml`](metrics-server.yaml) | `kubectl top` und die Balken in Headlamp |
+| [`monitoring/`](monitoring) | kube-prometheus-stack: Operator, Prometheus, Alertmanager, kube-state-metrics, node-exporter, Grafana |
+| [`Loki.yaml`](Loki.yaml) | Speicher für die Logs |
+| [`Alloy.yaml`](Alloy.yaml) | sammelt die Logs und schreibt sie nach Loki |
+| [`MetricsServer.yaml`](MetricsServer.yaml) | `kubectl top` und die Balken in Headlamp |
+| [`Sources.yaml`](Sources.yaml) | HelmRepositories `prometheus-community`, `grafana`, `metrics-server` |
 
 Die eigenen Dashboards liegen in [`../grafana-dashboards`](../grafana-dashboards)
 — eigene Gruppe, weil ein `configMapGenerator` eine `kustomization.yaml` braucht.
 
-## `monitoring.yaml`
+## `monitoring/`
 
 Grafana unter `grafana.k8s.nico-steinmueller.de`.
 
@@ -24,7 +26,7 @@ steht (2026-09-18, Requests bei 15 %), ist das Argument weg. Umgestellt am
 - **Kein Sync-Job.** Der VM-Chart holte Dashboards und Regeln beim Deployen aus
   dem Netz — eine bewegliche Quelle. Jetzt liegen beide in der gepinnten Chart.
 - **Die `monitoring.coreos.com`-CRDs kommen mit.** Vorher fehlten sie;
-  `serviceMonitor.enabled: true` in [`../platform/reloader.yaml`](../platform/reloader.yaml)
+  `serviceMonitor.enabled: true` in [`../platform/reloader/HelmRelease.yaml`](../platform/reloader/HelmRelease.yaml)
   wäre kein Schalter gewesen, sondern ein Fehlschlag der HelmRelease.
 - **Kein Internet-Egress mehr im Namespace.**
 
@@ -89,7 +91,7 @@ kubectl -n kube-system exec ds/cilium -- \
   hubble observe --namespace monitoring --type drop --last 100
 ```
 
-## `logs.yaml`
+## `Loki.yaml` und `Alloy.yaml`
 
 **Warum Loki:** Grafana kennt genau zwei Log-Datasources ohne Plugin, Loki und
 Elasticsearch. VictoriaLogs wäre als Dienst einfacher, braucht aber ein Plugin —
@@ -119,7 +121,7 @@ Geschichte statt nach einer Stunde verfallen.
 
 Der Alloy-Config ist mit `alloy validate` gegen `grafana/alloy:v1.19.2` geprüft.
 
-## `metrics-server.yaml`
+## `MetricsServer.yaml`
 
 Läuft in `kube-system` mit `--kubelet-insecure-tls`. Ohne ihn bleiben die
 Auslastungsbalken in Headlamp leer und `kubectl top` antwortet nicht.

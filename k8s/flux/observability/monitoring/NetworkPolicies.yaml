@@ -1,0 +1,141 @@
+# monitoring - Netzwerkregeln im Namespace `monitoring`
+---
+# Im LAN erreichbar ist nur Grafana
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# Prometheus scrapt den eigenen Namespace. `podSelector: {}` unter `from` heißt
+# "alle Pods im selben Namespace", nicht "im Cluster".
+#
+# Jeder Namespace mit eigenem default-deny-ingress braucht eine eigene Regel,
+# sobald Prometheus ihn scrapen soll.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-monitoring
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-ingress-internal
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik-internal
+      ports:
+        - protocol: TCP
+          port: 3000
+
+---
+# Der Admission-Webhook des Operators, angerufen vom kube-apiserver.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: monitoring-operator-webhook
+  namespace: monitoring
+spec:
+  endpointSelector:
+    matchLabels:
+      app: kube-prometheus-stack-operator
+  ingress:
+    - fromEntities:
+        - kube-apiserver
+        - host
+      toPorts:
+        - ports:
+            - port: "10250"
+              protocol: TCP
+
+---
+# Egress-Default-Deny: Dieser Namespace hat keinen Weg ins Internet.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: monitoring-egress
+  namespace: monitoring
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    # Prometheus (Targets), Operator (CRs), kube-state-metrics, Alloy (Pod-Metadaten).
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+
+    # Was auf dem Node lauscht, trägt die Identität `host` und ist über
+    # `toEndpoints` nicht erreichbar: 10250 Kubelet, 9100 node-exporter.
+    - toEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "10250"
+              protocol: TCP
+            - port: "9100"
+              protocol: TCP
+
+    - toEndpoints:
+        - {}
+
+    # Namespaces mit Scrape-Zielen. Kommt einer dazu, gehört er hierher, sonst
+    # steht sein Target auf DOWN. Ohne Portangabe - den bestimmt der Exporter.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+        - matchLabels:
+            io.kubernetes.pod.namespace: cnpg-system
+        - matchLabels:
+            io.kubernetes.pod.namespace: crowdsec
+        - matchLabels:
+            io.kubernetes.pod.namespace: csi-driver-nfs
+        - matchLabels:
+            io.kubernetes.pod.namespace: flux-system
+        - matchLabels:
+            io.kubernetes.pod.namespace: headlamp
+        - matchLabels:
+            io.kubernetes.pod.namespace: local-path-storage
+        - matchLabels:
+            io.kubernetes.pod.namespace: reloader
+        - matchLabels:
+            io.kubernetes.pod.namespace: traefik-internal
+        - matchLabels:
+            io.kubernetes.pod.namespace: traefik-public
+        - matchLabels:
+            io.kubernetes.pod.namespace: whoami

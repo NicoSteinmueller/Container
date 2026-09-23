@@ -1,12 +1,12 @@
 # core
 
 Der Boden, auf dem alle anderen Gruppen stehen — und deshalb die einzige, auf
-die alle warten ([`../sync/core.yaml`](../sync/core.yaml)).
+die alle warten ([`../sync/Core.yaml`](../sync/Core.yaml)).
 
-| Datei | Inhalt |
+| Komponente | Inhalt |
 |---|---|
-| [`namespaces.yaml`](namespaces.yaml) | alle Namespaces des Clusters mit ihrer Pod-Security-Stufe |
-| [`public-ingress-policy.yaml`](public-ingress-policy.yaml) | `ValidatingAdmissionPolicy`: `ingressClassName: public` nur in Namespaces mit `homelab.io/zone=public` |
+| [`Namespaces.yaml`](Namespaces.yaml) | alle Namespaces des Clusters mit ihrer Pod-Security-Stufe |
+| [`PublicIngressPolicy.yaml`](PublicIngressPolicy.yaml) | `ValidatingAdmissionPolicy`: `ingressClassName: public` nur in Namespaces mit `homelab.io/zone=public` |
 
 ## Pod Security
 
@@ -31,7 +31,7 @@ ohne `namespace:` landet genau dort. Nebenwirkung: `kubectl run` und
 Testpod lästig, und genau so gemeint.
 
 `kube-system`, `flux-system` und `cilium-secrets` bleiben bewusst ohne Stufe;
-die Begründung steht im Kopf von [`namespaces.yaml`](namespaces.yaml).
+die Begründung steht im Kopf von [`Namespaces.yaml`](Namespaces.yaml).
 
 ## Warum alle Namespaces hier liegen
 
@@ -45,8 +45,8 @@ Ausnahme ist `whoami`: Den legt das lokale Chart an, Helm besitzt ihn.
 
 ## Die zweite Sperre gegen „versehentlich öffentlich"
 
-Ohne `public-ingress-policy.yaml` gäbe es genau eine: die Namespace-Liste in
-[`../network/ingress-public.yaml`](../network/ingress-public.yaml). Ein
+Ohne `PublicIngressPolicy.yaml` gäbe es genau eine: die Namespace-Liste in
+[`../network/ingress-public/`](../network/ingress-public/HelmRelease.yaml). Ein
 Namespace zu viel darin, und ein interner Dienst hängt am öffentlichen
 Controller. Mit der Policy müssen es zwei Fehler gleichzeitig sein — der Eintrag
 in der Liste **und** das Label am Namespace —, und beide stehen in Git.

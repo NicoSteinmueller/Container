@@ -1,0 +1,238 @@
+# ingress-public - Ingress-Controller aus dem Internet
+# Namespace: traefik-public
+#
+# Eigener Controller statt zweitem Entrypoint des internen: eigene Adresse,
+# eigenes RBAC, eigener Zertifikatsspeicher.
+#
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: traefik-public
+  namespace: flux-system
+spec:
+  interval: 10m
+  releaseName: traefik-public
+  targetNamespace: traefik-public
+  storageNamespace: traefik-public
+  chart:
+    spec:
+      chart: traefik
+      version: "41.3.0"
+      sourceRef:
+        kind: HelmRepository
+        name: traefik
+        namespace: flux-system
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    deployment:
+      kind: Deployment
+      replicas: 1
+
+      # Der Schlüssel im Secret crowdsec-bouncer-key (homelab-secrets)
+      additionalVolumes:
+        - name: crowdsec-key
+          secret:
+            secretName: crowdsec-bouncer-key
+            defaultMode: 0400
+
+        # Die CA, gegen die das Plugin die LAPI prüft. Das Certificate steht in
+        # ../../cert-manager-issuers/Certificates.yaml; gebraucht wird nur
+        # ca.crt.
+        - name: crowdsec-ca
+          secret:
+            secretName: traefik-public-crowdsec-ca
+            items:
+              - key: ca.crt
+                path: ca.crt
+            defaultMode: 0444
+
+    # Recreate wegen acme.json
+    updateStrategy:
+      type: Recreate
+      rollingUpdate: null
+
+    podSecurityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      runAsNonRoot: true
+      fsGroup: 65532
+      seccompProfile:
+        type: RuntimeDefault
+
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+
+    # Traefik lädt das Plugin beim Start von plugins.traefik.io - Code aus dem
+    # Internet im Anfragepfad, deshalb feste Version. `abortOnPluginFailure`:
+    # fällt der Download aus, startet Traefik nicht statt ohne Bouncer.
+    experimental:
+      abortOnPluginFailure: true
+      plugins:
+        crowdsec-bouncer:
+          moduleName: github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
+          version: v1.6.0
+
+    additionalVolumeMounts:
+      - name: crowdsec-key
+        mountPath: /crowdsec
+        readOnly: true
+      - name: crowdsec-ca
+        mountPath: /crowdsec-ca
+        readOnly: true
+
+    ports:
+      web:
+        port: 8000
+        exposedPort: 80
+        expose:
+          default: true
+        # Nur zum Weiterleiten - HSTS kommt erst über HTTPS an.
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
+              permanent: true
+
+      websecure:
+        port: 8443
+        exposedPort: 443
+        expose:
+          default: true
+        http:
+          # Am Entrypoint, damit kein Ingress die Kette vergessen kann.
+          middlewares:
+            - traefik-public-public-chain@kubernetescrd
+          tls:
+            enabled: true
+            # Zertifikat je Router statt Wildcard
+            certResolver: letsencrypt
+
+        forwardedHeaders:
+          # Kein Proxy davor
+          trustedIPs: []
+          insecure: false
+
+    # .232 aus dem Pool `lan` (../lb-ipam/IPPool.yaml), .231 gehört dem internen.
+    service:
+      enabled: true
+      annotations:
+        lbipam.cilium.io/ips: "192.168.178.232"
+      spec:
+        type: LoadBalancer
+        # Ohne `externalTrafficPolicy: Local` ersetzt SNAT die Client-Adresse durch
+        # die des Nodes - CrowdSec sähe die ganze Welt unter einer Quelle.
+        externalTrafficPolicy: Local
+        # die Portfreigabe soll auf eine eigene Adresse zeigen
+        allocateLoadBalancerNodePorts: false
+
+    # Let's Encrypt per DNS-01 über IONOS, je Name.
+    certificatesResolvers:
+      letsencrypt:
+        acme:
+          email: nico.steinmueller@gmx.net
+          storage: /data/acme.json
+          # PRODUKTIV, Staging wäre acme-staging-v02.api.letsencrypt.org.
+          # Bei jedem Wechsel muss acme.json weg, sie trägt Zertifikat und
+          # ACME-Konto:
+          #
+          #   kubectl -n traefik-public exec deploy/traefik-public \
+          #     -- rm -f /data/acme.json
+          #   kubectl -n traefik-public rollout restart deploy/traefik-public
+          caServer: https://acme-v02.api.letsencrypt.org/directory
+          keyType: EC256
+          dnsChallenge:
+            provider: ionos
+            resolvers:
+              - 1.1.1.1:53
+              - 8.8.8.8:53
+            propagation:
+              delayBeforeChecks: 30s
+
+    env:
+      - name: IONOS_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: traefik-ionos
+            key: IONOS_API_KEY
+
+    # Eigenes acme.json
+    persistence:
+      enabled: true
+      name: data
+      accessMode: ReadWriteOnce
+      size: 128Mi
+      storageClass: local-path
+      path: /data
+
+    rbac:
+      enabled: false
+
+    serviceAccount:
+      name: traefik-public
+
+    ingressClass:
+      enabled: false
+
+    providers:
+      kubernetesIngress:
+        enabled: true
+        ingressClass: public
+        allowExternalNameServices: false
+        # Sicherheitsgrenze: was hier nicht steht, wird nicht bedient
+        # Der eigene Namespace muss mit rein.
+        namespaces:
+          - traefik-public
+          - whoami
+
+      kubernetesCRD:
+        enabled: true
+        allowCrossNamespace: false
+        allowExternalNameServices: false
+        # Der eigene Namespace ist zwingend: Kette, TLSOption und Middlewares
+        # sind CRDs und liegen dort.
+        namespaces:
+          - traefik-public
+          - whoami
+
+      kubernetesGateway:
+        enabled: false
+
+    # Kein Dashboard
+    ingressRoute:
+      dashboard:
+        enabled: false
+      healthcheck:
+        enabled: false
+
+    # Das Zugriffslog ist die Eingabe für den CrowdSec-Agent - ohne es hätte
+    # der Bouncer nie etwas zu sperren.
+    log:
+      level: INFO
+
+    accessLog:
+      enabled: true
+      format: json
+      fields:
+        general:
+          defaultmode: keep
+        headers:
+          defaultmode: drop
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 256Mi

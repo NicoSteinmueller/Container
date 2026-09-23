@@ -1,0 +1,88 @@
+# crowdsec - Netzwerkregeln im Namespace `crowdsec`
+---
+# Die LAPI hat außer dem Bouncer-Schlüssel keine Authentifizierung.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: crowdsec
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# Erlaubt sind nur der Bouncer aus traefik-public und der Agent nebenan.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-lapi-from-ingress-public
+  namespace: crowdsec
+spec:
+  podSelector:
+    # `k8s-app`, nicht `app.kubernetes.io/name` - das Chart setzt die alte
+    # Schreibweise. Danebengegriffen ist die LAPI unerreichbar.
+    matchLabels:
+      k8s-app: crowdsec
+      type: lapi
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik-public
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: crowdsec
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# Egress-Default-Deny: Der Agent verarbeitet mit den Zugriffslogs von außen
+# bestimmte Eingaben und käme sonst an jedes Gerät im Heimnetz.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: crowdsec-egress
+  namespace: crowdsec
+spec:
+  endpointSelector: {}
+  egress:
+    # DNS - sonst scheitert schon der LAPI-Name.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    # Agent -> LAPI, derselbe Selektor wie im Ingress oben.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: crowdsec
+            k8s-app: crowdsec
+            type: lapi
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
+    # LAPI -> Central API und Hub. Das `except` ist die eigentliche Regel:
+    # Internet ja, Heimnetz nein.
+    - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+            - 169.254.0.0/16
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
