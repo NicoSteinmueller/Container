@@ -4,7 +4,7 @@
 # Talos legt das Volume selbst an und mountet es unter /var/mnt/${volume_name};
 # der Pfad ergibt sich aus dem Namen und laesst sich nicht frei waehlen. Das
 # Partitionslabel wird zu u-${volume_name}. Von dort holt es sich
-# local-path-provisioner (k8s/flux/clusters/talos-cp1/local-path.yaml).
+# local-path-provisioner (k8s/flux/storage/local-path.yaml).
 #
 # Ein eigenes Volume auf eigener Disk entkoppelt den Speicher der
 # Datenbanken davon - laeuft EPHEMERAL voll, ist das ein Problem des Clusters
