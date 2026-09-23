@@ -1,14 +1,5 @@
 # Monitoring - kube-prometheus-stack.
 ---
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: prometheus-community
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: https://prometheus-community.github.io/helm-charts
----
 # Namespace `monitoring`
 ---
 # Im LAN erreichbar ist nur Grafana

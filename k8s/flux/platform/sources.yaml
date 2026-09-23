@@ -1,0 +1,35 @@
+# Chart-Quellen der Gruppe platform.
+#
+# Getrennt von den Komponenten, weil eine Quelle mehreren gehören kann - wer
+# eine Komponente entfernt, soll nicht nebenbei einer anderen die Quelle
+# wegnehmen. Die Version pinnt jeweils die HelmRelease, nicht die Quelle.
+---
+# cert-manager
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: jetstack
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://charts.jetstack.io
+---
+# cloudnative-pg
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: cloudnative-pg
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://cloudnative-pg.io/charts
+---
+# reloader
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: stakater
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://stakater.github.io/stakater-charts

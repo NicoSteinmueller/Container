@@ -135,7 +135,7 @@ kubectl -n kube-system exec ds/cilium -- \
 
 Jede Fremdquelle ist unveränderlich gepinnt. Der Grund in einem Satz:
 `kustomize-controller` und `helm-controller` sind an `cluster-admin` gebunden
-(`multitenant: false`, ein Autor — siehe [../README.md](../README.md)). Was als
+(`multitenant: false`, ein Autor — siehe [../../bootstrap/README.md](../../bootstrap/README.md)). Was als
 Chart hereinkommt, wird mit den höchsten Rechten des Clusters gerendert. Eine
 bewegliche Quelle ist damit gleichbedeutend mit fremdem Code als Cluster-Admin.
 
@@ -143,7 +143,7 @@ bewegliche Quelle ist damit gleichbedeutend mit fremdem Code als Cluster-Admin.
 |---|---|
 | `local-path-provisioner` | GitRepository auf **Tag** `v0.0.37` |
 | `csi-driver-nfs` | GitRepository auf **Tag** `v4.13.4`, Chart aus `charts/v4.13.4/` |
-| Traefik, CrowdSec, Headlamp, metrics-server, Reloader, CloudNativePG, cert-manager, kube-prometheus-stack, Loki, Alloy | HelmRepository über HTTPS, Chart-Version exakt gepinnt |
+| Traefik, CrowdSec, Headlamp, metrics-server, Reloader, CloudNativePG, cert-manager, kube-prometheus-stack, Loki, Alloy | HelmRepository über HTTPS in `sources.yaml` der Gruppe, Chart-Version exakt in der HelmRelease gepinnt |
 | Grafana-Dashboards und Alarmregeln | in der Chart, also mit `version:` mitgepinnt — eigene dazu über [`../grafana-dashboards`](../grafana-dashboards) |
 | Container-Images | Tag, teils zusätzlich Digest |
 

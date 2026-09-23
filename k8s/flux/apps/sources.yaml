@@ -1,0 +1,15 @@
+# Chart-Quellen der Gruppe apps.
+#
+# Getrennt von den Komponenten, weil eine Quelle mehreren gehören kann - wer
+# eine Komponente entfernt, soll nicht nebenbei einer anderen die Quelle
+# wegnehmen. Die Version pinnt jeweils die HelmRelease, nicht die Quelle.
+---
+# headlamp
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: headlamp
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://kubernetes-sigs.github.io/headlamp/

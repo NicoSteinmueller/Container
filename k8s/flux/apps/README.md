@@ -10,7 +10,7 @@ hängt — sie darf scheitern, ohne dass eine andere davon erfährt.
 
 ## `headlamp.yaml`
 
-Fremder Chart, deshalb eine eigene `HelmRepository`. RBAC steht als eigene
+Fremder Chart, deshalb eine eigene `HelmRepository` (in `sources.yaml`). RBAC steht als eigene
 Manifeste in der Datei, weil das Chart seinen ServiceAccount ab Werk an
 `cluster-admin` bindet (`clusterRoleBinding.create: false`):
 

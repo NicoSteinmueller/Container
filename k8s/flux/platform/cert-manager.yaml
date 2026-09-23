@@ -4,15 +4,6 @@
 # Pod-Namen bei der LAPI. Startet der Container neu, ohne dass der Pod neu
 # entsteht, sind die lokalen Zugangsdaten weg und der Name noch da.
 ---
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: jetstack
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: https://charts.jetstack.io
----
 # Namespace `cert-manager`
 ---
 # Nur Egress, kein Ingress: Der kube-apiserver muss den Webhook auf 10250
