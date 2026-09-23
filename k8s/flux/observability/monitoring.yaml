@@ -1,10 +1,4 @@
-#
-# Monitoring - kube-prometheus-stack. Logs stehen in logs.yaml, gleiche
-# Namespace, also gilt monitoring-egress von hier fuer beide.
-#
-# Alertmanager laeuft ohne Route - jeder Alarm endet im `null`-Receiver der
-# Chart. Der Weg dahin (ntfy im Cluster, Bruecke, Watchdog nach draussen).
-#
+# Monitoring - kube-prometheus-stack.
 ---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -15,9 +9,9 @@ spec:
   interval: 1h
   url: https://prometheus-community.github.io/helm-charts
 ---
-# Namespace `monitoring`: ../core/namespaces.yaml
+# Namespace `monitoring`
 ---
-# Von aussen erreichbar ist nur Grafana, und nur ueber ingress-internal.
+# Im LAN erreichbar ist nur Grafana
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -28,14 +22,11 @@ spec:
   policyTypes:
     - Ingress
 ---
+# Prometheus scrapt den eigenen Namespace. `podSelector: {}` unter `from` heißt
+# "alle Pods im selben Namespace", nicht "im Cluster".
 #
-# Prometheus scrapt den eigenen Namespace. `podSelector: {}` unter `from` heisst
-# "alle Pods im selben Namespace", nicht "im Cluster" - die Grenze nach aussen
-# bleibt stehen.
-#
-# Jeder Namespace mit eigenem default-deny-ingress (crowdsec, headlamp,
-# traefik-*) braucht eine eigene Regel, sobald Prometheus ihn scrapen soll.
-#
+# Jeder Namespace mit eigenem default-deny-ingress braucht eine eigene Regel,
+# sobald Prometheus ihn scrapen soll.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -69,17 +60,7 @@ spec:
         - protocol: TCP
           port: 3000
 ---
-#
-# Der Admission-Webhook des Operators, angerufen vom kube-apiserver. Fehlt
-# diese Ausnahme, nimmt der Cluster keine PrometheusRule- und
-# ServiceMonitor-Objekte mehr an - und die Meldung redet von einem Timeout
-# gegen einen Service, der laeuft.
-#
-# `fromEntities`, weil eine kind: NetworkPolicy es nicht kann: Der
-# kube-apiserver ist auf Talos ein Static Pod mit hostNetwork.
-#
-# 10250 ist hier prometheusOperator.tls.internalPort, nicht das Kubelet.
-#
+# Der Admission-Webhook des Operators, angerufen vom kube-apiserver.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -98,11 +79,7 @@ spec:
             - port: "10250"
               protocol: TCP
 ---
-#
-# Egress-Default-Deny. Dieser Namespace hat **keinen Weg ins Internet**, fuer
-# keinen Pod - Dashboards und Regeln kommen aus der Chart und aus
-# ../sync/grafana-dashboards.yaml.
-#
+# Egress-Default-Deny: Dieser Namespace hat keinen Weg ins Internet.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -122,8 +99,7 @@ spec:
             - port: "53"
               protocol: TCP
 
-    # Prometheus (Targets), Operator (CRs), kube-state-metrics, Alloy
-    # (Pod-Metadaten und Events). `toPorts` ist Pflicht, siehe ../apps/headlamp.yaml.
+    # Prometheus (Targets), Operator (CRs), kube-state-metrics, Alloy (Pod-Metadaten).
     - toEntities:
         - kube-apiserver
       toPorts:
@@ -131,17 +107,8 @@ spec:
             - port: "6443"
               protocol: TCP
 
-    #
-    # Was auf dem Node lauscht, traegt die Identitaet `host` und ist ueber
+    # Was auf dem Node lauscht, trägt die Identität `host` und ist über
     # `toEndpoints` nicht erreichbar: 10250 Kubelet, 9100 node-exporter.
-    #
-    # node-exporter laeuft mit hostNetwork und ist deshalb *kein* Pod-Endpunkt,
-    # obwohl er in diesem Namespace steht - die toEndpoints-Regel unten deckt
-    # ihn nicht ab.
-    #
-    # Ports statt `toEntities: [host]` allein: sonst waere auch apid auf 50000
-    # offen.
-    #
     - toEntities:
         - host
       toPorts:
@@ -151,15 +118,11 @@ spec:
             - port: "9100"
               protocol: TCP
 
-    # Eigener Namespace. node-exporter gehoert nicht hierher, siehe `host`.
     - toEndpoints:
         - {}
 
-    #
-    # Namespaces mit Scrape-Zielen. Kommt einer dazu, gehoert er hierher - sein
-    # Target steht sonst auf DOWN. Ohne Portangabe: Welchen Port ein Exporter
-    # hat, entscheidet dessen Chart.
-    #
+    # Namespaces mit Scrape-Zielen. Kommt einer dazu, gehört er hierher, sonst
+    # steht sein Target auf DOWN. Ohne Portangabe - den bestimmt der Exporter.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: kube-system
@@ -192,8 +155,7 @@ metadata:
 spec:
   interval: 1h
   targetNamespace: monitoring
-  # Kurz, sonst stellt Flux `<namespace>-<name>` davor und die Objektnamen
-  # laufen in die 63-Zeichen-Grenze fuer Labels.
+  # Kurz
   releaseName: kube-prometheus-stack
   chart:
     spec:
@@ -209,9 +171,8 @@ spec:
     remediation:
       retries: 3
   upgrade:
-    # Die Operator-CRDs liegen in einem echten crds/-Verzeichnis, Helm laesst
-    # die bei einem Upgrade ab Werk unberuehrt. Ohne CreateReplace laeuft der
-    # Cluster mit alten CRDs und neuem Operator weiter.
+    # Die Operator-CRDs liegen in einem echten crds/-Verzeichnis, das Helm beim
+    # Upgrade ab Werk unberührt lässt
     crds: CreateReplace
     remediation:
       retries: 3
@@ -221,17 +182,11 @@ spec:
       enabled: true
       prometheusSpec:
         retention: 30d
-        # Zweite Grenze, und die wichtigere: `local-path` erzwingt die
-        # PVC-Groesse nicht. Etwas unter 20Gi, weil Prometheus pro Block prueft.
+        # Die wichtigere Grenze: `local-path` erzwingt die PVC-Größe nicht.
         retentionSize: 18GiB
 
-        #
-        # Ab Werk `true`, und dann beachtet Prometheus nur Objekte mit dem
-        # Release-Label dieser Chart. Alles aus fremden Charts wuerde
-        # stillschweigend ignoriert - kein Fehler, das Target erscheint einfach
-        # nicht. Deshalb ist `serviceMonitor.enabled: true` in ../platform/reloader.yaml
-        # ueberhaupt erst wirksam.
-        #
+        # Ab Werk `true` - dann beachtet Prometheus nur Objekte mit dem
+        # Release-Label dieses Charts und ignoriert fremde stillschweigend.
         serviceMonitorSelectorNilUsesHelmValues: false
         podMonitorSelectorNilUsesHelmValues: false
         ruleSelectorNilUsesHelmValues: false
@@ -245,8 +200,7 @@ spec:
                 - ReadWriteOnce
               resources:
                 requests:
-                  # Ohne storageClassName, also `local-path` - die vDisk fuer
-                  # alles mit fsync (../storage/README.md).
+                  # `local-path`
                   storage: 20Gi
 
         resources:
@@ -284,12 +238,7 @@ spec:
           memory: 192Mi
       admissionWebhooks:
         enabled: true
-        #
-        # Beim Install `Ignore`, danach `Fail`. Noetig, weil Helm die
-        # PrometheusRules im selben Durchlauf anwendet wie das
-        # Operator-Deployment und nicht auf dessen Readiness wartet - der
-        # Webhook antwortet dann noch nicht.
-        #
+        # Beim Install `Ignore`, danach `Fail`
         failurePolicy: IgnoreOnInstallOnly
         # Zertifikate vom vorhandenen cert-manager
         certManager:
@@ -301,8 +250,7 @@ spec:
       enabled: true
       defaultDashboardsEnabled: true
 
-      # Secret `grafana-admin` mit `admin-user`/`admin-password` muss in
-      # homelab-secrets liegen, sonst startet der Pod nicht.
+      # Secret `grafana-admin` mit `admin-user`/`admin-password`
       admin:
         existingSecret: grafana-admin
         userKey: admin-user
@@ -318,8 +266,7 @@ spec:
         hosts:
           - grafana.k8s.nico-steinmueller.de
 
-      # Prometheus legt die Chart selbst an, Loki nicht. Beides sind
-      # Core-Datasources - kein Plugin, kein eigenes Image.
+      # Prometheus legt die Charts selbst an, Loki nicht.
       additionalDataSources:
         - name: Loki
           type: loki
@@ -338,24 +285,7 @@ spec:
         news:
           news_feed_enabled: false
         plugins:
-          #
-          # Ohne das startet Grafana nicht. Grafana 13 versucht beim Start eine
-          # Liste von Plugins von grafana.com nachzuladen - darunter
-          # `prometheus`, `loki`, `jaeger`, `mysql`, `tempo`. Dieser Namespace
-          # hat keinen Weg ins Internet, jeder Versuch laeuft in einen Timeout,
-          # und die Datasource-Provisionierung greift auf den noch leeren
-          # Plugin-Store zu:
-          #
-          #   Failed to provision data sources: data source not found
-          #   Error: invalid service state: Failed ... starting module provisioning
-          #
-          # Danach beendet sich der Prozess. Die Plugins selbst fehlen nicht -
-          # prometheus, loki und alertmanager liegen im Image unter
-          # public/app/plugins/datasource/. Es ist Grafanas eingebaute
-          # `preinstall`-Liste, nicht ein Update: `preinstall_auto_update`
-          # setzt die Chart ohnehin schon auf `false`. Nur
-          # `preinstall_disabled` schaltet das Nachladen selbst ab.
-          #
+          # Deaktiviert das automatische Nachladen der Plugin-Liste von grafana.com.
           preinstall_disabled: true
 
       resources:
@@ -365,17 +295,9 @@ spec:
         limits:
           memory: 768Mi
 
-    #
-    # Auf Talos nicht scrapebar, waeren also dauerhaft rote Targets: etcd
-    # lauscht auf 2379 mit Client-Zertifikaten und die Ingress-Firewall haelt
-    # den Port zu (vm/talos/patches/firewall.yaml.tftpl), Controller-Manager
-    # und Scheduler bindet Talos auf 127.0.0.1. Fuer die letzten beiden gaebe
-    # es einen Machine-Config-Patch auf --bind-address - das gehoert dann nach
-    # vm/talos.
-    #
-    # kubeProxy muss hier *aktiv* aus: Cilium ersetzt ihn, die Chart nimmt ihn
-    # aber an.
-    #
+    # Auf Talos nicht scrapebar
+    # etcd steht hinter der Ingress-Firewall, Controller-Manager und Scheduler binden auf
+    # 127.0.0.1. kubeProxy muss aktiv aus - Cilium ersetzt ihn, das Chart nimmt ihn aber an.
     kubeEtcd:
       enabled: false
     kubeControllerManager:
@@ -385,9 +307,7 @@ spec:
     kubeProxy:
       enabled: false
 
-    # Ungeprueftes HTTPS, dieselbe Luecke wie beim metrics-server und mit
-    # demselben Grund: kein kubelet-csr-approver, also kein pruefbares
-    # Serverzertifikat. Offener Punkt in k8s/CHECKLISTE.md, Abschnitt F.
+    # Ungeprüftes HTTPS
     kubelet:
       enabled: true
       serviceMonitor:
@@ -410,7 +330,7 @@ spec:
         limits:
           memory: 64Mi
 
-    # Enthaelt `Watchdog` - eine Regel, die immer feuert. Sie meldet keinen
-    # Fehler, sie beweist, dass die Alarmkette lebt. Siehe uptime-kuma/todo.md.
+    # Enthält `Watchdog` - eine Regel, die immer feuert und damit beweist, dass
+    # die Alarmkette lebt.
     defaultRules:
       create: true

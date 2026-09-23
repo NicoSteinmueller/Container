@@ -1,47 +1,7 @@
-#
-# ingress-internal - der erste Ingress-Controller dieses Clusters.
-#
-# Erreichbar ausschliesslich aus dem Heimnetz. Was aus dem Internet kommen
-# soll, braucht einen zweiten Controller auf einer eigenen Adresse
-# (ingress-public); der steht noch aus, und deshalb legt diese Datei auch nur
-# die IngressClass `internal` an, nicht das Klassenpaar. Eine Klasse ohne
-# Controller waere eine Falle: Ein Ingress mit `ingressClassName: public`
-# wuerde angenommen und nie bedient.
-#
-# Die Vertrauensgrenze ist hier das Heimnetz. Keine WAF, kein
-# CrowdSec-Bouncer - wer im LAN steht, hat ohnehin mehr Wege als diesen.
-#
-# Was noch fehlt und bewusst nicht hier steht:
-#
-#   - ingress-public: eigener Namespace, eigene Adresse, eigener
-#     Zertifikatsspeicher. Das Wildcard dieses Namespace bekommt er nicht zu
-#     sehen; die Trennung laeuft ueber Namespace und RBAC, nicht ueber ein
-#     Client-Zertifikat auf einer Zwischenstrecke - es gibt keine mehr.
-#   - Kyverno. Die Regel "ingressClassName: public nur in Namespaces mit
-#     homelab.io/zone=public" gibt es damit nicht. Solange die Klasse `public`
-#     gar nicht existiert, fehlt ihr auch der Anwendungsfall. Mit dem
-#     oeffentlichen Controller wird sie tragend, nicht ergaenzend.
-#
+# ingress-internal - Ingress-Controller fürs Heimnetz
+# Namespace: traefik-internal
 ---
-# Namespace `traefik-internal`: ../core/namespaces.yaml
----
-#
-# Die IngressClass.
-#
-# Sie wird hier angelegt und nicht vom Chart: Mit namespaced RBAC
-# (`rbac.namespaced` unten) darf der Controller keine clusterweiten Objekte
-# anlegen oder lesen. Der Klassenname steht deshalb statisch in seiner
-# Konfiguration (`providers.kubernetesIngress.ingressClass`), und Traefik
-# vergleicht ihn direkt mit `spec.ingressClassName` des Ingress - es schlaegt
-# dieses Objekt hier gar nicht nach.
-#
-# Gebraucht wird es trotzdem: `kubectl get ingressclass` soll zeigen, was es
-# gibt, und eine spaetere Kyverno-Regel prueft gegen diesen Namen.
-#
-# Bewusst ohne `is-default-class`-Annotation. Eine Default-Klasse waere genau
-# der Fall, den das Konzept verhindern will: ein Ingress ohne
-# `ingressClassName`, der irgendwo landet.
-#
+# Nicht vom Chart, weil namespaced RBAC nichts Clusterweites anlegen darf.
 apiVersion: networking.k8s.io/v1
 kind: IngressClass
 metadata:
@@ -55,49 +15,7 @@ spec:
   controller: traefik.io/ingress-controller
 
 ---
-#
-# Eingehend nur aus dem LAN.
-#
-# Der Grund: Der LoadBalancer ist nicht der einzige Weg an diesen Pod. Jeder Pod im
-# Cluster koennte die Pod-Adresse direkt auf 8000/8443 ansprechen - und damit
-# jeden Router dieses Controllers benutzen, ohne je im LAN gewesen zu sein.
-# Der Ingress waere dann der Umweg, der die Policies der Anwendungen aushebelt:
-# `allow-from-ingress-internal` im Namespace headlamp laesst Verkehr aus
-# traefik-internal zu, und aus traefik-internal kaeme er ja auch. Mit dieser
-# Policy hier gar nicht erst.
-#
-# `--api.dashboard=true`
-# legt nur den Handler `api@internal` an; bedient wird er ausschliesslich von
-# einem Router, und der einzige steht auf websecure und traegt die
-# BasicAuth-Middleware. Auf dem Entrypoint `traefik` laege die API erst mit
-#
-#   --api.insecure=true   "Activate API directly on the entryPoint named
-#                          traefik" (traefik v3.7.11 --help)
-#
-# und dieses Flag setzt der Chart nicht (`api.insecure` bleibt leer). Uebrig
-# bleibt dort `/ping`, an dem die Kubelet-Probes haengen.
-#
-# Dass die ipBlock-Regel hier greift, ist nicht selbstverstaendlich und im
-# Repo schon einmal falsch verallgemeinert worden: Cilium wertet ipBlock nicht
-# gegen die reservierten Identitaeten `host` und `remote-node` aus. Ein
-# LAN-Client, dessen Paket ueber die LoadBalancer-Adresse hereinkommt, traegt
-# aber `world` - und dagegen greift ipBlock sehr wohl (nachgemessen fuer
-# NodePort, siehe k8s/whoami/chart/templates/networkpolicy.yaml).
-#
-# Dass das so bleibt, haengt an `externalTrafficPolicy: Local` im Service
-# weiter unten. Mit `Cluster` ersetzte SNAT die Client-Adresse durch die des
-# Nodes, das Paket traege `host` - und diese Policy liesse dann jeden durch,
-# statt nur das LAN. Die beiden Stellen gehoeren zusammen; wer die eine
-# aendert, aendert die andere mit.
-#
-# Die Health-Probes des Kubelets fallen nicht darunter: Sie kommen als `host`,
-# und Cilium laesst den lokalen Host per Voreinstellung zu Pods durch.
-#
-# Sollte der Ingress nach dem Anwenden nicht mehr antworten, ist das die erste
-# Stelle zum Nachsehen:
-#
-#   kubectl -n traefik-internal delete networkpolicy allow-from-lan
-#
+# Sonst umgeht jeder Pod über die Pod-Adresse die Policies der Anwendungen.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -109,6 +27,8 @@ spec:
     - Ingress
 
 ---
+# ipBlock greift nur, weil der Client als `world` ankommt - das hängt an
+# `externalTrafficPolicy: Local` unten.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -125,28 +45,7 @@ spec:
 
 
 ---
-#
-# Egress-Default-Deny - dieselbe Bauart wie `traefik-public-egress` in
-# ingress-public.yaml. Zwei Controller derselben Software sollten sich nicht
-# darin unterscheiden, wohin sie sprechen duerfen.
-#
-# Hier stand die Begruendung, warum es das nicht gibt: Die Kubernetes-API
-# liege hinter einer ClusterIP, deren Backend die Node-Adresse sei - also die
-# Identitaet `host`, gegen die ipBlock-Regeln nicht greifen. Das stimmt, und
-# es ist der Grund, warum eine `kind: NetworkPolicy` das hier nicht kann.
-#
-# Die Cilium-Variante kann es, weil sie nicht ueber Adressen geht, sondern
-# ueber Identitaeten. Und die Node-Adresse traegt zwei Labels, nicht eines:
-#
-#   $ kubectl -n kube-system exec ds/cilium -- \
-#       hubble observe --to-port 6443 -o json | jq .flow.destination.labels
-#     reserved:host, reserved:kube-apiserver
-#
-# `toEntities: [kube-apiserver]` trifft damit genau den Weg zur API - und der
-# Port darunter macht ihn eng. Ohne ihn waere die Regel wegen der gemeinsamen
-# Identitaet so breit wie `toEntities: [host]`, also inklusive Kubelet auf
-# 10250 und allem anderen auf dem Node.
-#
+# Egress-Default-Deny.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -173,11 +72,8 @@ spec:
             - port: "53"
               protocol: TCP
 
-    #
-    # Die bedienten Namespaces - dieselben, die oben in `providers.namespaces`
-    # stehen. Kommt dort einer dazu, gehoert er auch hierher; sonst nimmt der
-    # Controller den Ingress an und erreicht das Backend nicht.
-    #
+    # Die bedienten Namespaces - fehlt einer, nimmt der Controller den Ingress
+    # an und erreicht das Backend nicht.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: headlamp
@@ -203,19 +99,8 @@ spec:
             - port: "80"
               protocol: TCP
 
-    #
-    # ACME. Das ist die Regel, die man vergisst, weil ihr Fehlen erst in
-    # sechzig Tagen auffaellt - dann naemlich, wenn das Wildcard erneuert
-    # werden muesste und der DNS-01-Challenge der Weg fehlt:
-    #
-    #   443 - Let's Encrypt (acme-v02.api.letsencrypt.org) und die
-    #         IONOS-API, ueber die der TXT-Record gesetzt wird
-    #    53 - die Resolver 1.1.1.1 und 8.8.8.8 aus `propagation`, die
-    #         Traefik direkt fragt, ob der Record schon steht
-    #
-    # `except` ist auch hier die eigentliche Regel: Internet ja, Heimnetz
-    # nein. Der Controller darf hinaus, aber nicht zum Unraid-Host.
-    #
+    # ACME: 443 für Let's Encrypt und IONOS, 53 für die Propagationsprüfung.
+    # `except`: Internet ja, Heimnetz nein.
     - toCIDRSet:
         - cidr: 0.0.0.0/0
           except:
@@ -233,80 +118,13 @@ spec:
               protocol: TCP
 
 ---
-#
-# RBAC von Hand statt aus dem Chart - und das ist die Stelle, an der dieser
-# Controller sich vom Chart-Normalfall unterscheidet. Der Grund ist eine
-# Kopplung im Chart, die man erst bemerkt, wenn ein Ingress lautlos nicht
-# bedient wird:
-#
-#   `rbac.namespaced: true` setzt zugleich das Flag
-#   --providers.kubernetesingress.disableClusterScopeResources=true.
-#
-# Und damit holt Traefik die Liste der IngressClasses gar nicht erst
-# (pkg/provider/kubernetes/ingress/kubernetes.go):
-#
-#   if !p.DisableIngressClassLookup && !p.DisableClusterScopeResources {
-#       ics, err := client.GetIngressClasses()
-#   ...
-#   if ingress.Spec.IngressClassName != nil {
-#       return slices.ContainsFunc(ingressClasses, ...)   // leere Liste
-#   }
-#
-# Ein Ingress mit `spec.ingressClassName` wird dann gegen eine leere Liste
-# geprueft und faellt durch - ohne Logzeile, mit 404 am Ingress. Uebrig
-# bliebe die seit Traefik v2 deprecated Annotation
-# `kubernetes.io/ingress.class`, und die greift nur, wenn `ingressClassName`
-# ganz fehlt.
-#
-# Der Ausweg: `rbac.enabled: false`. Dann erzeugt das Chart keine RBAC - und
-# emittiert das Flag auch nicht, denn es haengt allein an `rbac.namespaced`.
-# Die Rechte stehen dafuer hier, und zwar aufgeteilt nach dem, worauf es
-# ankommt:
-#
-#   cluster-scoped  nodes, namespaces, ingressclasses   - keine Geheimnisse
-#   namespaced      configmaps, services, endpointslices, pods, SECRETS,
-#                   ingresses, traefik.io-CRDs
-#
-# `secrets` steht in der zweiten Zeile. Genau darum ging es bei namespaced
-# RBAC, und genau das bleibt erhalten: Traefik liest Secrets nur in den drei
-# Namespaces unten, nicht clusterweit. Wer den Ingress uebernimmt, bekommt
-# nicht die Zugangsdaten des ganzen Clusters dazu.
-#
-# Der Preis, ehrlich benannt: Diese Regeln spiegeln, was sonst das Chart
-# pflegt. Aendert ein Traefik-Update die noetigen Rechte, muss das hier
-# nachziehen. Das ist aber der laute Fehlerfall - Traefik protokolliert
-# RBAC-Fehler - und nicht der stille von oben.
-#
-# Wie laut, ist inzwischen gemessen und schaerfer als "protokolliert":
-# `secrets` in dieser Liste ist nicht verhandelbar. Traefik startet den
-# Secrets-Informer fuer JEDEN beobachteten Namespace, unabhaengig davon, ob
-# dort ueberhaupt etwas ein Secret referenziert. Fehlt das Recht in einem
-# einzigen Namespace, scheitert der Informer -
-#
-#   failed to list *v1.Secret: secrets is forbidden: ... in namespace "..."
-#
-# - und das reisst den gesamten Kubernetes-Provider mit, nicht nur den
-# betroffenen Namespace: Danach liefert JEDE Route dieses Controllers 404.
-# Der Versuch, flux-system mit einer secretfreien Rolle zu bedienen, hat
-# genau das ausgeloest; die Vorgeschichte steht in k8s/flux/README.md.
-#
-# Zwei Folgerungen: Eine RoleBinding fuer diesen Controller in einem
-# Namespace zu setzen heisst zwingend, ihm dort auch Secrets zu geben - eine
-# abgespeckte Rolle gibt es nicht. Und wer hier einen Namespace hinzufuegt,
-# muss ihn in `providers.*.namespaces` UND in einer RoleBinding haben,
-# sonst faellt der ganze Controller aus.
-#
+# Hier nur die clusterweiten Rechte.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: traefik-internal-cluster
 rules:
-  #
-  # `nodes` wird hier nicht gebraucht - NodePortLB ist aus. Es steht
-  # trotzdem drin: Ohne das disableClusterScopeResources-Flag richtet der
-  # Client die Informer fuer Cluster-Ressourcen ein, und ein fehlendes Recht
-  # dort erzeugt Warnschleifen statt einer klaren Fehlermeldung.
-  #
+  # `nodes` ungenutzt, aber ohne das Recht dreht der Informer Warnschleifen.
   - apiGroups:
       - ""
     resources:
@@ -316,9 +134,6 @@ rules:
       - get
       - list
       - watch
-  #
-  # Die eine Zeile, um die es geht.
-  #
   - apiGroups:
       - extensions
       - networking.k8s.io
@@ -344,17 +159,8 @@ subjects:
     namespace: traefik-internal
 
 ---
-#
-# Eine ClusterRole, die nirgends clusterweit gebunden wird.
-#
-# Das ist kein Widerspruch, sondern das uebliche Mittel gegen dreimal
-# dasselbe YAML: Eine RoleBinding darf eine ClusterRole referenzieren, und
-# die Rechte gelten dann nur in ihrem Namespace. Ein Namespace mehr ist
-# damit eine RoleBinding mehr, keine kopierte Regelliste.
-#
-# Inhalt ist eins zu eins das, was `rbac.namespaced: true` erzeugt haette -
-# nachgelesen in templates/rbac/role.yaml des Charts 41.3.0.
-#
+# ClusterRole, nur per RoleBinding gebunden: Rechte je Namespace, ohne die
+# Regelliste zu kopieren.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -425,22 +231,7 @@ rules:
       - watch
 
 ---
-#
-# Je Namespace eine Bindung. Diese Liste und die beiden Namespace-Listen in
-# den Werten unten muessen zusammenpassen: Steht ein Namespace nur dort,
-# sieht Traefik ihn nicht (RBAC fehlt); steht er nur hier, schaut Traefik
-# nicht hin. Beim naechsten migrierten Dienst sind es also drei Stellen.
-#
-# Der Name weicht bewusst von dem ab, den das Chart vergeben wuerde
-# (`traefik-internal`): `roleRef` einer RoleBinding ist unveraenderlich. Wo
-# schon eine Bindung dieses Namens auf eine *Role* zeigt - naemlich aus einer
-# frueheren Release mit `rbac.namespaced: true` -, scheitert jedes Apply mit
-#
-#   RoleBinding ... is invalid: roleRef: ... cannot change roleRef
-#
-# Unter eigenem Namen entsteht sie daneben; die alte raeumt Helm beim Upgrade
-# selbst weg, weil sie nicht mehr gerendert wird.
-#
+# Je Namespace eine Bindung.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -501,50 +292,23 @@ subjects:
     namespace: traefik-internal
 
 ---
-#
-# Die beiden Middlewares des Dashboards.
-#
-# Sie sind CRDs und stehen damit vor einem Henne-Ei-Problem: Die CRDs
-# installiert erst der Chart weiter unten. Beim allerersten Aufbau des
-# Clusters scheitert dieses Apply deshalb einmal und die Kustomization geht
-# auf Failed - bis kustomize-controller es nach `retryInterval` wiederholt und
-# die CRDs inzwischen da sind. Kein Handgriff noetig; wer beim Bootstrap
-# zusieht, soll nur wissen, dass diese eine rote Meldung dazugehoert.
-#
+# Die CRDs bringt erst der Chart unten - beim ersten Aufbau scheitert dieses
+# Apply einmal und läuft nach `retryInterval` durch.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: traefik-dashboard-auth
   namespace: traefik-internal
 spec:
-  #
-  # Die Zugangsdaten stehen SOPS-verschluesselt in homelab-secrets
-  # (cluster/traefik-dashboard-auth.sops.yaml), nicht hier - dieses
-  # Repo geht oeffentlich nach GitHub. Ein bcrypt-Hash ist zwar kein Passwort
-  # im Klartext, aber ein oeffentlich lesbarer Hash ist ein Hash, an dem
-  # beliebig lange geraten werden darf.
-  #
-  # Traefik liest das Secret ueber seinen Informer, also bei jeder Aenderung
-  # neu - ein rotiertes Passwort gilt sofort, ohne Pod-Neustart.
-  #
+  # Zugangsdaten in homelab-secrets
   basicAuth:
     secret: traefik-dashboard-auth
     realm: Traefik
-    # Ohne das reicht Traefik den angemeldeten Benutzer als
-    # Authorization-Header an das Backend weiter. Backend ist hier
-    # api@internal, also Traefik selbst - der Header waere dort nutzlos und
-    # stuende trotzdem in jeder Anfrage.
+    # Sonst geht der Benutzer als Authorization-Header an api@internal weiter.
     removeHeader: true
 
 ---
-#
-# Von / auf /dashboard/.
-#
-# Der abschliessende Schraegstrich ist nicht kosmetisch: Die
-# Dashboard-Oberflaeche laedt ihre Ressourcen relativ, und auf /dashboard
-# ohne Slash bleibt die Seite leer. Traefik leitet in dem Fall zwar selbst
-# weiter, aber nur von /dashboard - nicht von /.
-#
+# Von / auf /dashboard/ umleiten
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -557,10 +321,6 @@ spec:
     permanent: false
 
 ---
-#
-# Fremder Chart, deshalb eine eigene HelmRepository - wie bei headlamp und
-# metrics-server.
-#
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -601,28 +361,7 @@ spec:
       kind: Deployment
       replicas: 1
 
-    #
-    # Recreate statt RollingUpdate - der Grund ist ein anderer als frueher.
-    #
-    # Frueher war es der Scheduler: Er behandelt hostPorts wie Node-Ports, der
-    # Node hat nur einen Satz davon, und der neue Pod sollte laut
-    # Chart-Voreinstellung (maxUnavailable: 0 / maxSurge: 1) vor dem alten
-    # starten. Er blieb dann Pending mit "didn't have free ports for the
-    # requested pod ports", waehrend der alte auf ihn wartete. Dieser Deadlock
-    # faellt mit dem hostPort weg.
-    #
-    # Uebrig bleibt acme.json. Es liegt auf einem PVC mit accessMode
-    # ReadWriteOnce (persistence weiter unten), und local-path haelt das
-    # Volume auf genau diesem Node - zwei Pods duerfen es also gleichzeitig
-    # mounten, der Scheduler haelt sie nicht auf. Genau das ist das Problem:
-    # lego schreibt die Datei ohne Sperre. Zwei Traefik-Instanzen, die sich
-    # beim Rollout ueberlappen, koennen sie gegenseitig ueberschreiben - und
-    # dann ist das Wildcard weg und wird neu beantragt, mit den Rate Limits
-    # von Let's Encrypt im Ruecken.
-    #
-    # Der Preis ist eine kurze Luecke beim Rollout. Bei einem Ingress auf
-    # einem Ein-Node-Cluster ist die ohnehin unvermeidbar.
-    #
+    # Recreate wegen acme.json: lego schreibt ohne Sperre
     updateStrategy:
       type: Recreate
       rollingUpdate: null
@@ -631,8 +370,7 @@ spec:
       runAsUser: 65532
       runAsGroup: 65532
       runAsNonRoot: true
-      # Damit Traefik in das PVC unter /data schreiben darf. Ohne das gehoert
-      # das frisch angelegte Verzeichnis root, und acme.json entsteht nie.
+      # Ohne fsGroup gehört das frische PVC-Verzeichnis root.
       fsGroup: 65532
       seccompProfile:
         type: RuntimeDefault
@@ -644,57 +382,13 @@ spec:
         drop:
           - ALL
 
-    #
-    # LoadBalancer statt hostPort - und das ist der Unterschied zu beiden
-    # frueheren Staenden, deshalb ausfuehrlich:
-    #
-    # Zuerst liefen zwei Controller auf einem Node mit zwei Beinen (LAN und
-    # DMZ). Beide brauchten 443, nebeneinander ging das nur ueber je eine
-    # eigene Node-Adresse - also `hostIP`. Das Chart schreibt `hostIP` aber an
-    # ZWEI Stellen: in den containerPort (gewollt) und in die
-    # Entrypoint-Adresse (templates/_podtemplate.tpl:223, in Chart 41.3.0
-    # unveraendert). Im Pod-Netz gibt es die Node-Adresse nicht, Traefik
-    # scheitert dann beim Start an
-    #
-    #   error opening listener: listen tcp 192.168.178.230:8443:
-    #     bind: cannot assign requested address
-    #
-    # Der Ausweg war hostNetwork - und der kostete den Sysctl
-    # net.ipv4.ip_unprivileged_port_start=0 auf dem Node, weil Traefik als UID
-    # 65532 sonst 80 und 443 nicht binden darf (capabilities.add:
-    # [NET_BIND_SERVICE] hilft nicht: ein Nicht-Root-Prozess behaelt
-    # Capabilities ueber execve nur per File-Capability, und das Image hat
-    # keine).
-    #
-    # Dann, mit einem Bein und einem Controller, ging es ohne `hostIP` - und
-    # damit per hostPort statt hostNetwork: Traefik band 8000/8443 im eigenen
-    # Pod-Netz, wo es kein Privileg braucht, und Cilium bildete Node:80/443
-    # darauf ab. Der Sysctl fiel weg, die Node-Adresse blieb aber der einzige
-    # Weg herein - dieselbe .230, auf der auch Talos-API und kube-apiserver
-    # lauschen. Und der zweite Controller waere daran wieder haengen
-    # geblieben: Es gibt nur einen Satz hostPorts je Node.
-    #
-    # Heute vergibt Cilium eigene LAN-Adressen (lb-ipam.yaml, Pool `lan`) und
-    # kuendigt sie per L2-Announcement an. Dieser Controller bekommt .231, der
-    # Node behaelt .230 fuer sich, und `ingress-public` fordert spaeter .232
-    # an, statt um denselben hostPort zu konkurrieren. Es faellt damit alles
-    # weg, was die frueheren Staende gekostet haben: kein `hostIP`, kein
-    # hostNetwork, kein hostPort, kein Sysctl - und der Namespace kann zurueck
-    # auf PodSecurity `restricted` (siehe oben).
-    #
-    # Moeglich ist das, weil kube-proxy durch Cilium ersetzt ist
-    # (vm/talos/values/cilium.yaml.tftpl) und Cilium den LB-Verkehr in eBPF
-    # verarbeitet.
-    #
+    # Cilium vergibt die LAN-Adresse (lb-ipam.yaml) und kündigt sie per L2 an.
     ports:
       web:
         port: 8000
         exposedPort: 80
         expose:
           default: true
-        # Nur zum Weiterleiten. Ein Passwortfeld auf einer unverschluesselten
-        # Verbindung im eigenen LAN ist immer noch ein Passwortfeld auf einer
-        # unverschluesselten Verbindung.
         http:
           redirections:
             entryPoint:
@@ -710,53 +404,18 @@ spec:
         http:
           tls:
             enabled: true
-            #
-            # Hier haengt das Wildcard am Entrypoint, nicht an den einzelnen
-            # Ingress-Objekten - und das ist der Unterschied, der die Arbeit
-            # spart: Ein neuer Dienst braucht keinen `tls:`-Block und kein
-            # eigenes Secret, er ist mit seinem Namen einfach abgedeckt.
-            #
-            # Traefik fordert dieses eine Zertifikat an und benutzt es als
-            # Vorgabe fuer jeden Router auf diesem Entrypoint. `main` muss
-            # dabei mit dabei stehen: Ein Wildcard deckt nur *eine* Ebene ab,
-            # `k8s.nico-steinmueller.de` selbst faellt nicht darunter.
-            #
+            # Wildcard am Entrypoint statt je Ingress
             certResolver: letsencrypt
             domains:
               - main: k8s.nico-steinmueller.de
                 sans:
                   - "*.k8s.nico-steinmueller.de"
         forwardedHeaders:
-          # Vor diesem Controller steht kein Proxy. Ein vom Client gesetzter
-          # X-Forwarded-For darf hier deshalb niemals geglaubt werden - er
-          # wuerde in den Logs der Anwendungen als echte Herkunft auftauchen.
+          # Kein Proxy davor, ein mitgeschickter X-Forwarded-For wäre erfunden.
           trustedIPs: []
           insecure: false
 
-    #
-    # Der Service ist der Weg herein. Typ LoadBalancer, und die Adresse kommt
-    # aus dem Pool `lan` (lb-ipam.yaml); die Annotation fordert eine bestimmte
-    # an, statt die Reihenfolge der Vergabe zu erraten - .231 ist die interne,
-    # .232 bleibt fuer ingress-public reserviert.
-    #
-    # `externalTrafficPolicy: Local` ist keine Feinheit, sondern das, woran
-    # die NetworkPolicy `allow-from-lan` weiter oben haengt: Nur damit bleibt
-    # die Client-Adresse erhalten, und das Paket traegt die Cilium-Identitaet
-    # `world`, gegen die ipBlock greift. Mit `Cluster` ersetzte SNAT sie durch
-    # die Node-Adresse - Identitaet `host` -, und die Policy liesse jeden
-    # durch. Ein spaeterer CrowdSec-Bouncer saehe ausserdem ueberall dieselbe
-    # Quelle.
-    #
-    # Der uebliche Preis von `Local` - Pakete, die auf einem Node ohne Pod
-    # landen, fallen - entfaellt hier: ein Node, ein Pod.
-    #
-    # `type` gehoert in diesem Chart (41.3.0) in den spec-Block, nicht neben
-    # `enabled`; die Werte darin werden unveraendert in die Service-Spec
-    # geschrieben (templates/service.yaml).
-    #
-    # Folge fuers Nachsehen: `kubectl get ingress` zeigt jetzt eine ADDRESS -
-    # das Chart traegt sie aus diesem Service nach.
-    #
+    # Feste Adresse statt geratener Vergabereihenfolge.
     service:
       enabled: true
       annotations:
@@ -765,113 +424,33 @@ spec:
         type: LoadBalancer
         externalTrafficPolicy: Local
 
-        #
-        # Kein NodePort zu diesem Service.
-        #
-        # Ein LoadBalancer bekommt ab Werk zusaetzlich zwei NodePorts, und die
-        # sind hier kein zweiter Weg, sondern ein Loch: Talos filtert sie
-        # nicht. Die Ingress-Firewall in patches/firewall.yaml.tftpl regelt
-        # Verkehr an Host-Prozesse - apid, kube-apiserver, kubelet. NodePorts
-        # bedient Cilium in eBPF, und der Pfad sieht diese Regelkette nie.
-        # Nachgemessen aus einer Adresse, die in admin_sources steht:
-        #
-        #   4244  gefiltert   Hubble, ein Host-Prozess ohne Regel
-        #   30670 offen       dieser NodePort, ebenfalls ohne Regel
-        #
-        # Dieselbe Quelle, derselbe Node, entgegengesetztes Ergebnis. Der
-        # Kommentar zur ingress-ports-Regel in firewall.yaml.tftpl hat genau
-        # das offengelassen ("Ob die Pakete diese Regelkette ueberhaupt
-        # sehen, ist damit offen") - die Antwort ist: sie sehen sie nicht.
-        #
-        # Ohne NodePort bleibt der Dienst genau unter 192.168.178.231
-        # erreichbar. Cilium fuehrt LoadBalancer- und NodePort-Eintraege
-        # getrennt; nur die zweiten fallen weg:
-        #
-        #   cilium-dbg service list
-        #     192.168.178.231:443/TCP  LoadBalancer   <- bleibt
-        #     0.0.0.0:31098/TCP        NodePort       <- weg
-        #
-        # Damit ist `allow-from-lan` oben wieder die einzige Tuer und nicht
-        # eine von zweien.
-        #
+        # NodePorts bedient Cilium in eBPF, an Talos' Ingress-Firewall vorbei -
+        # sie wären die zweite Tür neben `allow-from-lan`.
         allocateLoadBalancerNodePorts: false
 
-    #
-    # Das Zertifikat: ein Wildcard von Let's Encrypt, per DNS-01 ueber IONOS.
-    #
-    # Warum Traefik das selbst macht und nicht cert-manager: cert-manager hat
-    # keinen IONOS-Solver. Eingebaut sind nur Akamai, AzureDNS, CloudDNS,
-    # Cloudflare, DigitalOcean, Route53, RFC2136 und acmeDNS - fuer IONOS
-    # braeuchte es einen Webhook eines Drittanbieters, der dann den
-    # Zonen-Token bekaeme. Traefik bringt lego mit, und lego kennt IONOS;
-    # damit faellt ein Controller mitsamt Webhook weg. Es ist ausserdem
-    # derselbe Weg, den der Traefik-Container auf dem Host schon geht.
-    #
-    # Warum ein Wildcard und nicht ein Zertifikat je Name: Jedes von Let's
-    # Encrypt ausgestellte Zertifikat landet in den oeffentlichen
-    # Certificate-Transparency-Logs. Bei Einzelzertifikaten stuende dort
-    # jeder Dienstname - eine Landkarte des Heimnetzes fuer jeden, der die
-    # Domain kennt. Beim Wildcard steht dort nur, dass es eine `k8s.`-Zone
-    # gibt, nicht was darin liegt. Dazu: ein Antrag statt einem pro Dienst,
-    # und keine eigene Wurzel, der irgendein Geraet erst vertrauen muesste.
-    #
-    # Der Preis steht im Secret traefik-ionos: Der API-Key kann die ganze
-    # Zone umschreiben - fuer einen Controller, der nur aus dem LAN
-    # erreichbar ist, ist das vertretbar.
-    #
+    # Wildcard von Let's Encrypt per DNS-01 über IONOS. Traefik macht es selbst,
+    # weil cert-manager keinen IONOS-Solver hat.
     certificatesResolvers:
       letsencrypt:
         acme:
           email: nico.steinmueller@gmx.net
           storage: /data/acme.json
-          #
-          # PRODUKTIV. Vorher stand hier das Staging-Verzeichnis, und der
-          # Weg dorthin zurueck ist dieselbe Zeile:
-          #
-          #   https://acme-staging-v02.api.letsencrypt.org/directory
-          #
-          # Der Grund fuer die Reihenfolge - erst Staging, dann hier - sind
-          # die Rate Limits: fuenf fehlgeschlagene Validierungen je Konto und
-          # Hostname pro Stunde, und ein falscher API-Key verbraucht die in
-          # Minuten. Wer an der DNS-01-Challenge etwas aendert, probiert das
-          # also wieder drueben aus, nicht hier.
-          #
-          # ACHTUNG beim Umstellen in BEIDE Richtungen: acme.json muss weg.
-          # Es traegt zwei Dinge, die zum Verzeichnis gehoeren und die
-          # Traefik NICHT von allein verwirft:
-          #
-          #   - das ausgestellte Zertifikat. Es ist gueltig, also nimmt
-          #     Traefik es weiter - der Browser warnt danach genauso wie
-          #     vorher, und es sieht aus, als haette die Umstellung nicht
-          #     gewirkt.
-          #   - das ACME-Konto samt Registrierungs-URI. Die zeigt auf
-          #     Staging; gegen das Produktivverzeichnis vorgelegt, antwortet
-          #     es mit "account does not exist".
-          #
-          #   kubectl -n traefik-internal exec deploy/traefik-internal \
-          #     -- rm -f /data/acme.json
-          #   kubectl -n traefik-internal rollout restart deploy/traefik-internal
-          #
+          # PRODUKTIV, Staging wäre acme-staging-v02.api.letsencrypt.org.
+          # Dorthin erst testen: fünf Fehlversuche je Stunde und Hostname.
+          # Bei jedem Wechsel muss acme.json weg, sie trägt Zertifikat und
+          # ACME-Konto.
           caServer: https://acme-v02.api.letsencrypt.org/directory
           keyType: EC256
           dnsChallenge:
             provider: ionos
-            #
-            # Oeffentliche Resolver fuer die Propagationspruefung. Der
-            # interne Resolver wuerde die eigene, noch nicht propagierte
-            # Antwort sehen und zu frueh gruen melden.
-            #
+            # Öffentliche Resolver.
             resolvers:
               - 1.1.1.1:53
               - 8.8.8.8:53
             propagation:
               delayBeforeChecks: 30s
 
-    #
-    # Der API-Key kommt aus homelab-secrets, nicht aus diesem Repo - dieses
-    # geht oeffentlich nach GitHub. lego liest ihn ausschliesslich aus der
-    # Umgebung, daher env und nicht eine Datei.
-    #
+    # lego liest den Key nur aus der Umgebung.
     env:
       - name: IONOS_API_KEY
         valueFrom:
@@ -879,15 +458,7 @@ spec:
             name: traefik-ionos
             key: IONOS_API_KEY
 
-    #
-    # acme.json braucht einen Ort, der einen Neustart ueberlebt - sonst holt
-    # Traefik bei jedem Pod-Start ein neues Zertifikat und laeuft in genau
-    # die Rate Limits von oben.
-    #
-    # local-path und damit ReadWriteOnce: Das passt zu `replicas: 1` und zu
-    # updateStrategy Recreate weiter oben. Mit RollingUpdate haetten sich
-    # hier zwei Pods um dasselbe Volume gestritten.
-    #
+    # acme.json muss den Neustart überleben, sonst droht das Rate Limit.
     persistence:
       enabled: true
       name: data
@@ -896,20 +467,11 @@ spec:
       storageClass: local-path
       path: /data
 
-    #
-    # Keine RBAC aus dem Chart - sie steht als eigene Objekte weiter oben,
-    # samt Begruendung. Kurz: `rbac.namespaced: true` haette das Flag
-    # disableClusterScopeResources mitgesetzt, und damit funktioniert
-    # `spec.ingressClassName` nicht mehr.
-    #
-    # Den ServiceAccount legt das Chart weiterhin an - der haengt an
-    # `serviceAccount.name`, nicht an `rbac.enabled`.
-    #
+    # RBAC steht als eigene Objekte oben; den ServiceAccount legt das Chart an.
     rbac:
       enabled: false
 
-    # Die Klasse steht als Objekt weiter oben, damit sie nicht am Lebenszyklus
-    # der Release haengt.
+    # Die Klasse steht oben, damit sie nicht an der Release hängt.
     ingressClass:
       enabled: false
 
@@ -918,31 +480,7 @@ spec:
         enabled: true
         ingressClass: internal
         allowExternalNameServices: false
-        #
-        # Jeder neue Namespace muss hier eingetragen werden - das ist die
-        # Bremse, die namespaced RBAC einbaut, und sie ist gewollt: Ein
-        # Ingress in einem nicht gelisteten Namespace wird schlicht nicht
-        # bedient, statt still bedient zu werden.
-        #
-        # `traefik-internal` steht mit drin, obwohl dort kein Ingress liegt.
-        # Der Grund ist der LoadBalancer-Service: Sobald es einen gibt, setzt
-        # das Chart
-        #
-        #   --providers.kubernetesingress.ingressendpoint.publishedservice=
-        #     traefik-internal/traefik-internal
-        #
-        # und Traefik traegt dessen Adresse in `status.loadBalancer` jedes
-        # Ingress ein - das ist die ADDRESS-Spalte von `kubectl get ingress`.
-        # Dafuer muss es den eigenen Service lesen duerfen, und der
-        # Ingress-Provider liest nur in den hier gelisteten Namespaces:
-        #
-        #   ERR Error while updating ingress status
-        #       error="cannot get service traefik-internal/traefik-internal:
-        #              namespace is not within watched namespaces"
-        #
-        # Solange der Controller am hostPort hing, gab es keinen Service, das
-        # Chart setzte das Flag nicht, und der Eintrag fehlte folgenlos.
-        #
+        # Ein Ingress außerhalb dieser Liste wird nicht bedient.
         namespaces:
           - traefik-internal
           - headlamp
@@ -953,13 +491,7 @@ spec:
         enabled: true
         allowCrossNamespace: false
         allowExternalNameServices: false
-        #
-        # Der eigene Namespace steht hier aus einem eigenen Grund - nicht
-        # wegen des Service wie oben: In traefik-internal liegen die
-        # IngressRoute des Dashboards und seine BasicAuth-Middleware, beides
-        # CRDs. Ohne diesen Eintrag legt Flux beide an, Traefik sieht sie nie,
-        # und das Dashboard antwortet mit 404 statt mit einem Passwortfeld.
-        #
+        # Hier wegen IngressRoute und Middlewares des Dashboards.
         namespaces:
           - traefik-internal
           - headlamp
@@ -969,38 +501,14 @@ spec:
       kubernetesGateway:
         enabled: false
 
-    #
-    # Das Dashboard - unter https://traefik.k8s.nico-steinmueller.de, und nur
-    # mit Passwort.
-    #
-    # Es kennt selbst keine Authentifizierung, und "nur im LAN erreichbar" ist
-    # keine: Wer es oeffnet, sieht jeden Router, jeden Service und jede
-    # Middleware dieses Clusters - also eine Liste dessen, was es hier
-    # ueberhaupt zu erreichen gibt. Die Bedingung, unter der es aufgemacht
-    # ist, steht deshalb als erste Middleware unten und als eigenes Objekt
-    # weiter oben.
-    #
-    # Die Regel ist bewusst nur `Host(...)` und nicht die Voreinstellung
-    # PathPrefix(`/dashboard`) || PathPrefix(`/api`): Der Hostname gehoert
-    # allein diesem Dashboard, und mit der Voreinstellung waere ausgerechnet
-    # https://traefik.k8s.nico-steinmueller.de/ - das, was man eintippt - ein
-    # 404. Den Weg von dort auf /dashboard/ macht die zweite Middleware.
-    #
-    # /api liegt damit unter demselben Namen offen. Das ist die API, aus der
-    # das Dashboard seine Anzeige speist; sie ist lesend (die Konfiguration
-    # kommt aus Kubernetes, nicht von dort) und liegt hinter derselben
-    # Authentifizierung. Der unauthentifizierte Zwilling auf Port 8080 bleibt
-    # unerreichbar - dafuer sorgt die NetworkPolicy weiter oben.
-    #
+    # Das Dashboard kennt keine eigene Authentifizierung.
     ingressRoute:
       dashboard:
         enabled: true
         entryPoints:
           - websecure
         matchRule: Host(`traefik.k8s.nico-steinmueller.de`)
-        # Reihenfolge zaehlt: erst Passwort, dann Umleitung. Andersherum
-        # verriete schon der Redirect auf /dashboard/, dass es hier etwas
-        # gibt.
+        # Erst Passwort, dann Umleitung - sonst verrät der Redirect die Existenz.
         middlewares:
           - name: traefik-dashboard-auth
           - name: traefik-dashboard-root

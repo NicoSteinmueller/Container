@@ -1,16 +1,6 @@
-#
 # cert-manager-issuers - die eigene CA und was aus ihr ausgestellt wird.
-#
-# Eine eigene Gruppe, weil kustomize-controller jedes Objekt vor dem Anwenden
-# per Dry-Run prueft: `ClusterIssuer` und `Certificate` gibt es erst, wenn
-# helm-controller cert-manager ausgerollt hat. Lagen sie im selben Pfad,
-# scheiterte der ganze Lauf - auch die HelmRelease, die die CRDs bringen
-# wuerde. `dependsOn: platform` loest genau das.
-#
-# `wait: true`: Gruen heisst hier "Zertifikate sind ausgestellt", nicht nur
-# "angewendet". `network` verlaesst sich darauf - der CrowdSec-Chart laesst
-# sich seine Agent-Zertifikate vom ClusterIssuer `homelab-ca` ausstellen.
-#
+# `dependsOn: platform`, weil es die CRDs beim Dry-Run sonst noch nicht gibt.
+# `wait: true`, weil `network` fertig ausgestellte Zertifikate braucht.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

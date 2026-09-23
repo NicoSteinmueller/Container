@@ -1,12 +1,6 @@
-#
-# core - Namespaces und die Admission-Policy.
-#
-# Die Wurzel des Abhaengigkeitsbaums: Jede andere Gruppe wartet hierauf, weil
-# hier ihre Namespaces entstehen (../core/namespaces.yaml). Damit haengt keine
-# Gruppe an einer anderen.
-#
-# `wait: true` mit kurzem Timeout - es sind nur API-Objekte, die stehen sofort.
-#
+# core - Namespaces und die Admission-Policy. Wurzel des Abhängigkeitsbaums:
+# Jede andere Gruppe wartet hierauf, weil hier ihre Namespaces entstehen.
+# `wait: true` mit kurzem Timeout - reine API-Objekte stehen sofort.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

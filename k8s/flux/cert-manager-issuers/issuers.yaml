@@ -1,31 +1,9 @@
+# Issuer und Zertifikate.
 #
-# Issuer und Zertifikate - alles, was die CRDs von cert-manager braucht.
-#
-# WARUM DIESE OBJEKTE NICHT BEI ../platform/cert-manager.yaml LIEGEN, und das ist der
-# ganze Grund fuer dieses Verzeichnis:
-#
-# kustomize-controller prueft vor dem Anwenden jedes Objekt per Dry-Run. Die
-# CRDs `Certificate` und `ClusterIssuer` entstehen aber erst, wenn
-# helm-controller den cert-manager-Release ausgerollt hat - also nach diesem
-# Dry-Run. Lagen die Objekte im selben Pfad, scheiterte der Lauf mit
-#
-#   no matches for kind "Certificate" in version "cert-manager.io/v1"
-#
-# und zwar der *ganze* Lauf: Auch die HelmRelease, die die CRDs anlegen
-# wuerde, kam nicht durch. Eine Verklemmung, die sich nicht von selbst loest.
-#
-# Deshalb eine eigene Gruppe mit eigenem Pfad (../sync/cert-manager-issuers.yaml)
-# und `dependsOn: platform`. Ein Unterverzeichnis von ../platform haette nichts
-# geaendert - kustomize-controller nimmt Unterverzeichnisse eines Pfads mit auf.
-#
-# Seit `dependsOn` laeuft sie nicht mehr ins Leere und wartet, bis
-# cert-manager gesund ist.
-#
+# Eigenes Verzeichnis, weil es die cert-manager-CRDs beim Dry-Run von
+# kustomize-controller noch nicht gibt.
 ---
-#
-# Die Wurzel: ein selbstsignierter Issuer, der genau eine Sache tut - das
-# CA-Zertifikat unten signieren.
-#
+# Die Wurzel: signiert nur das CA-Zertifikat unten.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -33,15 +11,7 @@ metadata:
 spec:
   selfSigned: {}
 ---
-#
 # Das CA-Zertifikat des Homelabs.
-#
-# Es liegt im Namespace `cert-manager`, und das ist keine Willkuer: Ein
-# ClusterIssuer sucht sein Secret immer im "Cluster Resource Namespace", und
-# der ist per Voreinstellung der Namespace, in dem cert-manager laeuft. Ein
-# Secret anderswo findet er nicht, und der Fehler dabei ist leise - der
-# Issuer bleibt schlicht nicht `Ready`.
-#
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -51,14 +21,9 @@ spec:
   isCA: true
   commonName: homelab-ca
   secretName: homelab-ca
-  #
-  # Fuenf Jahre. Eine interne CA, die niemand ausserhalb kennt, gewinnt
-  # nichts durch kurze Laufzeiten - aber jeder Wechsel kostet einen
-  # gleichzeitigen Neustart aller Beteiligten. Die Blaetter darunter rotieren
-  # kurz (siehe `duration` in ../network/crowdsec.yaml), die Wurzel selten.
-  #
-  duration: 43800h
-  renewBefore: 8760h
+  # Ein Wechsel kostet einen gleichzeitigen Neustart aller Beteiligten.
+  duration: 43800h    # 5 Jahre
+  renewBefore: 8760h  # 1 Jahr vorher
   privateKey:
     algorithm: ECDSA
     size: 256
@@ -67,13 +32,8 @@ spec:
     kind: ClusterIssuer
     group: cert-manager.io
 ---
-#
-# Der Issuer, den die Dienste benutzen. Bewusst ein ClusterIssuer und kein
-# Issuer je Namespace: Genau daran haengt, dass `traefik-public` sich vom
-# selben Vertrauensanker ein `ca.crt` ausstellen lassen kann wie die LAPI in
-# `crowdsec` - ohne dass ein Secret zwischen Namespaces kopiert werden muss
-# und ohne einen Reflector-Controller dafuer.
-#
+# ClusterIssuer statt Issuer je Namespace: ein Vertrauensanker für alle, ohne
+# Secret-Kopien und ohne Reflector.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -83,34 +43,8 @@ spec:
     secretName: homelab-ca
 
 ---
-#
-# Die CA-Kopie fuer diesen Namespace.
-#
-# Das Plugin muss der LAPI vertrauen, seit die HTTPS spricht. Die CA liegt
-# aber als Secret im Namespace `cert-manager`, und ein Pod liest keine
-# Secrets aus fremden Namespaces.
-#
-# Statt ein Secret zu kopieren - wofuer der CrowdSec-Chart den
-# emberstack-Reflector voraussetzen wuerde, also einen weiteren Controller -
-# laesst sich cert-manager hier einfach ein eigenes Zertifikat ausstellen.
-# Jedes von `homelab-ca` signierte Secret enthaelt neben tls.crt und tls.key
-# auch ca.crt, und genau das wird gemountet.
-#
-# Das heisst: tls.crt und tls.key werden hier nicht gebraucht und nicht
-# benutzt. Das ist der Preis dieses Weges und bewusst so - ein ungenutztes
-# Schluesselpaar im Namespace ist billiger als ein Controller, der Secrets
-# clusterweit kopieren darf.
-#
-# Dass das genuegt, ist nachgemessen: Die LAPI laeuft mit
-# `Client Auth Type set to VerifyClientCertIfGiven`, prueft ein vorgelegtes
-# Zertifikat also, verlangt aber keines. Der Bouncer kommt mit seinem
-# API-Schluessel durch.
-#
-# Verlangt eine kuenftige Version doch eines, ist dieses Objekt schon die
-# halbe Antwort: Dann wandern tls.crt und tls.key zusaetzlich in die
-# Middleware in ../network/ingress-public.yaml, als crowdsecLapiTlsCertificateBouncer
-# und -BouncerKey.
-#
+# CA-Kopie für diesen Namespace: Das Plugin muss der LAPI vertrauen, darf aber
+# keine Secrets aus `cert-manager` lesen. Genutzt wird nur ca.crt.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

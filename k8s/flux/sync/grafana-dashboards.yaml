@@ -1,15 +1,6 @@
-#
 # grafana-dashboards - eigene Dashboards als ConfigMaps.
-#
-# Eine eigene Gruppe, weil ein `configMapGenerator` eine `kustomization.yaml`
-# braucht: In einem Pfad mit eigener kustomization.yaml erzeugt Flux die
-# Ressourcenliste nicht mehr selbst, jede Datei muesste von Hand eingetragen
-# werden. Fuer diesen einen Pfad ist das richtig - das Eintragen ist dort der
-# Arbeitsschritt, mit dem ein Dashboard dazukommt.
-#
-# Kein `wait`: Eine ConfigMap ist angewendet, sobald sie angewendet ist. Ob
-# Grafana sie eingelesen hat, entscheidet der Sidecar Sekunden spaeter.
-#
+# Eigene Gruppe, weil der `configMapGenerator` eine kustomization.yaml braucht
+# und Flux die Ressourcenliste dann nicht mehr selbst erzeugt.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -22,10 +13,8 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  #
-  # Nicht wegen der ConfigMaps, sondern wegen des Namespace `monitoring` - der
-  # entsteht zwar in core, aber Grafana selbst in observability.
-  #
+  # Wegen des Namespace `monitoring`: der entsteht in core, Grafana selbst
+  # aber in observability.
   dependsOn:
     - name: observability
   prune: true

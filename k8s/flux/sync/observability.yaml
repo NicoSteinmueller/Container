@@ -1,14 +1,6 @@
-#
 # observability - kube-prometheus-stack, Loki/Alloy, metrics-server.
-#
 # `dependsOn: storage` wegen der Default-StorageClass: Prometheus und Loki
-# fordern PVCs ohne `storageClassName` an. Fehlt die Klasse, bleiben sie
-# Pending - und zwar lautlos.
-#
-# Kein `wait`: Der Stack braucht Minuten bis Ready, und niemand wartet darauf.
-# Die Reihenfolge innerhalb der Gruppe regeln die HelmReleases selbst
-# (alloy dependsOn loki und kube-prometheus-stack).
-#
+# fordern PVCs ohne `storageClassName` an und blieben sonst lautlos Pending.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

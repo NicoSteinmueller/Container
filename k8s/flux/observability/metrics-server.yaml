@@ -1,11 +1,5 @@
-#
 # metrics-server - Quelle für `kubectl top` und die Auslastungsanzeigen in
 # Headlamp.
-#
-# targetNamespace kube-system: Er meldet sich als APIService
-# v1beta1.metrics.k8s.io an, der kube-apiserver reicht Anfragen an ihn weiter -
-# ein eigener Namespace mit Default-Deny müsste diesen Weg wieder öffnen.
-#
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -41,16 +35,8 @@ spec:
     remediation:
       retries: 3
   values:
-    #
-    # --kubelet-insecure-tls, anders als in k8s/platform: Der Weg dort
-    # (echtes Kubelet-Zertifikat per CSR-Approver) setzt serverTLSBootstrap
-    # voraus, das vm/talos bewusst weglässt - sonst scheitert der
-    # Abruf an "x509: certificate signed by unknown authority".
-    #
-    # Die Verbindung bleibt verschlüsselt, aber ungeprüft: Wer im Node-Netz
-    # steht, könnte sich als Kubelet ausgeben. Im Ein-Node-LAN vertretbar,
-    # sollte beim Umstieg auf serverTLSBootstrap aber als Erstes weichen.
-    #
+    # --kubelet-insecure-tls unten, weil ein echtes Kubelet-Zertifikat
+    # serverTLSBootstrap voraussetzt, das vm/talos bewusst weglässt -
     replicas: 1
 
     podDisruptionBudget:

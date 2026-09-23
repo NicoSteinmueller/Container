@@ -1,9 +1,5 @@
-#
-# apps - was der Cluster fuer Menschen bereitstellt: Headlamp und whoami.
-#
-# Die einzige Gruppe, die jederzeit scheitern darf, ohne dass eine andere
-# davon erfaehrt - deshalb haengt hier nichts dran.
-#
+# apps - was der Cluster für Menschen bereitstellt: Headlamp und whoami.
+# Darf jederzeit scheitern, deshalb hängt keine andere Gruppe daran.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
