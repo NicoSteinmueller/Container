@@ -1,0 +1,105 @@
+# Die Rechte beider Traefik-Controller, einmal für beide.
+#
+# Getrennt sind die Controller über die Bindungen, nicht über die Regeln: Welche
+# Namespaces ein Controller lesen darf, steht in RBAC.yaml seines Ordners.
+#
+# Die Regeln spiegeln `templates/rbac/role.yaml` des Charts (41.3.0). Braucht
+# ein Update mehr, protokolliert Traefik RBAC-Fehler.
+---
+# Clusterweit gebunden. `nodes` ungenutzt, aber ohne das Recht dreht der
+# Informer Warnschleifen.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traefik-cluster
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingressclasses
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+# Nur per RoleBinding gebunden - Traefik liest nur, wo eine steht. Rechte je
+# Namespace, ohne die Regelliste zu kopieren.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traefik-namespaced
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingresses/status
+    verbs:
+      - update
+  - apiGroups:
+      - traefik.io
+    resources:
+      - ingressroutes
+      - ingressroutetcps
+      - ingressrouteudps
+      - middlewares
+      - middlewaretcps
+      - tlsoptions
+      - tlsstores
+      - traefikservices
+      - serverstransports
+      - serverstransporttcps
+    verbs:
+      - get
+      - list
+      - watch

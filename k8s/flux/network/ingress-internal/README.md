@@ -8,16 +8,16 @@ Traefik fürs Heimnetz auf `192.168.178.231`. Von außen nur aus dem LAN
 `rbac.namespaced: true` setzt im Chart zugleich
 `--providers.kubernetesingress.disableClusterScopeResources=true`. Dann liest
 Traefik keine IngressClasses, und jeder Ingress mit `ingressClassName` endet
-still in 404. Deshalb `rbac.enabled: false` und eigene Objekte in `RBAC.yaml`:
+still in 404. Deshalb `rbac.enabled: false` und eigene Objekte - die Rollen
+gemeinsam mit ingress-public in [`../TraefikRBAC.yaml`](../TraefikRBAC.yaml),
+die Bindungen in `RBAC.yaml`:
 
 | ClusterRole | gebunden | Rechte |
 |---|---|---|
-| `traefik-internal-cluster` | clusterweit | `nodes`, `namespaces`, `ingressclasses` |
-| `traefik-internal-namespaced` | per RoleBinding je Namespace | der Rest, **inkl. Secrets** |
+| `traefik-cluster` | clusterweit | `nodes`, `namespaces`, `ingressclasses` |
+| `traefik-namespaced` | per RoleBinding je Namespace | der Rest, **inkl. Secrets** |
 
-- Die Regeln spiegeln `templates/rbac/role.yaml` des Charts (41.3.0). Braucht
-  ein Update mehr, protokolliert Traefik RBAC-Fehler.
-- RoleBindings heißen `…-namespaced`, nicht wie im Chart: `roleRef` ist
+- Bindungen heißen `<rolle>-internal`, nicht wie im Chart: `roleRef` ist
   unveränderlich, eine gleichnamige alte Bindung ließe jedes Apply scheitern.
 
 ## Dashboard

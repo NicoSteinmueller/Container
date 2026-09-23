@@ -44,7 +44,9 @@ network/
   ausdrücklich, die beiden Namespaces gleich - sonst landet der Helm-Stand in
   `flux-system`. Einen davon später ändern heißt: Flux deinstalliert und
   installiert neu. Zeitlimits als `spec.timeout`, nicht je Aktion.
-- **Quellen in `Sources.yaml`**, weil eine Quelle mehreren gehören kann.
+- **Quellen in `Sources.yaml`**, weil eine Quelle mehreren gehören kann - wer
+  eine Komponente entfernt, soll nicht nebenbei einer anderen die Quelle
+  wegnehmen. Die Version pinnt die HelmRelease, nicht die Quelle.
   Ausnahme `storage/`: Dort pinnt die `GitRepository` selbst die Version und
   steht deshalb in `HelmRelease.yaml`.
 - **Verweise nennen Dateien** (`RBAC.yaml`), nicht „oben/unten“; betrifft etwas

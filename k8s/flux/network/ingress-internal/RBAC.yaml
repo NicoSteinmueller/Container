@@ -1,127 +1,31 @@
-# ingress-internal - RBAC, von Hand statt aus dem Chart (siehe README)
----
-# Hier nur die clusterweiten Rechte.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: traefik-internal-cluster
-rules:
-  # `nodes` ungenutzt, aber ohne das Recht dreht der Informer Warnschleifen.
-  - apiGroups:
-      - ""
-    resources:
-      - nodes
-      - namespaces
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - extensions
-      - networking.k8s.io
-    resources:
-      - ingressclasses
-    verbs:
-      - get
-      - list
-      - watch
-
+# ingress-internal - Bindungen an die Rollen aus ../TraefikRBAC.yaml
+#
+# Den ServiceAccount `traefik-internal` legt das Chart an.
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: traefik-internal-cluster
+  name: traefik-cluster-internal
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: traefik-internal-cluster
+  name: traefik-cluster
 subjects:
   - kind: ServiceAccount
     name: traefik-internal
     namespace: traefik-internal
 
 ---
-# Rechte je Namespace, ohne die Regelliste zu kopieren.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: traefik-internal-namespaced
-rules:
-  - apiGroups:
-      - ""
-    resources:
-      - configmaps
-      - services
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - discovery.k8s.io
-    resources:
-      - endpointslices
-    verbs:
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - pods
-    verbs:
-      - get
-  - apiGroups:
-      - ""
-    resources:
-      - secrets
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - extensions
-      - networking.k8s.io
-    resources:
-      - ingresses
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - extensions
-      - networking.k8s.io
-    resources:
-      - ingresses/status
-    verbs:
-      - update
-  - apiGroups:
-      - traefik.io
-    resources:
-      - ingressroutes
-      - ingressroutetcps
-      - ingressrouteudps
-      - middlewares
-      - middlewaretcps
-      - tlsoptions
-      - tlsstores
-      - traefikservices
-      - serverstransports
-      - serverstransporttcps
-    verbs:
-      - get
-      - list
-      - watch
-
----
-# Je Namespace eine Bindung.
+# Je bedientem Namespace eine Bindung.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: traefik-internal-namespaced
+  name: traefik-namespaced-internal
   namespace: traefik-internal
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: traefik-internal-namespaced
+  name: traefik-namespaced
 subjects:
   - kind: ServiceAccount
     name: traefik-internal
@@ -131,12 +35,12 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: traefik-internal-namespaced
+  name: traefik-namespaced-internal
   namespace: monitoring
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: traefik-internal-namespaced
+  name: traefik-namespaced
 subjects:
   - kind: ServiceAccount
     name: traefik-internal
@@ -146,12 +50,12 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: traefik-internal-namespaced
+  name: traefik-namespaced-internal
   namespace: headlamp
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: traefik-internal-namespaced
+  name: traefik-namespaced
 subjects:
   - kind: ServiceAccount
     name: traefik-internal
@@ -161,12 +65,12 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: traefik-internal-namespaced
+  name: traefik-namespaced-internal
   namespace: whoami
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: traefik-internal-namespaced
+  name: traefik-namespaced
 subjects:
   - kind: ServiceAccount
     name: traefik-internal
