@@ -75,8 +75,8 @@ spec:
             drop:
               - ALL
 
-      # `true` allein genügt nicht: Dieser Namespace hat ein
-      # default-deny-ingress und bräuchte zusätzlich eine Ingress-Regel für
-      # Pods aus `monitoring`, sonst steht das Target auf DOWN.
+      # `true` allein genügt nicht: Der Namespace ist eingehend zu
+      # (core/DefaultDenyIngress.yaml) und bräuchte zusätzlich eine
+      # Ingress-Regel für Pods aus `monitoring`, sonst steht das Target auf DOWN.
       serviceMonitor:
         enabled: false

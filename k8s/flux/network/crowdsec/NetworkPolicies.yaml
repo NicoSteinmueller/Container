@@ -1,17 +1,8 @@
 # crowdsec - Netzwerkregeln im Namespace `crowdsec`
 ---
-# Die LAPI hat außer dem Bouncer-Schlüssel keine Authentifizierung.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny-ingress
-  namespace: crowdsec
-spec:
-  podSelector: {}
-  policyTypes:
-    - Ingress
-
----
+# Der Namespace ist eingehend zu (core/DefaultDenyIngress.yaml): Die LAPI hat
+# außer dem Bouncer-Schlüssel keine Authentifizierung.
+#
 # Erlaubt sind nur der Bouncer aus traefik-public und der Agent nebenan.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -40,8 +31,9 @@ spec:
           port: 8080
 
 ---
-# Egress-Default-Deny: Der Agent verarbeitet mit den Zugriffslogs von außen
-# bestimmte Eingaben und käme sonst an jedes Gerät im Heimnetz.
+# Ausgehend erlaubt; Sperre und DNS kommen aus core/DefaultDenyEgress.yaml.
+# Eng, weil der Agent mit den Zugriffslogs von außen bestimmte Eingaben
+# verarbeitet und sonst an jedes Gerät im Heimnetz käme.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -50,18 +42,6 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    # DNS - sonst scheitert schon der LAPI-Name.
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: UDP
-            - port: "53"
-              protocol: TCP
-
     # Agent -> LAPI, derselbe Selektor wie im Ingress oben.
     - toEndpoints:
         - matchLabels:

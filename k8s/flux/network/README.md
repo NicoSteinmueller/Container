@@ -73,7 +73,7 @@ Das kann es, weil kube-proxy durch Cilium ersetzt ist.
 | | wodurch |
 |---|---|
 | Von außen nur aus dem LAN | NetworkPolicy `allow-from-lan` (`ipBlock` auf das Heimnetz) |
-| An die Anwendungen nur über den Controller | `default-deny-ingress` je Namespace plus eine Regel auf `traefik-internal` |
+| An die Anwendungen nur über den Controller | clusterweites Default-Deny ([`../core/DefaultDenyIngress.yaml`](../core/DefaultDenyIngress.yaml)) plus eine Regel auf `traefik-internal` |
 | Secrets nur in den gelisteten Namespaces | eigene RBAC statt der des Charts |
 
 Der letzte Punkt ist die Bremse, die man beim nächsten Dienst spürt: Ein neuer

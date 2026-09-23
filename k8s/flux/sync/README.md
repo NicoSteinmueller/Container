@@ -87,14 +87,18 @@ kubectl -n flux-system describe kustomization <name>   # bei False steht hier de
 
 ## Egress: wer aus dem Cluster heraus darf
 
-Eingehend ist die Trennung über Zonen und `default-deny-ingress` je Namespace
-geregelt. Die Gegenrichtung war es lange nicht — ohne Egress-Regel erreicht
-jeder Pod das ganze Heimnetz, den Unraid-Host eingeschlossen.
+Eingehend ist die Trennung über Zonen und eine clusterweite Sperre geregelt
+([`../core/DefaultDenyIngress.yaml`](../core/DefaultDenyIngress.yaml)): Jeder
+Pod außerhalb von `kube-system` und `flux-system` nimmt nur an, was eine
+Policy seines Namespace ausdrücklich erlaubt. Die Gegenrichtung war es lange
+nicht — ohne Egress-Regel erreicht jeder Pod das ganze Heimnetz, den
+Unraid-Host eingeschlossen.
 
-Jeder Namespace mit eigenen Pods trägt deshalb eine `CiliumNetworkPolicy` mit
-`endpointSelector: {}` und einem `egress`-Block; das allein schaltet
-Default-Deny für die ausgehende Richtung. Die Begründung je Regel steht in der
-jeweiligen Datei.
+Jetzt sperrt [`../core/DefaultDenyEgress.yaml`](../core/DefaultDenyEgress.yaml)
+auch ausgehend alles bis auf DNS, für dieselben Pods. Jeder Namespace mit
+eigenen Pods trägt dazu eine `CiliumNetworkPolicy` `<name>-egress` mit dem,
+was er darüber hinaus braucht - fast immer den kube-apiserver. Die Begründung je
+Regel steht in der jeweiligen Datei.
 
 | Namespace | darf hinaus zu |
 |---|---|

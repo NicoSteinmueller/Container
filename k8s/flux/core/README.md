@@ -6,7 +6,53 @@ die alle warten ([`../sync/Core.yaml`](../sync/Core.yaml)).
 | Komponente | Inhalt |
 |---|---|
 | [`Namespaces.yaml`](Namespaces.yaml) | alle Namespaces des Clusters mit ihrer Pod-Security-Stufe |
+| [`DefaultDenyIngress.yaml`](DefaultDenyIngress.yaml) | `CiliumClusterwideNetworkPolicy`: eingehend zu für jeden Pod außer in `kube-system` und `flux-system` |
+| [`DefaultDenyEgress.yaml`](DefaultDenyEgress.yaml) | dasselbe ausgehend, nur DNS zu CoreDNS ist frei |
 | [`PublicIngressPolicy.yaml`](PublicIngressPolicy.yaml) | `ValidatingAdmissionPolicy`: `ingressClassName: public` nur in Namespaces mit `homelab.io/zone=public` |
+
+## Default-Deny, clusterweit
+
+Zwei `CiliumClusterwideNetworkPolicy` statt einer Sperre je Namespace und
+Richtung: eingehend alles zu, ausgehend alles bis auf DNS. Damit ist auch ein
+Namespace zu, den ein Chart selbst anlegt oder den man in `Namespaces.yaml`
+vergisst. Freigaben stehen bei der Komponente in `NetworkPolicies.yaml` und
+addieren sich dazu - erlaubt ist, was irgendeine Policy erlaubt.
+
+- **Ausgenommen** sind `kube-system` (CoreDNS - ein Fehler träfe jeden Pod) und
+  `flux-system` (ein Fehler sperrte den Weg, auf dem er repariert würde).
+- **Webhooks brauchen eine Freigabe.** Der kube-apiserver ist für Cilium nicht
+  der eigene Node, sondern `kube-apiserver`. Jede Komponente mit
+  Admission-Webhook trägt deshalb eine `CiliumNetworkPolicy` mit
+  `fromEntities: [kube-apiserver, host]` auf den Webhook-Port: cert-manager
+  (`10250`), CloudNativePG (`9443`), kube-prometheus-stack (`10250`).
+- **Probes des kubelet** kommen ohne Freigabe durch, Cilium lässt `host` zu.
+- **Ausgehend ist nur DNS pauschal frei.** Die API dagegen nicht: Längst nicht
+  jeder Pod braucht sie, und eine pauschale Freigabe öffnete sie jedem
+  kompromittierten. Sie steht wie alles Weitere in `<name>-egress` der
+  Komponente.
+- **Fehlt eine Egress-Freigabe**, hängt die Anwendung in einem Timeout statt
+  einer Fehlermeldung. Zu sehen nur mit `hubble observe --type drop`.
+
+Gegenprobe nach einer Änderung - jeder Webhook wird dabei tatsächlich
+angerufen:
+
+```bash
+kubectl -n flux-system get kustomization core platform
+kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop
+
+# Beide Webhooks - ein Timeout hier heißt: Freigabe fehlt
+kubectl create --dry-run=server -f - <<'Y'
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: {name: probe, namespace: cert-manager}
+spec: {secretName: probe, dnsNames: [probe.local], issuerRef: {name: homelab-ca, kind: ClusterIssuer}}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata: {name: probe, namespace: cnpg-system}
+spec: {instances: 1, storage: {size: 1Gi}}
+Y
+```
 
 ## Pod Security
 

@@ -1,0 +1,48 @@
+# DefaultDenyIngress - eingehend geschlossen, bis freigegeben.
+# Gilt für jeden Pod im Cluster außer in kube-system und flux-system.
+#
+# Eine Regel statt einer NetworkPolicy je Namespace. Dmait ist jeder Pod direkt zu.
+# Die Freigaben stehen bei der Komponente (NetworkPolicies.yaml) und addieren
+# sich zu dieser Regel - erlaubt ist, was irgendeine Policy erlaubt.
+#
+# Ausgenommen:
+#   kube-system  CoreDNS, Hubble, metrics-server. Jeder Pod braucht DNS - ein
+#                Fehler hier legte den ganzen Cluster auf einmal lahm.
+#   flux-system  bringt die NetworkPolicies des Flux-Charts mit (k8s/bootstrap).
+#                Ein Fehler dort sperrte genau den Weg, auf dem er repariert
+#                würde.
+#
+# Was trotzdem durchkommt: Verkehr vom eigenen Node, also die Probes des
+# kubelet - Cilium lässt `host` von sich aus zu. Der kube-apiserver dagegen
+# nicht: Jede Komponente mit Admission-Webhook braucht eine eigene Freigabe
+# `fromEntities: [kube-apiserver, host]` (cert-manager, cloudnative-pg,
+# monitoring). Fehlt sie, lehnt der Cluster die zugehörigen Objekte mit einem
+# Timeout gegen einen Service ab, der läuft.
+#
+# Pods mit hostNetwork trifft die Regel nicht.
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  endpointSelector:
+    matchExpressions:
+      # `Exists` zuerst: `NotIn` allein träfe auch Ciliums eigene Endpunkte
+      # ohne Namespace (cilium-health), und deren Prüfungen liefen ins Leere.
+      - key: io.kubernetes.pod.namespace
+        operator: Exists
+      - key: io.kubernetes.pod.namespace
+        operator: NotIn
+        values:
+          - kube-system
+          - flux-system
+
+  # Ausdrücklich nur eingehend - ausgehend regelt DefaultDenyEgress.yaml.
+  enableDefaultDeny:
+    ingress: true
+    egress: false
+
+  # Eine leere Regel wählt keine Gegenstelle aus: Sie erlaubt nichts, sorgt
+  # aber dafür, dass die Policy eingehend greift.
+  ingress:
+    - {}

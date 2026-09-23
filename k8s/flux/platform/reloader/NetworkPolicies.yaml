@@ -1,6 +1,6 @@
 # reloader - Netzwerkregeln im Namespace `reloader`
 ---
-# Egress-Default-Deny: Reloader spricht nur mit CoreDNS und dem kube-apiserver.
+# Ausgehend nur die API; Sperre und DNS kommen aus core/DefaultDenyEgress.yaml.
 # Ein Controller, der Secrets liest und Workloads patcht, hat im Heimnetz
 # nichts verloren.
 apiVersion: cilium.io/v2
@@ -11,17 +11,6 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: UDP
-            - port: "53"
-              protocol: TCP
-
     - toEntities:
         - kube-apiserver
       toPorts:

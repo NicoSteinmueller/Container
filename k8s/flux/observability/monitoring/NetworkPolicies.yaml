@@ -1,22 +1,11 @@
 # monitoring - Netzwerkregeln im Namespace `monitoring`
 ---
-# Im LAN erreichbar ist nur Grafana
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny-ingress
-  namespace: monitoring
-spec:
-  podSelector: {}
-  policyTypes:
-    - Ingress
-
----
 # Prometheus scrapt den eigenen Namespace. `podSelector: {}` unter `from` heißt
 # "alle Pods im selben Namespace", nicht "im Cluster".
 #
-# Jeder Namespace mit eigenem default-deny-ingress braucht eine eigene Regel,
-# sobald Prometheus ihn scrapen soll.
+# Jeder andere Namespace ist eingehend zu (core/DefaultDenyIngress.yaml) und
+# braucht eine eigene Regel für Pods aus `monitoring`, sobald Prometheus ihn
+# scrapen soll.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -31,6 +20,7 @@ spec:
         - podSelector: {}
 
 ---
+# Im LAN erreichbar ist nur Grafana.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -72,7 +62,8 @@ spec:
               protocol: TCP
 
 ---
-# Egress-Default-Deny: Dieser Namespace hat keinen Weg ins Internet.
+# Ausgehend erlaubt; Sperre und DNS kommen aus core/DefaultDenyEgress.yaml.
+# Dieser Namespace hat keinen Weg ins Internet.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -81,17 +72,6 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: UDP
-            - port: "53"
-              protocol: TCP
-
     # Prometheus (Targets), Operator (CRs), kube-state-metrics, Alloy (Pod-Metadaten).
     - toEntities:
         - kube-apiserver

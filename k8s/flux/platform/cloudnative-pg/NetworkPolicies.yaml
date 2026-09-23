@@ -1,7 +1,30 @@
 # cloudnative-pg - Netzwerkregeln im Namespace `cnpg-system`
 ---
-# Egress-Default-Deny: Der Operator hält die Zugangsdaten jeder Datenbank im
-# Cluster und hat im Heimnetz nichts verloren.
+# Eingehend ist der Namespace zu (core/DefaultDenyIngress.yaml). Offen nur der
+# Webhook des Operators, den der kube-apiserver anruft - ohne ihn nimmt der
+# Cluster keine `Cluster`-, `Backup`- oder `Pooler`-Objekte an.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: cnpg-webhook
+  namespace: cnpg-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: cloudnative-pg
+  ingress:
+    - fromEntities:
+        - kube-apiserver
+        - host
+      toPorts:
+        - ports:
+            - port: "9443"
+              protocol: TCP
+
+---
+# Ausgehend erlaubt; Sperre und DNS kommen aus core/DefaultDenyEgress.yaml.
+# Eng, weil der Operator die Zugangsdaten jeder Datenbank im Cluster hält und
+# im Heimnetz nichts verloren hat.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -10,17 +33,6 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: UDP
-            - port: "53"
-              protocol: TCP
-
     - toEntities:
         - kube-apiserver
       toPorts:
