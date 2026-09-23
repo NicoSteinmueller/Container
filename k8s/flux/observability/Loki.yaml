@@ -7,11 +7,12 @@ metadata:
   name: loki
   namespace: flux-system
 spec:
-  interval: 1h
-  targetNamespace: monitoring
-  # Kurz, weil Grafanas Datasource-URL in monitoring/HelmRelease.yaml darauf
-  # zeigt.
+  interval: 10m
+  # Grafanas Datasource-URL (monitoring/HelmRelease.yaml) und Alloy zeigen auf
+  # den Service `loki`, der diesen Namen trägt.
   releaseName: loki
+  targetNamespace: monitoring
+  storageNamespace: monitoring
   chart:
     spec:
       chart: loki
@@ -20,7 +21,6 @@ spec:
         kind: HelmRepository
         name: grafana
         namespace: flux-system
-      interval: 1h
   install:
     remediation:
       retries: 3

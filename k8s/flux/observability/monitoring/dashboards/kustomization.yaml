@@ -1,7 +1,11 @@
 # Eigene Grafana-Dashboards als ConfigMaps; der Sidecar liest jede in
 # `monitoring` mit dem Label `grafana_dashboard: "1"`.
 #
-# Dazunehmen: JSON von # grafana.com holen, `${DS_*}` durch die uid ersetzen
+# Die kustomization.yaml braucht es für den `configMapGenerator`. Flux nimmt
+# einen Ordner mit eigener kustomization.yaml als Ganzes in die Gruppe
+# `observability` auf und liest hier nur, was unten steht.
+#
+# Dazunehmen: JSON von grafana.com holen, `${DS_*}` durch die uid ersetzen
 # (`prometheus`/`loki`), unten eintragen. Testen braucht `kubectl kustomize --server-side`.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

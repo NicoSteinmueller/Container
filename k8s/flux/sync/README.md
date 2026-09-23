@@ -10,13 +10,12 @@ nur Kustomizations, eine je Gruppe.
 | [`platform`](Platform.yaml) | [`../platform`](../platform) | cert-manager, CloudNativePG, Reloader |
 | [`cert-manager-issuers`](CertManagerIssuers.yaml) | [`../cert-manager-issuers`](../cert-manager-issuers) | eigene CA und ihre Zertifikate |
 | [`network`](Network.yaml) | [`../network`](../network) | Ingress-Controller, CrowdSec, LB-IPAM |
-| [`observability`](Observability.yaml) | [`../observability`](../observability) | Prometheus, Loki/Alloy, metrics-server |
-| [`grafana-dashboards`](GrafanaDashboards.yaml) | [`../grafana-dashboards`](../grafana-dashboards) | eigene Dashboards als ConfigMaps |
+| [`observability`](Observability.yaml) | [`../observability`](../observability) | Prometheus, Loki/Alloy, metrics-server, eigene Dashboards |
 | [`apps`](Apps.yaml) | [`../apps`](../apps) | Headlamp, whoami |
 | [`homelab-secrets`](Secrets.yaml) | eigenes Repo im Gitea | SOPS-verschlüsselte Secrets |
 
 ```
-core ──┬── storage ── observability ── grafana-dashboards
+core ──┬── storage ── observability
        ├── platform ── cert-manager-issuers ── network
        └── apps
 homelab-secrets        (eigene Quelle, hängt an nichts)
@@ -77,7 +76,7 @@ jede gepinnt:
 |---|---|
 | `local-path-provisioner`, `csi-driver-nfs` | GitRepository auf Tag |
 | alle übrigen Charts | HelmRepository in `Sources.yaml`, Version exakt in der HelmRelease |
-| Dashboards und Alarmregeln | mit der Chart, eigene in [`../grafana-dashboards`](../grafana-dashboards) |
+| Dashboards und Alarmregeln | mit der Chart, eigene in [`../observability/monitoring/dashboards`](../observability/monitoring/dashboards) |
 | Container-Images | Tag, teils mit Digest |
 
 Renovate hebt die Tags (`flux`-Manager).

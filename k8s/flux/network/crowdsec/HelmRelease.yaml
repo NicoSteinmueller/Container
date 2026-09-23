@@ -32,7 +32,7 @@ spec:
     remediation:
       retries: 0
       remediateLastFailure: false
-    timeout: 10m
+  timeout: 10m
   values:
     # Talos fährt containerd
     container_runtime: containerd

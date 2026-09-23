@@ -9,7 +9,6 @@ clusterweite Regeln: [`sync/README.md`](sync/README.md).
 sync/                    eine Kustomization je Gruppe
 core/ storage/ platform/ network/ observability/ apps/
 cert-manager-issuers/    eigene Gruppe: CRDs entstehen erst mit cert-manager
-grafana-dashboards/      eigene Gruppe: braucht eine kustomization.yaml
 ```
 
 ## Aufbau einer Gruppe
@@ -34,10 +33,17 @@ network/
 - **Dateien PascalCase, Ordner kebab-case.** Abkürzungen wie im Kind
   (`TLSOption.yaml`, `RBAC.yaml`). Ausnahmen: `kustomization.yaml` (verlangt
   kustomize) und die Dashboard-JSONs (der Dateiname wird zum ConfigMap-Schlüssel).
+- **Eine `kustomization.yaml` im Unterordner** nimmt Flux als Ganzes auf, statt
+  die Dateien darin einzusammeln - nur wo ein Generator sie braucht
+  (`observability/monitoring/dashboards/`).
 - **`HelmRelease.yaml` ist die Hauptdatei**, ihr Kopfkommentar sagt, was die
   Komponente ist; andere Dateien beginnen mit `# <komponente> - <was>`.
 - **Reihenfolge in einer Datei:** was andere braucht, zuerst - Quelle vor
   HelmRelease, ServiceAccount vor Rollen.
+- **HelmRelease:** `releaseName`, `targetNamespace` und `storageNamespace`
+  ausdrücklich, die beiden Namespaces gleich - sonst landet der Helm-Stand in
+  `flux-system`. Einen davon später ändern heißt: Flux deinstalliert und
+  installiert neu. Zeitlimits als `spec.timeout`, nicht je Aktion.
 - **Quellen in `Sources.yaml`**, weil eine Quelle mehreren gehören kann.
   Ausnahme `storage/`: Dort pinnt die `GitRepository` selbst die Version und
   steht deshalb in `HelmRelease.yaml`.

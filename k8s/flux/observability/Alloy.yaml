@@ -7,9 +7,10 @@ metadata:
   name: alloy
   namespace: flux-system
 spec:
-  interval: 1h
-  targetNamespace: monitoring
+  interval: 10m
   releaseName: alloy
+  targetNamespace: monitoring
+  storageNamespace: monitoring
   # kube-prometheus-stack bringt die monitoring.coreos.com-CRDs mit
   dependsOn:
     - name: kube-prometheus-stack
@@ -24,7 +25,6 @@ spec:
         kind: HelmRepository
         name: grafana
         namespace: flux-system
-      interval: 1h
   install:
     remediation:
       retries: 3

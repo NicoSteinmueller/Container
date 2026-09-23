@@ -7,6 +7,9 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  releaseName: whoami
+  targetNamespace: whoami
+  storageNamespace: whoami
   chart:
     spec:
       chart: ./k8s/whoami/chart

@@ -25,6 +25,6 @@ Metriken, Logs, Auslastung - alles im Namespace `monitoring`.
 
 ## Eigene Dashboards
 
-In [`../grafana-dashboards`](../grafana-dashboards/kustomization.yaml),
+In [`monitoring/dashboards`](monitoring/dashboards/kustomization.yaml),
 heruntergeladen und gepinnt statt „Import via grafana.com“: reviewbar, und
 Grafana braucht keinen Weg ins Internet.
