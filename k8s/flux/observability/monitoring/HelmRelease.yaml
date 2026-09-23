@@ -19,7 +19,6 @@ spec:
         name: prometheus-community
         namespace: flux-system
   install:
-    crds: Create
     remediation:
       retries: 3
   upgrade:
@@ -125,8 +124,6 @@ spec:
           uid: loki
           access: proxy
           url: http://loki.monitoring.svc.cluster.local:3100
-          jsonData:
-            derivedFields: []
 
       # Update-Pruefung, Plugin-Katalog, News, Telemetrie.
       grafana.ini:

@@ -25,7 +25,6 @@ spec:
         name: cloudnative-pg
         namespace: flux-system
   install:
-    createNamespace: false
     remediation:
       retries: 3
   upgrade:

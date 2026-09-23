@@ -22,7 +22,6 @@ spec:
         name: crowdsec
         namespace: flux-system
   install:
-    createNamespace: false
     remediation:
       retries: 3
   # Kein Rollback: Er schriebe die local_api_credentials.yaml wieder mit
