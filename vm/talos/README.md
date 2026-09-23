@@ -290,7 +290,7 @@ regelmäßig welche mit. Der erste Fall hier war die Flux-Status-Seite: Das
 flux-operator-Chart legt eine `flux-operator-web` an, die Port 9080 nur
 `from: namespaceSelector: {}` öffnet, also ausschließlich clusterinternen
 Identitäten. Ein Browser im Heimnetz ist keine — der NodePort lief ins Leere
-(siehe [k8s/flux/README.md](../../k8s/flux/README.md)).
+(siehe [k8s/bootstrap/README.md](../../k8s/bootstrap/README.md)).
 
 Das Fehlerbild ist dabei irreführend: Ein Policy-Drop erzeugt **Timeout**, kein
 `Connection refused`. Es sieht aus wie ein kaputtes Routing oder ein falscher

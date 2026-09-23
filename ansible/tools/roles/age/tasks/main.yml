@@ -10,7 +10,7 @@
 #               Recovery-Schluessel fuer das Wechselmedium.
 #   age         der Unterbau, auf dem sops verschluesselt.
 #
-# Zusammen mit sops: k8s/flux/README.md, Abschnitt Secrets.
+# Zusammen mit sops: k8s/bootstrap/README.md, Abschnitt "Die drei Geheimnisse".
 - name: Manage age as a distribution package
   ansible.builtin.include_role:
     name: distro_package
