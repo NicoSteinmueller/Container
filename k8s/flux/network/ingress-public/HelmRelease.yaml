@@ -205,10 +205,11 @@ spec:
         allowCrossNamespace: false
         allowExternalNameServices: false
         # Der eigene Namespace ist zwingend: Kette, TLSOption und Middlewares
-        # sind CRDs und liegen dort.
+        # sind CRDs und liegen dort. Ein Dienst kommt nur dazu, wenn er eine
+        # IngressRoute oder eigene Middlewares mitbringt - whoami hat einen
+        # gewöhnlichen Ingress.
         namespaces:
           - traefik-public
-          - whoami
 
       kubernetesGateway:
         enabled: false

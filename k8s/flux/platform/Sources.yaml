@@ -1,8 +1,4 @@
 # Chart-Quellen der Gruppe platform.
-#
-# Getrennt von den Komponenten, weil eine Quelle mehreren gehören kann - wer
-# eine Komponente entfernt, soll nicht nebenbei einer anderen die Quelle
-# wegnehmen. Die Version pinnt jeweils die HelmRelease, nicht die Quelle.
 ---
 # cert-manager
 apiVersion: source.toolkit.fluxcd.io/v1

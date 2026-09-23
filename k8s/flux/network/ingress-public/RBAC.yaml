@@ -1,7 +1,8 @@
-# ingress-public - ServiceAccount und RBAC, von Hand statt aus dem Chart
+# ingress-public - ServiceAccount und Bindungen an die Rollen aus
+# ../TraefikRBAC.yaml
 ---
 # Eigener ServiceAccount, weil das Chart nur bei leerem `serviceAccount.name`
-# einen anlegt - das RBAC unten braucht einen festen Namen.
+# einen anlegt - die Bindungen unten brauchen einen festen Namen.
 #
 # `automountServiceAccountToken: false` wirkt nur für fremde Pods mit diesem
 # Account; im Traefik-Pod gewinnt das Pod-Template des Charts.
@@ -13,111 +14,14 @@ metadata:
 automountServiceAccountToken: false
 
 ---
-# RBAC von Hand
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: traefik-public-cluster
-rules:
-  - apiGroups:
-      - ""
-    resources:
-      - nodes
-      - namespaces
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - extensions
-      - networking.k8s.io
-    resources:
-      - ingressclasses
-    verbs:
-      - get
-      - list
-      - watch
-
----
-# ClusterRole, nur per RoleBinding gebunden - Traefik liest nur, wo eine steht.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: traefik-public-namespaced
-rules:
-  - apiGroups:
-      - ""
-    resources:
-      - configmaps
-      - services
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - discovery.k8s.io
-    resources:
-      - endpointslices
-    verbs:
-      - list
-      - watch
-  - apiGroups:
-      - ""
-    resources:
-      - pods
-    verbs:
-      - get
-  - apiGroups:
-      - ""
-    resources:
-      - secrets
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - extensions
-      - networking.k8s.io
-    resources:
-      - ingresses
-    verbs:
-      - get
-      - list
-      - watch
-  - apiGroups:
-      - extensions
-      - networking.k8s.io
-    resources:
-      - ingresses/status
-    verbs:
-      - update
-  - apiGroups:
-      - traefik.io
-    resources:
-      - ingressroutes
-      - ingressroutetcps
-      - ingressrouteudps
-      - middlewares
-      - middlewaretcps
-      - tlsoptions
-      - tlsstores
-      - traefikservices
-      - serverstransports
-      - serverstransporttcps
-    verbs:
-      - get
-      - list
-      - watch
-
----
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: traefik-public-cluster
+  name: traefik-cluster-public
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: traefik-public-cluster
+  name: traefik-cluster
 subjects:
   - kind: ServiceAccount
     name: traefik-public
@@ -128,28 +32,28 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: traefik-public-namespaced
+  name: traefik-namespaced-public
   namespace: traefik-public
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: traefik-public-namespaced
+  name: traefik-namespaced
 subjects:
   - kind: ServiceAccount
     name: traefik-public
     namespace: traefik-public
 
 ---
-# je öffentlichem Dienst eine Bindung.
+# Je öffentlichem Dienst eine Bindung.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: traefik-public-namespaced
+  name: traefik-namespaced-public
   namespace: whoami
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: traefik-public-namespaced
+  name: traefik-namespaced
 subjects:
   - kind: ServiceAccount
     name: traefik-public

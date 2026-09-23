@@ -137,7 +137,8 @@ spec:
       storageClass: local-path
       path: /data
 
-    # RBAC steht als eigene Objekte in RBAC.yaml; den ServiceAccount legt das Chart an.
+    # RBAC von Hand: Rollen in ../TraefikRBAC.yaml, Bindungen in RBAC.yaml;
+    # den ServiceAccount legt das Chart an.
     rbac:
       enabled: false
 
@@ -161,12 +162,10 @@ spec:
         enabled: true
         allowCrossNamespace: false
         allowExternalNameServices: false
-        # Hier wegen IngressRoute und Middlewares des Dashboards.
+        # Nur, wo IngressRoutes oder Middlewares liegen - bisher allein die des
+        # Dashboards. Ein Dienst mit gewöhnlichem Ingress braucht hier nichts.
         namespaces:
           - traefik-internal
-          - headlamp
-          - monitoring
-          - whoami
 
       kubernetesGateway:
         enabled: false
