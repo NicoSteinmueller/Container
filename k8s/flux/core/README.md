@@ -66,6 +66,20 @@ Ohne `PublicIngressPolicy.yaml` reichte ein Namespace zu viel in der Liste von
 das Label. Native `ValidatingAdmissionPolicy` statt Kyverno - dieselbe CEL-Regel
 ohne eigenen Controller.
 
+Sie gilt für `Ingress` und `IngressRoute(TCP/UDP)` und liest die Klasse wie
+Traefik: `spec.ingressClassName`, sonst die Annotation
+`kubernetes.io/ingress.class`. Gegenstück ist `ingressClass: public` an beiden
+Providern von `ingress-public` - ohne Klasse bedient er keine Route.
+
 ```bash
-kubectl -n headlamp create ingress test --class=public --rule='x.invalid/*=y:80'   # erwartet: Ablehnung
+# erwartet: beide abgelehnt
+kubectl -n headlamp create ingress test --class=public --rule='x.invalid/*=y:80' --dry-run=server
+kubectl create --dry-run=server -f - <<'Y'
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata: {name: test, namespace: headlamp}
+spec:
+  ingressClassName: public
+  routes: [{match: Host(`x.invalid`), kind: Rule, services: [{name: headlamp, port: 80}]}]
+Y
 ```

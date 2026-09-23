@@ -198,6 +198,10 @@ spec:
 
       kubernetesCRD:
         enabled: true
+        # Nur IngressRoute(TCP/UDP) mit `spec.ingressClassName: public` - sonst
+        # wäre jede IngressRoute in einem gelisteten Namespace öffentlich.
+        # Middlewares und TLSOption filtert Traefik nicht nach Klasse.
+        ingressClass: public
         allowCrossNamespace: false
         allowExternalNameServices: false
         # Der eigene Namespace ist zwingend: Kette, TLSOption und Middlewares

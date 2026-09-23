@@ -13,6 +13,10 @@ Traefik fürs Internet auf `192.168.178.232`, gebaut wie
 - **`forwardedHeaders.trustedIPs: []`**: Kein Proxy davor, also überschreibt
   Traefik `X-Forwarded-*`, statt sie zu übernehmen.
 - **`TLSOption` mit `sniStrict`**: Unbekannte Namen enden im Handshake.
+- **Klasse `public` an beiden Providern**: Ingress *und* IngressRoute brauchen
+  `ingressClassName: public`, sonst bedient dieser Controller sie nicht - auch
+  nicht in einem gelisteten Namespace. Middlewares und TLSOption brauchen keine
+  Klasse, Traefik filtert sie nicht.
 
 > **Stand:** whoami ist der einzige Dienst. Immich und Nextcloud laufen noch auf
 > dem Unraid-Host; die Stellen zum Nachziehen sind im Ordner als BAUSTELLE
