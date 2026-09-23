@@ -34,7 +34,7 @@ Zwei Dinge kommen dazu, die sonst Handarbeit blieben:
 
 - **Rotation auf beiden Seiten.** Über `spec.managed.roles` mit `passwordSecret`
   führt der Operator das `ALTER ROLE` selbst aus. Das schließt genau die Lücke,
-  die Reloader offenlässt (siehe `flux/README.md`, Abschnitt Rotation).
+  die Reloader offenlässt (siehe `flux/README.md`, Abschnitt Secrets).
 - **Migration aus dem laufenden Docker-Container.** `bootstrap.initdb.import`
   mit `type: microservice` fährt `pg_dump`/`pg_restore` gegen die alte
   Instanz — inklusive Versionssprung. Das alte `POSTGRES_PASSWORD` braucht man

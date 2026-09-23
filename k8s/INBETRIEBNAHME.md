@@ -41,9 +41,8 @@ LB-IPAM und im Netz angekündigt per L2-Announcement. Kein `hostPort`, kein
 Beide LoadBalancer-Adressen müssen außerhalb des Fritzbox-DHCP-Bereichs liegen
 und dürfen nicht mit `lan_ip` aus [../vm/talos](../vm/talos) kollidieren.
 
-Warum LoadBalancer und nicht `hostIP` auf zwei Adressen: Der Abschnitt „hostPort statt hostNetwork“ in
-[flux/network/README.md](flux/network/README.md)
-beschreibt den `hostIP`-Weg und seine Folgekosten — das Chart schreibt `hostIP`
+Warum LoadBalancer und nicht `hostIP` auf zwei Adressen: Der `hostIP`-Weg hat
+Folgekosten — das Chart schreibt `hostIP`
 auch in die Entrypoint-Adresse, Traefik scheitert dann im Pod-Netz am Binden,
 Ausweg ist `hostNetwork` plus `net.ipv4.ip_unprivileged_port_start=0`. Dazu
 kommt eine Folge, die dort nicht steht: **Mit `hostNetwork` liegt der Pod im
@@ -1002,7 +1001,7 @@ kubectl -n headlamp create ingress test \
 ```
 
 Die Reloader-Annotation, die Kyverno früher ebenfalls setzte, wird nicht mehr
-gebraucht; siehe [flux/README.md](flux/README.md), Abschnitt Rotation.
+gebraucht; siehe [flux/README.md](flux/README.md), Abschnitt Secrets.
 
 ## 10. CrowdSec im Cluster
 

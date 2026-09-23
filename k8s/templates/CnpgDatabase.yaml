@@ -1,0 +1,99 @@
+# Vorlage: Postgres für einen Dienst - CNPG-Cluster, Dump-Ziel, Dump-CronJob.
+# Nicht unter k8s/flux, sonst wendete Flux sie an. `nextcloud` durch den Dienst
+# ersetzen; was sonst noch nötig ist, steht in
+# k8s/flux/platform/cloudnative-pg/README.md.
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: nextcloud-db
+  namespace: nextcloud
+spec:
+  instances: 1                    # ein Node, keine Hochverfügbarkeit
+  storage:
+    size: 20Gi                    # ohne storageClass -> local-path (Default)
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 1Gi }
+---
+# Das Ziel der Dumps. Der PVC-Name landet im Pfad: die StorageClass setzt
+# subDir auf <namespace>/<pvc-name>, das ergibt /mnt/user/k8s/nextcloud/dumps.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dumps
+  namespace: nextcloud
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: nfs-unraid
+  resources:
+    requests:
+      storage: 20Gi            # NFS erzwingt kein Kontingent, nur Buchhaltung
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nextcloud-db-dump
+  namespace: nextcloud
+spec:
+  schedule: "0 */12 * * *"
+  timeZone: Europe/Berlin         # sonst UTC, und die Zeitstempel lügen
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 26         # postgres im CNPG-Image
+            runAsGroup: 26
+            fsGroup: 26
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: dump
+              # Dasselbe Image wie die Instanz: pg_dump muss zur Server-
+              # Version passen. Ein fremdes Image ist der Fehler, der erst
+              # beim Versionssprung auffällt.
+              image: ghcr.io/cloudnative-pg/postgresql:17.6
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              env:
+                - { name: PGHOST,     valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: host } } }
+                - { name: PGPORT,     valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: port } } }
+                - { name: PGUSER,     valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: username } } }
+                - { name: PGPASSWORD, valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: password } } }
+                - { name: PGDATABASE, valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: dbname } } }
+              command: [/bin/bash, -c]
+              args:
+                - |
+                  set -euo pipefail
+                  out="/dumps/nextcloud-$(date +%Y-%m-%dT%H%M).dump"
+
+                  # --compress=0 mit Absicht: Kopia dedupliziert und
+                  # komprimiert selbst. Ein komprimierter Dump unterscheidet
+                  # sich ab der ersten geänderten Zeile auf ganzer Länge vom
+                  # vorigen - jeder Snapshot legte dann eine volle Kopie ab.
+                  pg_dump --format=custom --compress=0 \
+                          --no-owner --no-privileges --file="${out}.part"
+
+                  # Erst fertig schreiben, dann umbenennen: mv innerhalb eines
+                  # Dateisystems ist atomar, Kopia sieht nie einen halben Dump.
+                  mv "${out}.part" "${out}"
+
+                  # Lokale Vorhaltung; die Tiefe hat Kopia.
+                  ls -1t /dumps/nextcloud-*.dump | tail -n +15 | xargs -r rm --
+              volumeMounts:
+                - { name: dumps, mountPath: /dumps }
+                - { name: tmp,   mountPath: /tmp }
+          volumes:
+            - name: dumps
+              persistentVolumeClaim:
+                claimName: dumps
+            - name: tmp
+              emptyDir: {}
