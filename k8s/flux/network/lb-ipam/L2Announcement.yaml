@@ -1,0 +1,15 @@
+# lb-ipam - Ankündigung der Pool-Adressen im LAN
+---
+# Gratuitous ARP für die Pool-Adressen unter der MAC des Nodes. Ohne sie bleibt
+# der ARP-Request unbeantwortet.
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: lan
+spec:
+  # LAN-Anschluss des Nodes, als Regex. Name prüfen mit
+  #   talosctl -n 192.168.178.230 get links
+  interfaces:
+    - ^enp1s0$
+  loadBalancerIPs: true
+  externalIPs: false

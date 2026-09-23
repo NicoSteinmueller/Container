@@ -41,8 +41,8 @@ LB-IPAM und im Netz angekündigt per L2-Announcement. Kein `hostPort`, kein
 Beide LoadBalancer-Adressen müssen außerhalb des Fritzbox-DHCP-Bereichs liegen
 und dürfen nicht mit `lan_ip` aus [../vm/talos](../vm/talos) kollidieren.
 
-Warum LoadBalancer und nicht `hostIP` auf zwei Adressen: Der Kommentarblock in
-[flux/network/ingress-internal.yaml](flux/network/ingress-internal.yaml)
+Warum LoadBalancer und nicht `hostIP` auf zwei Adressen: Der Abschnitt „hostPort statt hostNetwork“ in
+[flux/network/README.md](flux/network/README.md)
 beschreibt den `hostIP`-Weg und seine Folgekosten — das Chart schreibt `hostIP`
 auch in die Entrypoint-Adresse, Traefik scheitert dann im Pod-Netz am Binden,
 Ausweg ist `hostNetwork` plus `net.ipv4.ip_unprivileged_port_start=0`. Dazu
@@ -203,7 +203,7 @@ Eine Folge bleibt trotzdem:
 Und eine Abhängigkeit, die man kennen muss: **`vhost0` ist geliehen.** Es
 hängt an einer Unraid-Einstellung, die niemand hier bemerkt, wenn sie jemand
 zurücknimmt. Das Fehlerbild wäre dann kein sauberer Fehler, sondern das
-Hängen aller NFS-Mounts (`hard`, siehe `nfs-storage.yaml`). Wer die
+Hängen aller NFS-Mounts (`hard`, siehe `nfs-storage/StorageClass.yaml`). Wer die
 Abhängigkeit nicht will, gibt der VM ein zweites Bein an einem libvirt-Netz.
 
 **SSH-Key nach Unraid.** Terraform spricht über `qemu+ssh://root@…` mit
@@ -330,9 +330,9 @@ NetworkPolicies, IngressClasses, local-path-provisioner, cert-manager, step-ca,
 Traefik als `public`/`internal`, Kyverno, CrowdSec und der kubelet-csr-approver.
 Es ist entfernt worden und kommt stückweise als Flux-Manifest zurück.
 
-**Zurück sind:** Storage (`local-path.yaml`, `nfs-storage.yaml`), der interne
+**Zurück sind:** Storage (`local-path/`, `nfs-storage/`), der interne
 Ingress mit Namespaces, NetworkPolicies und der IngressClass `internal`
-(`ingress-internal.yaml`) sowie die LAN-Adressen (`lb-ipam.yaml`, Schritt 4).
+(`ingress-internal/`) sowie die LAN-Adressen (`lb-ipam/`, Schritt 4).
 Damit sind drei der früheren Sperren weg: PVCs binden, Dienste hängen unter
 Hostnamen statt an NodePorts, und ein Service vom Typ `LoadBalancer` bekommt
 eine Adresse, die im Netz auch angekündigt wird. Der interne Controller nimmt
@@ -461,7 +461,7 @@ Cilium liegt als Inline-Manifest in der Machine-Config, das ist also ein
 > aussen ein Service mit `EXTERNAL-IP`, den niemand erreicht.
 
 Dazu das Flux-Manifest
-[flux/network/lb-ipam.yaml](flux/network/lb-ipam.yaml):
+[flux/network/lb-ipam/](flux/network/lb-ipam/IPPool.yaml):
 der `CiliumLoadBalancerIPPool` mit `.231`–`.232` und die
 `CiliumL2AnnouncementPolicy` auf `enp1s0`. Begruendungen stehen als Kommentare
 in der Datei; zwei Dinge, die beim Abschreiben aus der Cilium-Doku auffallen:
@@ -538,7 +538,7 @@ Messung oben ausgeschlossen.
 
 ## 5. `ingress-internal` auf LoadBalancer umstellen
 
-In [flux/network/ingress-internal.yaml](flux/network/ingress-internal.yaml):
+In [flux/network/ingress-internal/HelmRelease.yaml](flux/network/ingress-internal/HelmRelease.yaml):
 
 ```yaml
 service:
@@ -621,7 +621,7 @@ Zuletzt gegenprüfen, dass `.230` die Ports 80/443 **nicht** mehr bedient:
 
 ## 6. Dashboard und Metriken
 
-Das Dashboard steht mit Schritt 2 schon und hängt seit `ingress-internal.yaml`
+Das Dashboard steht mit Schritt 2 schon und hängt seit `ingress-internal/`
 unter seinem Hostnamen, nicht mehr am NodePort `30080`. Aufrufen unter
 `https://dashboard.<interne-domain>` — und dort nach einem Token gefragt
 werden:
@@ -651,7 +651,7 @@ metrics-server läuft mit `--kubelet-insecure-tls`, spricht das Kubelet also
 über eine verschlüsselte, aber ungeprüfte Verbindung an — und zwar genau die
 Komponente, die Auskunft über jeden Pod auf dem Node gibt. Die Begründung, und
 warum sie im LAN vertretbar ist, steht in
-[flux/observability/metrics-server.yaml](flux/observability/metrics-server.yaml).
+[flux/observability/MetricsServer.yaml](flux/observability/MetricsServer.yaml).
 
 Der saubere Weg braucht drei Teile, von denen einer fehlt: ein prüfbares
 Serverzertifikat vom Kubelet (`kubelet_server_certs` in `vm/talos`), einen
@@ -699,7 +699,7 @@ spec:
 die es früher nicht gab — beide wegen `rbac.namespaced` am Controller:
 
 - der neue Namespace muss an drei Stellen in
-  [flux/network/ingress-internal.yaml](flux/network/ingress-internal.yaml)
+  [flux/network/ingress-internal/](flux/network/ingress-internal/HelmRelease.yaml)
   stehen: `providers.kubernetesIngress.namespaces`,
   `providers.kubernetesCRD.namespaces` und eine RoleBinding auf die ClusterRole
   `traefik-internal-namespaced`,
@@ -735,7 +735,7 @@ Bis dahin ist er der Rückweg.
 
 ## 8. `ingress-public` bauen
 
-Steht als [flux/network/ingress-public.yaml](flux/network/ingress-public.yaml),
+Steht als [flux/network/ingress-public/](flux/network/ingress-public/HelmRelease.yaml),
 gebaut wie `ingress-internal`, mit fünf Unterschieden:
 
 1. **Eigener Namespace** `traefik-public`, eigene ClusterRoles
@@ -820,7 +820,7 @@ Das Zertifikat kommt trotzdem: DNS-01 braucht keinen A-Record.
 ## 9. Die Regel gegen „versehentlich öffentlich"
 
 Steht als
-[flux/core/public-ingress-policy.yaml](flux/core/public-ingress-policy.yaml)
+[flux/core/PublicIngressPolicy.yaml](flux/core/PublicIngressPolicy.yaml)
 — eine native `ValidatingAdmissionPolicy` samt Binding, zwei Objekte, kein
 Controller.
 
@@ -1007,7 +1007,7 @@ gebraucht; siehe [flux/README.md](flux/README.md), Abschnitt Rotation.
 
 ## 10. CrowdSec im Cluster
 
-Steht als [flux/network/crowdsec.yaml](flux/network/crowdsec.yaml),
+Steht als [flux/network/crowdsec/](flux/network/crowdsec/HelmRelease.yaml),
 Chart `crowdsec/crowdsec` 0.24.0.
 
 - **LAPI in einem eigenen Namespace** `crowdsec`, **nicht** in

@@ -1,0 +1,45 @@
+# cloudnative-pg - Netzwerkregeln im Namespace `cnpg-system`
+---
+# Egress-Default-Deny: Der Operator hält die Zugangsdaten jeder Datenbank im
+# Cluster und hat im Heimnetz nichts verloren.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: cnpg-egress
+  namespace: cnpg-system
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+
+    # Die Namespaces mit Postgres-Instanzen. Der Operator fragt den Instance
+    # Manager jedes Pods nach dem Zustand (8000) und spricht für die
+    # Rollenverwaltung Postgres selbst an (5432)
+    # Je migriertem Dienst kommt ein `toEndpoints`-Block hinzu:
+    #
+    #   - toEndpoints:
+    #       - matchLabels:
+    #           io.kubernetes.pod.namespace: nextcloud
+    #           cnpg.io/podRole: instance
+    #     toPorts:
+    #       - ports:
+    #           - port: "5432"
+    #             protocol: TCP
+    #           - port: "8000"
+    #             protocol: TCP

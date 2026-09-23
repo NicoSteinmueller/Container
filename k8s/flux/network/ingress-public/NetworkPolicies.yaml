@@ -1,0 +1,92 @@
+# ingress-public - Netzwerkregeln im Namespace `traefik-public`
+---
+# Ohne Default-Deny wären auch Ping- und Metrik-Port clusterweit erreichbar.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: traefik-public
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-world
+  namespace: traefik-public
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  # Aus aller Welt - hier Absicht. Offen nur die beiden Entrypoint-Ports.
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 8443
+
+---
+# Egress-Default-Deny.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: traefik-public-egress
+  namespace: traefik-public
+spec:
+  endpointSelector: {}
+  egress:
+    - toEntities:
+        - host
+
+    # Ohne Auflösung kein ACME und kein Backend.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    # Die LAPI, die der Bouncer fragt.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: crowdsec
+            k8s-app: crowdsec
+            type: lapi
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
+    # Die bedienten Dienste, je einer ein Block.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: whoami
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+
+    # ACME: 443 für Let's Encrypt und IONOS, 53 für die Propagationsprüfung.
+    - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+            - 169.254.0.0/16
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP

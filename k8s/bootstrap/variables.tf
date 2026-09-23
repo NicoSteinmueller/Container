@@ -70,7 +70,7 @@ variable "git_secret_name" {
 # Secrets - das zweite Repo und sein Schluessel
 #
 # Die Adresse des Repos steht nicht hier, sondern in
-# sync/secrets.yaml: Sie ist Teil dessen, was Flux anwendet, und
+# sync/Secrets.yaml: Sie ist Teil dessen, was Flux anwendet, und
 # nicht Teil dessen, womit Terraform Flux einrichtet. Terraform legt hier nur
 # die Gefaesse an, die vor dem ersten Sync existieren muessen.
 #

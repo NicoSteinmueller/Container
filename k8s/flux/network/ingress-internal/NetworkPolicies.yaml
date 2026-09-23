@@ -1,0 +1,102 @@
+# ingress-internal - Netzwerkregeln im Namespace `traefik-internal`
+---
+# Sonst umgeht jeder Pod über die Pod-Adresse die Policies der Anwendungen.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: traefik-internal
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# ipBlock greift nur, weil der Client als `world` ankommt - das hängt an
+# `externalTrafficPolicy: Local` in HelmRelease.yaml.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-lan
+  namespace: traefik-internal
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 192.168.178.0/24
+
+---
+# Egress-Default-Deny.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: traefik-internal-egress
+  namespace: traefik-internal
+spec:
+  endpointSelector: {}
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    # Die bedienten Namespaces - fehlt einer, nimmt der Controller den Ingress
+    # an und erreicht das Backend nicht.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: headlamp
+      toPorts:
+        - ports:
+            - port: "4466"
+              protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+            app.kubernetes.io/name: grafana
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: whoami
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+
+    # ACME: 443 für Let's Encrypt und IONOS, 53 für die Propagationsprüfung.
+    # `except`: Internet ja, Heimnetz nein.
+    - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+            - 169.254.0.0/16
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP

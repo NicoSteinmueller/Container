@@ -1,0 +1,98 @@
+# Headlamp - Cluster-Dashboard.
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: headlamp
+  namespace: flux-system
+spec:
+  interval: 10m
+  releaseName: headlamp
+  targetNamespace: headlamp
+  storageNamespace: headlamp
+  chart:
+    spec:
+      chart: headlamp
+      version: "0.44.0"
+      sourceRef:
+        kind: HelmRepository
+        name: headlamp
+        namespace: flux-system
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    # Headlamp spricht mit der API als Identität des eingegebenen Tokens, nicht
+    # als die des Pods:
+    #
+    #   Lesen:  kubectl -n headlamp create token headlamp --duration=8h
+    #   Ändern: kubectl -n headlamp create token headlamp-admin --duration=1h
+    #
+    # unsafeUseServiceAccountToken bleibt false, sonst wäre jeder Aufrufer der
+    # ServiceAccount des Pods.
+    config:
+      inCluster: true
+      inClusterContextName: talos-cp1
+      unsafeUseServiceAccountToken: false
+      sessionTTL: 28800
+
+      oidc:
+        # Das Chart legt sonst ein leeres Secret "oidc" an, das niemand
+        # einbindet. Kommt zurück, wenn hier Keycloak angebunden wird.
+        secret:
+          create: false
+
+    # ServiceAccount und Rechte aus RBAC.yaml - die Voreinstellung
+    # des Charts ist cluster-admin.
+    serviceAccount:
+      create: false
+      name: headlamp
+
+    clusterRoleBinding:
+      create: false
+
+    # Für PodSecurity "restricted": Das Chart setzt nur runAsNonRoot und
+    # runAsUser, der Rest steht hier - sonst lehnt der Namespace den Pod ab.
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
+
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 100
+      runAsGroup: 101
+      privileged: false
+      allowPrivilegeEscalation: false
+      # Das Chart hängt dafür selbst ein leeres Volume auf /tmp ein.
+      readOnlyRootFilesystem: true
+      seccompProfile:
+        type: RuntimeDefault
+      capabilities:
+        drop:
+          - ALL
+
+    # ClusterIP statt NodePort: Der Weg über ingress-internal ist verschlüsselt,
+    # das eingefügte Token geht nicht im Klartext durchs LAN.
+    service:
+      type: ClusterIP
+      port: 80
+
+    ingress:
+      enabled: true
+      ingressClassName: internal
+      hosts:
+        - host: dashboard.k8s.nico-steinmueller.de
+          paths:
+            - path: /
+              type: Prefix
+
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        memory: 192Mi

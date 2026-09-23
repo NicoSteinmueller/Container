@@ -66,7 +66,7 @@ blockiert so lange. 10–20 Minuten, überwiegend ISO-Download und zwei Reboots:
 `vdb` ist der lokale Speicher des Clusters — dort liegen Datenbanken und alles
 andere, das `fsync` und Locking braucht. Talos legt darauf ein User-Volume an
 und mountet es nach `/var/mnt/local-path`; daraus macht
-[local-path-provisioner](../../k8s/flux/storage/local-path.yaml) die
+[local-path-provisioner](../../k8s/flux/storage/local-path/) die
 Default-StorageClass.
 
 Getrennt von der System-Disk, und zwar **nicht** wegen Geschwindigkeit — beide
@@ -481,7 +481,7 @@ kubectl run t --rm -i --restart=Never --image=busybox:1.36 \
 
 Damit sind NFS-Exporte des Hypervisors aus dem Cluster erreichbar — der
 Speicher in
-[k8s/flux/storage/nfs-storage.yaml](../../k8s/flux/storage/nfs-storage.yaml)
+[k8s/flux/storage/nfs-storage/](../../k8s/flux/storage/nfs-storage/)
 steht auf genau diesem Befund.
 
 Er ist allerdings geliehen: Er hängt an einer Unraid-Einstellung, die nichts

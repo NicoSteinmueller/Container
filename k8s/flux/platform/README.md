@@ -3,18 +3,19 @@
 Die Controller, auf denen die Dienste aufsetzen: Zertifikate, Datenbanken,
 Neustarts nach einer Rotation.
 
-| Datei | Was |
+| Komponente | Was |
 |---|---|
-| [`cert-manager.yaml`](cert-manager.yaml) | cert-manager, ohne DNS-Provider — nur die interne CA |
-| [`cloudnative-pg.yaml`](cloudnative-pg.yaml) | Postgres-Operator |
-| [`reloader.yaml`](reloader.yaml) | startet neu, was ein geändertes Secret benutzt |
+| [`cert-manager/`](cert-manager) | cert-manager, ohne DNS-Provider — nur die interne CA |
+| [`cloudnative-pg/`](cloudnative-pg) | Postgres-Operator |
+| [`reloader/`](reloader) | startet neu, was ein geändertes Secret benutzt |
+| [`Sources.yaml`](Sources.yaml) | HelmRepositories `jetstack`, `cloudnative-pg`, `stakater` |
 
-`wait: true` an dieser Gruppe ([`../sync/platform.yaml`](../sync/platform.yaml)):
+`wait: true` an dieser Gruppe ([`../sync/Platform.yaml`](../sync/Platform.yaml)):
 [`cert-manager-issuers`](../cert-manager-issuers) wartet darauf, und dahinter
 `network`. Hängt eine der drei Releases, steht die Kette — sie ist echt und
 nicht vorsichtshalber.
 
-## `cert-manager.yaml`
+## `cert-manager/`
 
 **Nicht** für die öffentlichen Zertifikate: Die holen sich die beiden
 Traefik-Controller weiter selbst per ACME/DNS-01 bei Let's Encrypt. cert-manager
@@ -38,7 +39,7 @@ und das Problem ist weg statt diesmal gelöst.
 Die Issuer und Zertifikate liegen in [`../cert-manager-issuers`](../cert-manager-issuers),
 weil ihre CRDs erst mit dem Helm-Release entstehen.
 
-## `cloudnative-pg.yaml`
+## `cloudnative-pg/`
 
 Der Operator, dem die Postgres-Instanzen der migrierten Dienste gehören. Was er
 löst, steht in [../../AUSBAUSTUFEN.md](../../AUSBAUSTUFEN.md), Stufe 1 — kurz:
@@ -175,10 +176,10 @@ Dazu je Dienst:
 
 - **`cnpg-egress` erweitern** — der Namespace mit `cnpg.io/podRole: instance` auf
   `5432` und `8000`, sonst kommt die Datenbank nicht hoch. Der Block steht
-  auskommentiert in [`cloudnative-pg.yaml`](cloudnative-pg.yaml).
+  auskommentiert in [`cloudnative-pg/NetworkPolicies.yaml`](cloudnative-pg/NetworkPolicies.yaml).
 - **Egress im Dienst-Namespace** — CoreDNS und die eigene Instanz auf `5432`.
   Der CronJob-Pod fällt unter dieselbe Regel wie die Anwendung.
-- **Reloader** — der Namespace gehört in die Liste in [`reloader.yaml`](reloader.yaml),
+- **Reloader** — der Namespace gehört in die Liste in [`reloader/HelmRelease.yaml`](reloader/HelmRelease.yaml),
   sobald ein Secret aus `homelab-secrets` dort in `env` hängt. Für das
   `-app`-Secret ist er *nicht* nötig: Rotiert der Operator es über
   `spec.managed.roles`, ändert er beide Seiten selbst — genau die Lücke, die
@@ -230,7 +231,7 @@ kubectl -n kube-system exec ds/cilium -- \
   hubble observe --namespace cnpg-system --type drop --last 100
 ```
 
-## `reloader.yaml`
+## `reloader/`
 
 Startet neu, was ein geändertes Secret benutzt — sonst arbeitet ein Pod nach
 einer Rotation bis zu seinem nächsten Start mit dem alten Wert weiter.

@@ -25,7 +25,7 @@ nfs-unraid` hin. Die Default-Annotation steht an genau **einer** Stelle — zwei
 Default-Klassen sind kein Fehler, den Kubernetes meldet, er wählt dann
 willkürlich.
 
-## [`local-path.yaml`](local-path.yaml)
+## [`local-path/`](local-path)
 
 `local-path-provisioner` von Rancher auf der zweiten Disk der VM. Der Chart
 kommt aus einer **`GitRepository`** statt einer `HelmRepository` — Rancher
@@ -46,7 +46,7 @@ sofort.
 Sicherungsweg aus dem Cluster heraus steht noch aus; wenn er kommt, gehört er
 nach Kopia auf dem Unraid-Host — bei Datenbanken als Dump, nicht als Dateikopie.
 
-## [`nfs-storage.yaml`](nfs-storage.yaml)
+## [`nfs-storage/`](nfs-storage)
 
 `csi-driver-nfs` plus die StorageClass `nfs-unraid` auf den Share `k8s`. Der
 Treiber legt je PVC ein Verzeichnis `<namespace>/<pvc-name>` unter

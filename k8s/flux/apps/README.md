@@ -3,15 +3,16 @@
 Was der Cluster für Menschen bereitstellt. Die einzige Gruppe, an der nichts
 hängt — sie darf scheitern, ohne dass eine andere davon erfährt.
 
-| Datei | Was |
+| Komponente | Was |
 |---|---|
-| [`headlamp.yaml`](headlamp.yaml) | Cluster-Dashboard unter `dashboard.k8s.nico-steinmueller.de` |
-| [`whoami.yaml`](whoami.yaml) | Testdienst aus dem lokalen Chart `k8s/whoami/chart` |
+| [`headlamp/`](headlamp) | Cluster-Dashboard unter `dashboard.k8s.nico-steinmueller.de` |
+| [`Whoami.yaml`](Whoami.yaml) | Testdienst aus dem lokalen Chart `k8s/whoami/chart` |
+| [`Sources.yaml`](Sources.yaml) | HelmRepository `headlamp` |
 
-## `headlamp.yaml`
+## `headlamp/`
 
-Fremder Chart, deshalb eine eigene `HelmRepository` (in `sources.yaml`). RBAC steht als eigene
-Manifeste in der Datei, weil das Chart seinen ServiceAccount ab Werk an
+Fremder Chart, deshalb eine eigene `HelmRepository` (in `Sources.yaml`). RBAC
+steht als eigene Manifeste in `RBAC.yaml`, weil das Chart seinen ServiceAccount ab Werk an
 `cluster-admin` bindet (`clusterRoleBinding.create: false`):
 
 | ServiceAccount | Rechte |
@@ -28,12 +29,12 @@ kubectl -n headlamp create token headlamp --duration=8h        # Lesen
 kubectl -n headlamp create token headlamp-admin --duration=1h  # Ändern
 ```
 
-## `whoami.yaml`
+## `Whoami.yaml`
 
 `HelmRelease` auf das lokale Chart — `sourceRef` zeigt auf die `GitRepository
 flux-system`, ein zweites Source-Objekt braucht es nicht. Den Namespace legt das
 Chart selbst an, anders als bei allen anderen Diensten; er steht deshalb nicht in
-[`../core/namespaces.yaml`](../core/namespaces.yaml).
+[`../core/Namespaces.yaml`](../core/Namespaces.yaml).
 
 `values-prod.yaml` setzt `service.type: ClusterIP` und einen Ingress auf
 `ingressClassName: internal`. Werte pro Umgebung: `k8s/whoami/README.md`.

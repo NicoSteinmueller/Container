@@ -1,0 +1,29 @@
+# cert-manager - Netzwerkregeln im Namespace `cert-manager`
+---
+# Nur Egress, kein Ingress: Der kube-apiserver muss den Webhook auf 10250
+# erreichen, sonst wird jedes Certificate-Objekt abgelehnt.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: cert-manager-egress
+  namespace: cert-manager
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP

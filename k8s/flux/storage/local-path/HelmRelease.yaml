@@ -1,6 +1,6 @@
 # Der lokale Speicher des Clusters und seine Default-StorageClass.
 #
-# Die Aufteilung zu nfs-storage.yaml folgt dem Zugriffsmuster: hier alles mit
+# Die Aufteilung zu ../nfs-storage/ folgt dem Zugriffsmuster: hier alles mit
 # fsync und Locking (Datenbanken, Indizes, Queues), auf NFS die Bestände
 # (Medien, Uploads, Sicherungen).
 ---
@@ -17,37 +17,7 @@ spec:
   ignore: |
     /*
     !/deploy/chart
----
-# Namespace `local-path-storage`
----
-# Egress-Default-Deny, gerade hier, wo `enforce: privileged` stehen muss: Was
-# nicht heraus kann, trägt einen übernommenen Helfer-Pod nicht weiter als bis
-# zum Node. Der Provisioner spricht nur mit CoreDNS und dem kube-apiserver.
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: local-path-egress
-  namespace: local-path-storage
-spec:
-  endpointSelector: {}
-  egress:
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: UDP
-            - port: "53"
-              protocol: TCP
 
-    - toEntities:
-        - kube-apiserver
-      toPorts:
-        - ports:
-            - port: "6443"
-              protocol: TCP
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease

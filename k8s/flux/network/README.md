@@ -3,18 +3,19 @@
 Was Verkehr in den Cluster hinein lässt — und die Adressen, unter denen er
 ankommt.
 
-| Datei | Was |
+| Komponente | Was |
 |---|---|
-| [`lb-ipam.yaml`](lb-ipam.yaml) | die LAN-Adressen des Clusters und ihre Ankündigung |
-| [`ingress-internal.yaml`](ingress-internal.yaml) | Traefik für das Heimnetz, IngressClass `internal` |
-| [`ingress-public.yaml`](ingress-public.yaml) | Traefik für das Internet, IngressClass `public` |
-| [`crowdsec.yaml`](crowdsec.yaml) | LAPI und Agent hinter dem öffentlichen Controller |
+| [`lb-ipam/`](lb-ipam) | die LAN-Adressen des Clusters und ihre Ankündigung |
+| [`ingress-internal/`](ingress-internal) | Traefik für das Heimnetz, IngressClass `internal` |
+| [`ingress-public/`](ingress-public) | Traefik für das Internet, IngressClass `public` |
+| [`crowdsec/`](crowdsec) | LAPI und Agent hinter dem öffentlichen Controller |
+| [`Sources.yaml`](Sources.yaml) | HelmRepositories `traefik` und `crowdsec` |
 
-`dependsOn: cert-manager-issuers` ([`../sync/network.yaml`](../sync/network.yaml)),
+`dependsOn: cert-manager-issuers` ([`../sync/Network.yaml`](../sync/Network.yaml)),
 weil der CrowdSec-Chart `Certificate`-Objekte gegen den ClusterIssuer
 `homelab-ca` templatet.
 
-## `lb-ipam.yaml`
+## `lb-ipam/`
 
 Welche Adressen es gibt (`CiliumLoadBalancerIPPool`, `.231`–`.232`) und wie das
 Netz von ihnen erfährt (`CiliumL2AnnouncementPolicy` auf `enp1s0`).
@@ -51,7 +52,7 @@ Die beiden CRs tragen verschiedene apiVersions: Beim IPPool ist `cilium.io/v2`
 die Storage-Version, die L2-Policy kennt in Cilium 1.20.1 **kein** `v2`. Beim
 Cilium-Update mitprüfen.
 
-## `ingress-internal.yaml`
+## `ingress-internal/`
 
 Erreichbar ausschließlich aus dem Heimnetz. Namespace, IngressClass `internal`,
 NetworkPolicies und die Traefik-Release.
@@ -97,7 +98,7 @@ Logzeile, mit 404 am Controller.
 
 Deshalb `rbac.enabled: false`: Dann erzeugt der Chart keine RBAC und setzt das
 Flag auch nicht, denn es hängt allein an `rbac.namespaced`. Die Rechte stehen
-stattdessen als eigene Objekte in der Datei:
+stattdessen als eigene Objekte in `RBAC.yaml`:
 
 | | Rechte |
 |---|---|
@@ -202,7 +203,7 @@ liegen unter `*.local.nico-steinmueller.de`. Am Namen ist damit ablesbar, wo ein
 Dienst läuft — und ein Umzug in den Cluster ist ein sichtbarer Namenswechsel
 statt einer stillen Umleitung.
 
-## `ingress-public.yaml`
+## `ingress-public/`
 
 Der Controller für das Internet — ein eigener und nicht ein zweiter Entrypoint
 des internen: eigener Namespace, eigene Adresse, eigene RBAC, eigener
@@ -218,7 +219,7 @@ gehörten: Dagegen wirkt `forwardedHeaders.trustedIPs: []`, und zwar vollständi
 — Traefik übernimmt die `X-Forwarded-*`-Kopfzeilen nicht, es überschreibt sie.
 
 > **Stand: whoami ist der einzige Dienst hier drin.** Immich und Nextcloud laufen
-> weiter als Container auf dem Unraid-Host. Vier Stellen sind in der Datei als
+> weiter als Container auf dem Unraid-Host. Vier Stellen sind im Ordner als
 > BAUSTELLE markiert und beim Migrieren nachzuziehen: die beiden
 > `namespaces`-Listen, eine RoleBinding je Dienst-Namespace und ein
 > `toEndpoints`-Block in der CiliumNetworkPolicy.
@@ -227,7 +228,7 @@ Was noch fehlt und bewusst nicht dort steht: AppSec (kommt mit dem ersten
 Dienst, an dem eine WAF-Regel etwas zu prüfen hat) und die Portfreigabe in der
 Fritzbox — die kommt zuletzt.
 
-## `crowdsec.yaml`
+## `crowdsec/`
 
 Der Agent liest die Zugriffslogs von `ingress-public`, wertet sie gegen die
 Szenarien des Hub aus und meldet Treffer an die LAPI. Der Bouncer sitzt als

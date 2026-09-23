@@ -1,0 +1,21 @@
+# die eigene CA für clusterinterne Zertifikate:
+# selbstsignierte Wurzel und der ClusterIssuer, der aus ihr ausstellt.
+---
+# Die Wurzel: signiert nur das CA-Zertifikat in Certificates.yaml.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-root
+spec:
+  selfSigned: {}
+
+---
+# ClusterIssuer statt Issuer je Namespace: ein Vertrauensanker für alle, ohne
+# Secret-Kopien und ohne Reflector.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: homelab-ca
+spec:
+  ca:
+    secretName: homelab-ca

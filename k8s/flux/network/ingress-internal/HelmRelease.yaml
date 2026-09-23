@@ -1,0 +1,200 @@
+# ingress-internal - Ingress-Controller fürs Heimnetz
+# Namespace: traefik-internal
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: traefik-internal
+  namespace: flux-system
+spec:
+  interval: 10m
+  releaseName: traefik-internal
+  targetNamespace: traefik-internal
+  storageNamespace: traefik-internal
+  chart:
+    spec:
+      chart: traefik
+      version: "41.3.0"
+      sourceRef:
+        kind: HelmRepository
+        name: traefik
+        namespace: flux-system
+  install:
+    createNamespace: false
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    deployment:
+      kind: Deployment
+      replicas: 1
+
+    # Recreate wegen acme.json: lego schreibt ohne Sperre
+    updateStrategy:
+      type: Recreate
+      rollingUpdate: null
+
+    podSecurityContext:
+      runAsUser: 65532
+      runAsGroup: 65532
+      runAsNonRoot: true
+      # Ohne fsGroup gehört das frische PVC-Verzeichnis root.
+      fsGroup: 65532
+      seccompProfile:
+        type: RuntimeDefault
+
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+
+    # Cilium vergibt die LAN-Adresse (../lb-ipam/) und kündigt sie per L2 an.
+    ports:
+      web:
+        port: 8000
+        exposedPort: 80
+        expose:
+          default: true
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
+              permanent: true
+
+      websecure:
+        port: 8443
+        exposedPort: 443
+        expose:
+          default: true
+        http:
+          tls:
+            enabled: true
+            # Wildcard am Entrypoint statt je Ingress
+            certResolver: letsencrypt
+            domains:
+              - main: k8s.nico-steinmueller.de
+                sans:
+                  - "*.k8s.nico-steinmueller.de"
+        forwardedHeaders:
+          # Kein Proxy davor, ein mitgeschickter X-Forwarded-For wäre erfunden.
+          trustedIPs: []
+          insecure: false
+
+    # Feste Adresse statt geratener Vergabereihenfolge.
+    service:
+      enabled: true
+      annotations:
+        lbipam.cilium.io/ips: "192.168.178.231"
+      spec:
+        type: LoadBalancer
+        externalTrafficPolicy: Local
+
+        # NodePorts bedient Cilium in eBPF, an Talos' Ingress-Firewall vorbei -
+        # sie wären die zweite Tür neben `allow-from-lan`.
+        allocateLoadBalancerNodePorts: false
+
+    # Wildcard von Let's Encrypt per DNS-01 über IONOS. Traefik macht es selbst,
+    # weil cert-manager keinen IONOS-Solver hat.
+    certificatesResolvers:
+      letsencrypt:
+        acme:
+          email: nico.steinmueller@gmx.net
+          storage: /data/acme.json
+          # PRODUKTIV, Staging wäre acme-staging-v02.api.letsencrypt.org.
+          # Dorthin erst testen: fünf Fehlversuche je Stunde und Hostname.
+          # Bei jedem Wechsel muss acme.json weg, sie trägt Zertifikat und
+          # ACME-Konto.
+          caServer: https://acme-v02.api.letsencrypt.org/directory
+          keyType: EC256
+          dnsChallenge:
+            provider: ionos
+            # Öffentliche Resolver.
+            resolvers:
+              - 1.1.1.1:53
+              - 8.8.8.8:53
+            propagation:
+              delayBeforeChecks: 30s
+
+    # lego liest den Key nur aus der Umgebung.
+    env:
+      - name: IONOS_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: traefik-ionos
+            key: IONOS_API_KEY
+
+    # acme.json muss den Neustart überleben, sonst droht das Rate Limit.
+    persistence:
+      enabled: true
+      name: data
+      accessMode: ReadWriteOnce
+      size: 128Mi
+      storageClass: local-path
+      path: /data
+
+    # RBAC steht als eigene Objekte in RBAC.yaml; den ServiceAccount legt das Chart an.
+    rbac:
+      enabled: false
+
+    # Die Klasse steht in IngressClass.yaml, damit sie nicht an der Release hängt.
+    ingressClass:
+      enabled: false
+
+    providers:
+      kubernetesIngress:
+        enabled: true
+        ingressClass: internal
+        allowExternalNameServices: false
+        # Ein Ingress außerhalb dieser Liste wird nicht bedient.
+        namespaces:
+          - traefik-internal
+          - headlamp
+          - monitoring
+          - whoami
+
+      kubernetesCRD:
+        enabled: true
+        allowCrossNamespace: false
+        allowExternalNameServices: false
+        # Hier wegen IngressRoute und Middlewares des Dashboards.
+        namespaces:
+          - traefik-internal
+          - headlamp
+          - monitoring
+          - whoami
+
+      kubernetesGateway:
+        enabled: false
+
+    # Das Dashboard kennt keine eigene Authentifizierung.
+    ingressRoute:
+      dashboard:
+        enabled: true
+        entryPoints:
+          - websecure
+        matchRule: Host(`traefik.k8s.nico-steinmueller.de`)
+        # Erst Passwort, dann Umleitung - sonst verrät der Redirect die Existenz.
+        middlewares:
+          - name: traefik-dashboard-auth
+          - name: traefik-dashboard-root
+      healthcheck:
+        enabled: false
+
+    log:
+      level: INFO
+
+    accessLog:
+      enabled: true
+      format: json
+
+    resources:
+      requests:
+        cpu: 50m
+        memory: 96Mi
+      limits:
+        memory: 192Mi

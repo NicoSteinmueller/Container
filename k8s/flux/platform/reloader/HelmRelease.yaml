@@ -10,37 +10,6 @@
 # Konsumenten. Das ist eine echte Änderung und läuft als gewöhnlicher Rolling
 # Update, mit den Probes und dem Rollback des Dienstes.
 ---
-# Namespace `reloader`
----
-# Egress-Default-Deny: Reloader spricht nur mit CoreDNS und dem kube-apiserver.
-# Ein Controller, der Secrets liest und Workloads patcht, hat im Heimnetz
-# nichts verloren.
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: reloader-egress
-  namespace: reloader
-spec:
-  endpointSelector: {}
-  egress:
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: UDP
-            - port: "53"
-              protocol: TCP
-
-    - toEntities:
-        - kube-apiserver
-      toPorts:
-        - ports:
-            - port: "6443"
-              protocol: TCP
----
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:

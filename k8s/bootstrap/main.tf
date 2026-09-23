@@ -88,7 +88,7 @@ resource "kubernetes_secret" "flux_git_auth" {
 }
 
 #
-# Zugang zum Secrets-Repo im Gitea (sync/secrets.yaml). Gleiche
+# Zugang zum Secrets-Repo im Gitea (sync/Secrets.yaml). Gleiche
 # Bauart und gleicher Grund wie oben: leer angelegt, von Hand gefuellt (der
 # Befehl steht im README), ignore_changes haelt den Wert.
 #
@@ -322,7 +322,7 @@ resource "helm_release" "flux_instance" {
 
   #
   # Die drei Bootstrap-Secrets muessen existieren, bevor der Sync anlaeuft -
-  # sonst zieht die Wurzel-Kustomization secrets.yaml, findet sops-age nicht
+  # sonst zieht die Wurzel-Kustomization Secrets.yaml, findet sops-age nicht
   # und meldet einen Entschluesselungsfehler, der nur eine Reihenfolge ist.
   #
   depends_on = [

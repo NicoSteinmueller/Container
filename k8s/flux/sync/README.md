@@ -1,20 +1,20 @@
 # Was Flux anwendet
 
-Dieses Verzeichnis ist der `sync.path` der FluxInstance aus [`../main.tf`](../main.tf)
+Dieses Verzeichnis ist der `sync.path` der FluxInstance aus [`../../bootstrap/main.tf`](../../bootstrap/main.tf)
 und enthält **nur Kustomizations** — je eine pro Gruppe. Die Manifeste selbst
 liegen in den Geschwisterverzeichnissen.
 
 | Gruppe | Pfad | Inhalt |
 |---|---|---|
-| [`core`](core.yaml) | [`../core`](../core) | alle Namespaces, Admission-Policy |
-| [`storage`](storage.yaml) | [`../storage`](../storage) | `local-path` (Default), `nfs-unraid` |
-| [`platform`](platform.yaml) | [`../platform`](../platform) | cert-manager, CloudNativePG, Reloader |
-| [`cert-manager-issuers`](cert-manager-issuers.yaml) | [`../cert-manager-issuers`](../cert-manager-issuers) | eigene CA und ihre Zertifikate |
-| [`network`](network.yaml) | [`../network`](../network) | beide Ingress-Controller, CrowdSec, LB-IPAM |
-| [`observability`](observability.yaml) | [`../observability`](../observability) | Prometheus, Loki/Alloy, metrics-server |
-| [`grafana-dashboards`](grafana-dashboards.yaml) | [`../grafana-dashboards`](../grafana-dashboards) | eigene Dashboards als ConfigMaps |
-| [`apps`](apps.yaml) | [`../apps`](../apps) | Headlamp, whoami |
-| [`homelab-secrets`](secrets.yaml) | eigenes Repo im Gitea | die SOPS-verschlüsselten Secrets |
+| [`core`](Core.yaml) | [`../core`](../core) | alle Namespaces, Admission-Policy |
+| [`storage`](Storage.yaml) | [`../storage`](../storage) | `local-path` (Default), `nfs-unraid` |
+| [`platform`](Platform.yaml) | [`../platform`](../platform) | cert-manager, CloudNativePG, Reloader |
+| [`cert-manager-issuers`](CertManagerIssuers.yaml) | [`../cert-manager-issuers`](../cert-manager-issuers) | eigene CA und ihre Zertifikate |
+| [`network`](Network.yaml) | [`../network`](../network) | beide Ingress-Controller, CrowdSec, LB-IPAM |
+| [`observability`](Observability.yaml) | [`../observability`](../observability) | Prometheus, Loki/Alloy, metrics-server |
+| [`grafana-dashboards`](GrafanaDashboards.yaml) | [`../grafana-dashboards`](../grafana-dashboards) | eigene Dashboards als ConfigMaps |
+| [`apps`](Apps.yaml) | [`../apps`](../apps) | Headlamp, whoami |
+| [`homelab-secrets`](Secrets.yaml) | eigenes Repo im Gitea | die SOPS-verschlüsselten Secrets |
 
 ```
 core ──┬── storage ── observability ── grafana-dashboards
@@ -117,7 +117,7 @@ mit RFC 1918 und `169.254.0.0/16` unter `except`.
 
 - **`csi-driver-nfs`** — beide Pods laufen auf hostNetwork und tragen die
   Identität des Nodes. Keine NetworkPolicy greift auf sie
-  ([../storage/nfs-storage.yaml](../storage/nfs-storage.yaml)).
+  ([../storage/nfs-storage/](../storage/nfs-storage/HelmRelease.yaml)).
 - **`kube-system`** — sechs von neun Pods ebenfalls hostNetwork. Adressierbar
   blieben CoreDNS und metrics-server; CoreDNS braucht den Resolver im LAN
   (`dns_servers` aus `vm/talos/terraform.tfvars`). Eine Regel dafür koppelte
@@ -143,7 +143,7 @@ bewegliche Quelle ist damit gleichbedeutend mit fremdem Code als Cluster-Admin.
 |---|---|
 | `local-path-provisioner` | GitRepository auf **Tag** `v0.0.37` |
 | `csi-driver-nfs` | GitRepository auf **Tag** `v4.13.4`, Chart aus `charts/v4.13.4/` |
-| Traefik, CrowdSec, Headlamp, metrics-server, Reloader, CloudNativePG, cert-manager, kube-prometheus-stack, Loki, Alloy | HelmRepository über HTTPS in `sources.yaml` der Gruppe, Chart-Version exakt in der HelmRelease gepinnt |
+| Traefik, CrowdSec, Headlamp, metrics-server, Reloader, CloudNativePG, cert-manager, kube-prometheus-stack, Loki, Alloy | HelmRepository über HTTPS in `Sources.yaml` der Gruppe, Chart-Version exakt in der HelmRelease gepinnt |
 | Grafana-Dashboards und Alarmregeln | in der Chart, also mit `version:` mitgepinnt — eigene dazu über [`../grafana-dashboards`](../grafana-dashboards) |
 | Container-Images | Tag, teils zusätzlich Digest |
 
