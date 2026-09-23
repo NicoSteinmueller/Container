@@ -34,7 +34,7 @@ kubectl -n headlamp create token headlamp-admin --duration=1h  # Ändern
 `HelmRelease` auf das lokale Chart — `sourceRef` zeigt auf die `GitRepository
 flux-system`, ein zweites Source-Objekt braucht es nicht. Den Namespace legt das
 Chart selbst an, anders als bei allen anderen Diensten; er steht deshalb nicht in
-[`../core/Namespaces.yaml`](../core/Namespaces.yaml).
+[`../core/namespaces/`](../core/namespaces/Restricted.yaml).
 
 `values-prod.yaml` setzt `service.type: ClusterIP` und einen Ingress auf
 `ingressClassName: internal`. Werte pro Umgebung: `k8s/whoami/README.md`.

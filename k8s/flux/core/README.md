@@ -5,7 +5,7 @@ die alle warten ([`../sync/Core.yaml`](../sync/Core.yaml)).
 
 | Komponente | Inhalt |
 |---|---|
-| [`Namespaces.yaml`](Namespaces.yaml) | alle Namespaces des Clusters mit ihrer Pod-Security-Stufe |
+| [`namespaces/`](namespaces/Restricted.yaml) | alle Namespaces des Clusters, nach Pod-Security-Stufe: `Restricted.yaml`, `Privileged.yaml` |
 | [`DefaultDenyIngress.yaml`](DefaultDenyIngress.yaml) | `CiliumClusterwideNetworkPolicy`: eingehend zu für jeden Pod außer in `kube-system` und `flux-system` |
 | [`DefaultDenyEgress.yaml`](DefaultDenyEgress.yaml) | dasselbe ausgehend, nur DNS zu CoreDNS ist frei |
 | [`PublicIngressPolicy.yaml`](PublicIngressPolicy.yaml) | `ValidatingAdmissionPolicy`: `ingressClassName: public` nur in Namespaces mit `homelab.io/zone=public` |
@@ -14,7 +14,7 @@ die alle warten ([`../sync/Core.yaml`](../sync/Core.yaml)).
 
 Zwei `CiliumClusterwideNetworkPolicy` statt einer Sperre je Namespace und
 Richtung: eingehend alles zu, ausgehend alles bis auf DNS. Damit ist auch ein
-Namespace zu, den ein Chart selbst anlegt oder den man in `Namespaces.yaml`
+Namespace zu, den ein Chart selbst anlegt oder den man in `namespaces/`
 vergisst. Freigaben stehen bei der Komponente in `NetworkPolicies.yaml` und
 addieren sich dazu - erlaubt ist, was irgendeine Policy erlaubt.
 
@@ -76,8 +76,20 @@ ohne `namespace:` landet genau dort. Nebenwirkung: `kubectl run` und
 `kubectl debug` ohne securityContext werden dort abgelehnt. Für einen schnellen
 Testpod lästig, und genau so gemeint.
 
-`kube-system`, `flux-system` und `cilium-secrets` bleiben bewusst ohne Stufe;
-die Begründung steht im Kopf von [`Namespaces.yaml`](Namespaces.yaml).
+**Nach Stufe getrennt**, damit die Ausnahmen auffallen:
+[`namespaces/Privileged.yaml`](namespaces/Privileged.yaml) ist die kurze Liste,
+die man bei einer Prüfung liest, jeder Eintrag mit seinem Grund. Die Labels
+stehen an jedem Namespace ausgeschrieben statt über eine Kustomize-Komponente -
+bei Sicherheits-Labels ist sichtbar wichtiger als kurz.
+
+Bewusst ohne Stufe und nicht in `namespaces/`:
+
+| Namespace | warum |
+|---|---|
+| `kube-system` | Cilium läuft dort mit Capabilities, die schon `baseline` ablehnt - eine Stufe wäre ein Ausfall des CNI |
+| `flux-system` | die Controller müssen anwenden dürfen, was im Repo steht ([`../../bootstrap/README.md`](../../bootstrap/README.md)) |
+| `cilium-secrets` | kommt aus der Talos-Machine-Config; von hier bearbeitet hätte er zwei Schreiber. Pods laufen dort keine |
+| `whoami` | legt das lokale Chart selbst an, Helm besitzt ihn |
 
 ## Warum alle Namespaces hier liegen
 
@@ -87,7 +99,7 @@ Komponenten — lägen die Namespaces jeweils bei der Komponente, hinge `network
 an `observability` und `apps`. So hängt alles an `core` und sonst nichts
 aneinander.
 
-Ausnahme ist `whoami`: Den legt das lokale Chart an, Helm besitzt ihn.
+Ausnahme ist `whoami`, siehe oben.
 
 ## Die zweite Sperre gegen „versehentlich öffentlich"
 

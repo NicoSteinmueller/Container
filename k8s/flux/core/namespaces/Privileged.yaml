@@ -1,0 +1,51 @@
+# namespaces - Stufe `privileged`, die Ausnahmen. Jede mit Grund am Namespace.
+#
+# hostPath verbietet schon `baseline` - deshalb keine Stufe dazwischen.
+---
+# `privileged` wegen des Agenten: Er liest die Container-Logs per hostPath.
+# `warn`/`audit` auf `baseline`, damit auffällt, wenn sonst etwas sie braucht.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: crowdsec
+  labels:
+    homelab.io/zone: internal
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/audit: baseline
+---
+# storage - `privileged` als Preis für echte Kernel-Mounts: Das NFS-Plugin
+# mountet im Host-Namespace, local-path legt Volumes per hostPath an.
+# Eingegrenzt wird über den Inhalt, nicht über die Policy: je ein Treiber.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: local-path-storage
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: privileged
+    pod-security.kubernetes.io/audit: privileged
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: csi-driver-nfs
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: privileged
+    pod-security.kubernetes.io/audit: privileged
+---
+# observability - `privileged` wegen zweier DaemonSets: node-exporter
+# (hostNetwork, hostPID, /proc, /sys) und Alloy (/var/log).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: privileged
+    pod-security.kubernetes.io/audit: privileged
