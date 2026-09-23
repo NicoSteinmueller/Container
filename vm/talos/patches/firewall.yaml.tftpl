@@ -98,7 +98,7 @@ ingress:
 # Ohne diese Regel steht das Target dauerhaft auf DOWN, und zwar mit
 # `context deadline exceeded` statt mit "connection refused": Talos verwirft
 # still, und Hubble zeigt nichts, weil Cilium das Paket durchgelassen hat. Die
-# Egress-Regel in k8s/flux/clusters/talos-cp1/monitoring.yaml ist die *andere*
+# Egress-Regel in k8s/flux/observability/monitoring.yaml ist die *andere*
 # Haelfte davon - beide sind noetig.
 #
 # Nur `pod_subnet`: Von aussen gibt es keinen Grund, die Node-Metriken zu
@@ -172,7 +172,7 @@ ingress:
 #   und etcd - sonst nichts.
 #
 # Deshalb tragen die LoadBalancer-Services seit
-# k8s/flux/clusters/talos-cp1/ingress-*.yaml `allocateLoadBalancerNodePorts:
+# k8s/flux/network/ingress-*.yaml `allocateLoadBalancerNodePorts:
 # false`: Was keinen NodePort hat, ist auf der Node-Adresse auch nicht
 # erreichbar. Wer diese Ports einschränken will, tut das in den
 # NetworkPolicies - `allow-from-lan` in ingress-internal.yaml ist die
