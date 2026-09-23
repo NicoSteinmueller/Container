@@ -1,7 +1,7 @@
 #
-# Vorlage für $HOMELAB_VALUES/k8s/flux/terraform.tfvars - dorthin kopieren und
-# anpassen, nicht hierher: tools/tf reicht die Datei aus dem privaten
-# Werte-Repo als -var-file herein (siehe gitea/README.md).
+# Vorlage für $HOMELAB_VALUES/k8s/bootstrap/terraform.tfvars - dorthin
+# kopieren und anpassen, nicht hierher: tools/tf reicht die Datei aus dem
+# privaten Werte-Repo als -var-file herein (siehe gitea/README.md).
 #
 
 # Cluster aus vm/talos
@@ -12,7 +12,7 @@
 #
 # git_url    = "https://github.com/NicoSteinmueller/Container.git"
 # git_branch = "kubernetes-try"
-# sync_path  = "k8s/flux/clusters/talos-cp1"
+# sync_path  = "k8s/flux/sync"
 
 #
 # Zugang zur Flux-Status-Seite - NodePort ist ohne Login erreichbar, siehe

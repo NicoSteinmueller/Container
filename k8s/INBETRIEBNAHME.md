@@ -3,8 +3,9 @@
 Der Weg von einem leeren Unraid-Host zu Immich und Nextcloud im Internet.
 Reihenfolge einhalten — die Portfreigabe kommt **zuletzt**, nicht zuerst.
 
-Ausführlich steht alles in [../vm/talos/README.md](../vm/talos/README.md) und
-[flux/README.md](flux/README.md); das hier ist der Ablauf.
+Ausführlich steht alles in [../vm/talos/README.md](../vm/talos/README.md),
+[bootstrap/README.md](bootstrap/README.md) und [flux/README.md](flux/README.md);
+das hier ist der Ablauf.
 
 Was bewusst *nicht* Teil der Inbetriebnahme ist, sondern später kommt, steht in
 [AUSBAUSTUFEN.md](AUSBAUSTUFEN.md).
@@ -306,15 +307,15 @@ Weitere als Manifest aus Git. Werte und State liegen in Gitea, deshalb der
 Wrapper statt eines nackten `tofu`.
 
 ```bash
-cd ../../k8s/flux
+cd ../../k8s/bootstrap
 git -C "$HOMELAB_VALUES" pull
 ../../tools/tf init
 ../../tools/tf apply
 ```
 
 Danach die drei Bootstrap-Geheimnisse eintragen — drei `kubectl patch`, die
-Befehle und ihre Begründung stehen in [flux/README.md](flux/README.md),
-Abschnitt Secrets. Ohne sie erreicht Flux das Repo `homelab-secrets` nicht.
+Befehle und ihre Begründung stehen in [bootstrap/README.md](bootstrap/README.md),
+Abschnitt „Die drei Geheimnisse“. Ohne sie erreicht Flux das Repo `homelab-secrets` nicht.
 
 ```bash
 kubectl -n flux-system get fluxinstance,gitrepository,kustomization,helmrelease
@@ -1119,7 +1120,7 @@ gebannt wird — und dass der eigene LAN-Zugang davon unberührt bleibt.
 | `EXTERNAL-IP` steht, antwortet aber nicht | L2-Announcement kommt nicht durch. `ip -4 neigh show \| grep <adresse>` von einem LAN-Rechner — steht dort nicht die MAC des Nodes, stimmt `interfaces` in der `CiliumL2AnnouncementPolicy` nicht, oder macvtap schluckt das Gratuitous ARP |
 | Im Log steht überall die Node-Adresse als Client-IP | `externalTrafficPolicy: Local` fehlt am Service — siehe Schritt 5 |
 | ACME schlägt fehl | Zeit (NTP), DNS-Provider-Credentials, Staging-Verzeichnis verwenden |
-| `HelmRelease` oder `Kustomization` bleibt auf `False` | `kubectl -n flux-system describe helmrelease <name>`; bei `homelab-secrets` fast immer die drei Bootstrap-Secrets, siehe [flux/README.md](flux/README.md) |
+| `HelmRelease` oder `Kustomization` bleibt auf `False` | `kubectl -n flux-system describe helmrelease <name>`; bei `homelab-secrets` fast immer die drei Bootstrap-Secrets, siehe [bootstrap/README.md](bootstrap/README.md) |
 | Secret im Cluster enthält wörtlich `ENC[AES256_GCM,…]` | Der `decryption`-Block der Kustomization greift nicht — der age-Schlüssel in `sops-age` passt nicht zu `.sops.yaml` |
 | PVC bleibt `Pending` | Es gibt keine StorageClass, siehe Ende von Schritt 2. `kubectl get storageclass` ist leer |
 | Ingress antwortet nicht | `kubectl -n traefik-internal logs deploy/traefik-internal`. Kommt dort nichts an, ist es fast immer die NetworkPolicy: `kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop`. Notbremse: `kubectl -n traefik-internal delete networkpolicy allow-from-lan` |

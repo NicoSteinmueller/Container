@@ -114,7 +114,7 @@ Rueckgelesene unattended-upgrades-Muster) nur im echten Lauf.
 aufschliesst, wird die sops-Binary nie ohne Pruefsummenabgleich installiert -
 `github_binary` bricht ab, wenn das Release keine passende Zeile in seiner
 `checksums.txt` enthaelt. Hintergrund in
-[k8s/flux/README.md](../../k8s/flux/README.md).
+[k8s/bootstrap/README.md](../../k8s/bootstrap/README.md).
 
 ## Wie die automatischen Updates funktionieren
 

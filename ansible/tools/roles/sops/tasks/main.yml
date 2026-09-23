@@ -5,7 +5,7 @@
 #
 # Gebraucht wird es fuer die Cluster-Geheimnisse: `tools/sops` im Container-Repo
 # ver- und entschluesselt damit die Manifeste in homelab-secrets, und Flux tut
-# im Cluster dasselbe (k8s/flux/README.md, Abschnitt Secrets).
+# im Cluster dasselbe (k8s/bootstrap/README.md, Abschnitt "Die drei Geheimnisse").
 #
 # Weil dieser Rechner damit die Geheimnisse des Clusters entschluesselt, wird
 # die Binary nie ohne Pruefsummenabgleich installiert - github_binary bricht ab,
