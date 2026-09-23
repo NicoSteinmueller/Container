@@ -9,15 +9,6 @@
 # Reloader schreibt bei Änderung eine Annotation ins Pod-Template der
 # Konsumenten. Das ist eine echte Änderung und läuft als gewöhnlicher Rolling
 # Update, mit den Probes und dem Rollback des Dienstes.
-
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: stakater
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: https://stakater.github.io/stakater-charts
 ---
 # Namespace `reloader`
 ---

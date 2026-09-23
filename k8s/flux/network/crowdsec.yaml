@@ -2,15 +2,6 @@
 # ingress-public aus, der Bouncer im dortigen Traefik fragt die LAPI.
 #
 # TODO: AppSec, Console-Registrierung bei crowdsec.net, Metabase-Dashboard.
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: crowdsec
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: https://crowdsecurity.github.io/helm-charts
-
 ---
 # Agent und LAPI laufen unter `default`, sprechen die Kubernetes-API aber nie an.
 apiVersion: v1

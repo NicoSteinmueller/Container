@@ -15,6 +15,13 @@ cert-manager-issuers/             eigener Pfad: CRDs entstehen erst mit dem Rele
 grafana-dashboards/               eigener Pfad: braucht eine kustomization.yaml
 ```
 
+Jede Gruppe mit fremden Charts trägt ihre `HelmRepository`-Objekte in einer
+eigenen `sources.yaml`, nicht bei der Komponente: Eine Quelle kann mehreren
+gehören (traefik), und wer eine Komponente entfernt, soll den anderen nicht die
+Quelle wegnehmen. Ausnahme sind die `GitRepository`-Quellen in `storage/`: Dort
+pinnt die Quelle selbst die Version (Tag und Chart-Pfad), sie gehört deshalb zur
+HelmRelease in dieselbe Datei.
+
 Was in welcher Gruppe liegt, wie sie voneinander abhängen und welche Regeln für
 alle gelten (Egress, Herkunft der Charts), steht in
 [`sync/README.md`](sync/README.md). Jede Gruppe hat ihr eigenes README.

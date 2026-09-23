@@ -6,15 +6,6 @@
 # Zu sichern ist damit nur der Dump - Operator und `Cluster`-CRs stehen in Git.
 # Der Weg zurück: CR anwenden, leere Instanz, Dump einspielen.
 ---
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: cloudnative-pg
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: https://cloudnative-pg.io/charts
----
 # Namespace `cnpg-system`
 ---
 # Egress-Default-Deny: Der Operator hält die Zugangsdaten jeder Datenbank im
