@@ -116,13 +116,26 @@ spec:
       - name: crowdsec-ca
         mountPath: /crowdsec-ca
         readOnly: true
+      # Jede Datei einzeln per subPath: Ein ganzes ConfigMap-Volume brächte
+      # die versteckten Verzeichnisse `..<zeitstempel>` mit, in die der
+      # File-Provider hineinliest - jede Datei zweimal, und während eines
+      # Updates womöglich die alte Fassung zuerst. subPath-Mounts sehen keine
+      # Änderungen; eine neue Fassung kommt über den Reloader-Neustart.
       - name: dynamic-config
-        mountPath: /etc/traefik/dynamic
+        mountPath: /etc/traefik/dynamic/routes.yaml
+        subPath: routes.yaml
+        readOnly: true
+      - name: dynamic-config
+        mountPath: /etc/traefik/dynamic/middlewares.yaml
+        subPath: middlewares.yaml
+        readOnly: true
+      - name: dynamic-config
+        mountPath: /etc/traefik/dynamic/tls.yaml
+        subPath: tls.yaml
         readOnly: true
 
     additionalArguments:
       - --providers.file.directory=/etc/traefik/dynamic
-      - --providers.file.watch=true
 
     ports:
       web:
