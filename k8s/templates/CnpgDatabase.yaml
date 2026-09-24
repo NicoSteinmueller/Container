@@ -1,7 +1,11 @@
-# Vorlage: Postgres für einen Dienst - CNPG-Cluster, Dump-Ziel, Dump-CronJob.
-# Nicht unter k8s/flux, sonst wendete Flux sie an. `nextcloud` durch den Dienst
-# ersetzen; was sonst noch nötig ist, steht in
-# k8s/flux/platform/cloudnative-pg/README.md.
+# Vorlage: Postgres für einen Dienst - CNPG-Cluster, Dump-Ziel, Dump-CronJob,
+# Netzwerkregeln. Nicht unter k8s/flux, sonst wendete Flux sie an.
+# `nextcloud` durch den Dienst ersetzen; was sonst noch nötig ist, steht in
+# k8s/flux/platform/cloudnative-pg/README.md. Zurückspielen: CnpgRestore.yaml.
+#
+# Wer die Datenbank ansprechen darf, trägt das Label
+# `homelab.io/db-client: nextcloud-db` - der Dump-Job unten, die Anwendung,
+# der Restore-Job. Alle anderen Pods im Namespace kommen nicht heran.
 ---
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
@@ -10,6 +14,17 @@ metadata:
   namespace: nextcloud
 spec:
   instances: 1                    # ein Node, keine Hochverfügbarkeit
+
+  # Gepinnt, und zwar genau wie im CronJob unten: pg_dump bricht gegen eine
+  # neuere Server-Hauptversion ab. Ohne diese Zeile nimmt der Operator seinen
+  # eigenen Default (CNPG 1.30: PostgreSQL 18.4), und der wandert mit jedem
+  # Operator-Update. Renovate hebt beide Stellen in einem PR (renovate.json5,
+  # Gruppe "cnpg-postgres").
+  #
+  # `standard` statt des Operator-Defaults `system`: ohne barman-cloud, das
+  # hier niemand braucht (kein Objektspeicher), mit allen Locales.
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:58d19a1edb30d42fc2be3470ac7719caa496a4f3a7f1289472d6c3f6b04c8fd1
+
   storage:
     size: 20Gi                    # ohne storageClass -> local-path (Default)
   resources:
@@ -37,7 +52,9 @@ metadata:
   namespace: nextcloud
 spec:
   schedule: "0 */12 * * *"
-  timeZone: Europe/Berlin         # sonst UTC, und die Zeitstempel lügen
+  # Nur der Zeitplan; die Dateinamen stehen in UTC (`Z`), eindeutig auch
+  # beim Wechsel der Sommerzeit.
+  timeZone: Europe/Berlin
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -45,8 +62,12 @@ spec:
     spec:
       backoffLimit: 2
       template:
+        metadata:
+          labels:
+            homelab.io/db-client: nextcloud-db
         spec:
           restartPolicy: OnFailure
+          automountServiceAccountToken: false
           securityContext:
             runAsNonRoot: true
             runAsUser: 26         # postgres im CNPG-Image
@@ -55,10 +76,8 @@ spec:
             seccompProfile: { type: RuntimeDefault }
           containers:
             - name: dump
-              # Dasselbe Image wie die Instanz: pg_dump muss zur Server-
-              # Version passen. Ein fremdes Image ist der Fehler, der erst
-              # beim Versionssprung auffällt.
-              image: ghcr.io/cloudnative-pg/postgresql:17.6
+              # Dasselbe Image wie `imageName` oben, Zeichen für Zeichen.
+              image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:58d19a1edb30d42fc2be3470ac7719caa496a4f3a7f1289472d6c3f6b04c8fd1
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
@@ -69,11 +88,19 @@ spec:
                 - { name: PGUSER,     valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: username } } }
                 - { name: PGPASSWORD, valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: password } } }
                 - { name: PGDATABASE, valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: dbname } } }
+                # TLS mit Prüfung gegen die CA, die der Operator für diesen
+                # Cluster erzeugt - libpq nähme sonst jedes Zertifikat.
+                - { name: PGSSLMODE,     value: verify-full }
+                - { name: PGSSLROOTCERT, value: /pg-ca/ca.crt }
               command: [/bin/bash, -c]
               args:
                 - |
                   set -euo pipefail
-                  out="/dumps/nextcloud-$(date +%Y-%m-%dT%H%M).dump"
+                  out="/dumps/nextcloud-$(date -u +%Y-%m-%dT%H%MZ).dump"
+
+                  # Ein abgebrochener Lauf soll keinen halben Dump liegen
+                  # lassen, den später jemand für einen ganzen hält.
+                  trap 'rm -f "${out}.part"' EXIT
 
                   # --compress=0 mit Absicht: Kopia dedupliziert und
                   # komprimiert selbst. Ein komprimierter Dump unterscheidet
@@ -86,14 +113,77 @@ spec:
                   # Dateisystems ist atomar, Kopia sieht nie einen halben Dump.
                   mv "${out}.part" "${out}"
 
+                  # Lesbar? pg_restore --list scheitert an einem kaputten
+                  # Archiv, ohne etwas zurückzuspielen.
+                  pg_restore --list "${out}" > /dev/null
+
                   # Lokale Vorhaltung; die Tiefe hat Kopia.
                   ls -1t /dumps/nextcloud-*.dump | tail -n +15 | xargs -r rm --
               volumeMounts:
                 - { name: dumps, mountPath: /dumps }
+                - { name: pg-ca, mountPath: /pg-ca, readOnly: true }
                 - { name: tmp,   mountPath: /tmp }
           volumes:
             - name: dumps
               persistentVolumeClaim:
                 claimName: dumps
+            # Nur ca.crt - das Secret enthält auch den Schlüssel der CA.
+            - name: pg-ca
+              secret:
+                secretName: nextcloud-db-ca
+                items:
+                  - { key: ca.crt, path: ca.crt }
             - name: tmp
               emptyDir: {}
+---
+# Die Instanz: eingehend der Operator (5432 Rollen, 8000 Status) und die
+# gekennzeichneten Clients; ausgehend nur die API - der Instance Manager im
+# Pod meldet seinen Zustand selbst dorthin.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: nextcloud-db
+  namespace: nextcloud
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: nextcloud-db
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: cnpg-system
+            app.kubernetes.io/name: cloudnative-pg
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+            - { port: "8000", protocol: TCP }
+    - fromEndpoints:
+        - matchLabels:
+            homelab.io/db-client: nextcloud-db
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - { port: "6443", protocol: TCP }
+---
+# Die Gegenrichtung für alle Clients.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: nextcloud-db-client
+  namespace: nextcloud
+spec:
+  endpointSelector:
+    matchLabels:
+      homelab.io/db-client: nextcloud-db
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: nextcloud-db
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }

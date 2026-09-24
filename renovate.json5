@@ -117,6 +117,26 @@
       depNameTemplate: 'cilium',
       registryUrlTemplate: 'https://helm.cilium.io',
     },
+    {
+      // Postgres-Image der CNPG-Cluster (`imageName`) und ihrer Dump- und
+      // Restore-Jobs (`image`), Vorlage in k8s/templates/CnpgDatabase.yaml.
+      // Beide Stellen einer Datei müssen gleich bleiben - pg_dump bricht gegen
+      // eine neuere Server-Hauptversion ab. Ein Manager für beide Stellen,
+      // damit sie im selben PR wandern.
+      //
+      // Die Versionierung hält das Suffix (`standard-trixie`) fest und lässt
+      // die Zeitstempel-Tags (`18.4-2026…-standard-trixie`) außen vor.
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^k8s\\/.+\\.ya?ml$/',
+      ],
+      matchStrings: [
+        '(?<depName>ghcr\\.io\\/cloudnative-pg\\/postgresql):(?<currentValue>\\d+\\.\\d+-[a-z]+-[a-z]+)@(?<currentDigest>sha256:[a-f0-9]{64})',
+      ],
+      datasourceTemplate: 'docker',
+      versioningTemplate: 'regex:^(?<major>\\d+)\\.(?<minor>\\d+)-(?<compatibility>[a-z]+-[a-z]+)$',
+      autoReplaceStringTemplate: '{{depName}}:{{newValue}}@{{newDigest}}',
+    },
   ],
   branchPrefix: 'renovate/',
   additionalBranchPrefix: '{{parentDir}}-',
@@ -254,6 +274,21 @@
       prCreation: 'immediate',
       prBodyNotes: [
         '### 🧩 Update eines HelmRelease\n\n⚠️ Anders als bei den Terraform-Modulen genügt hier der Merge: Flux zieht die neue Chart-Version von selbst nach, ein `apply` gibt es nicht. Der Review ist deshalb die einzige Stelle, an der ein Breaking Change auffallen kann.\n\nNach dem Merge:\n\n```bash\nkubectl -n flux-system get helmrelease\nkubectl -n flux-system get kustomization\n```\n\nHängt eines auf `False`, steht der Grund in `kubectl -n flux-system describe helmrelease <name>`.',
+      ],
+    },
+    {
+      description: 'CNPG-Postgres: Instanz und Dump-Job gemeinsam, immer mit Review',
+      matchManagers: [
+        'custom.regex',
+      ],
+      matchPackageNames: [
+        'ghcr.io/cloudnative-pg/postgresql',
+      ],
+      groupName: 'cnpg-postgres',
+      automerge: false,
+      prCreation: 'immediate',
+      prBodyNotes: [
+        '### 🐘 Postgres im Cluster\n\nInstanz und Dump-Job wechseln gemeinsam - `pg_dump` bricht gegen eine neuere Server-Hauptversion ab. Nach dem Merge startet CNPG die Instanz neu (kurze Downtime, `instances: 1`).\n\n**Major-Update:** CNPG macht daraus ein `pg_upgrade` beim Start. Vorher einen frischen Dump ziehen:\n\n```bash\nkubectl -n <ns> create job --from=cronjob/<name>-db-dump dump-vor-upgrade\n```\n\nDanach prüfen: `kubectl -n <ns> get cluster` (healthy) und einen Dump-Job laufen lassen.',
       ],
     },
     {

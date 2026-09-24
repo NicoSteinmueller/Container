@@ -1,0 +1,75 @@
+# Vorlage: einen Dump aus CnpgDatabase.yaml zurückspielen. Von Hand anwenden,
+# nie über Flux - ein Job läuft beim Anlegen los.
+#
+#   ssh root@192.168.178.3 ls -lt /mnt/user/k8s/nextcloud/dumps/   # Dump wählen
+#   # DUMP unten eintragen, `nextcloud` durch den Dienst ersetzen
+#   kubectl apply -f CnpgRestore.yaml
+#   kubectl -n nextcloud logs -f job/nextcloud-db-restore
+#   kubectl -n nextcloud delete job nextcloud-db-restore
+#
+# `--clean --if-exists` ersetzt, was da ist. Die Anwendung vorher anhalten
+# (replicas: 0), sonst schreibt sie in eine halb zurückgespielte Datenbank.
+# Ziel ist die Datenbank aus dem Secret `nextcloud-db-app` - nach einem
+# Neuaufbau eine leere Instanz mit neuem Passwort, die Anwendung liest es per
+# secretKeyRef und merkt davon nichts.
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nextcloud-db-restore
+  namespace: nextcloud
+spec:
+  backoffLimit: 0                 # kein zweiter Versuch auf halbem Stand
+  template:
+    metadata:
+      labels:
+        homelab.io/db-client: nextcloud-db
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 26
+        runAsGroup: 26
+        fsGroup: 26
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: restore
+          # Dasselbe Image wie `imageName` im Cluster.
+          image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:58d19a1edb30d42fc2be3470ac7719caa496a4f3a7f1289472d6c3f6b04c8fd1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          env:
+            - { name: DUMP, value: /dumps/nextcloud-JJJJ-MM-TTTHHMMZ.dump }
+            - { name: PGHOST,     valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: host } } }
+            - { name: PGPORT,     valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: port } } }
+            - { name: PGUSER,     valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: username } } }
+            - { name: PGPASSWORD, valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: password } } }
+            - { name: PGDATABASE, valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: dbname } } }
+            - { name: PGSSLMODE,     value: verify-full }
+            - { name: PGSSLROOTCERT, value: /pg-ca/ca.crt }
+          command: [/bin/bash, -c]
+          args:
+            - |
+              set -euo pipefail
+              # --exit-on-error: lieber abbrechen als still halb zurückspielen
+              pg_restore --clean --if-exists --no-owner --no-privileges \
+                         --exit-on-error --dbname="${PGDATABASE}" "${DUMP}"
+              echo "zurückgespielt: ${DUMP}"
+          volumeMounts:
+            - { name: dumps, mountPath: /dumps, readOnly: true }
+            - { name: pg-ca, mountPath: /pg-ca, readOnly: true }
+            - { name: tmp,   mountPath: /tmp }
+      volumes:
+        - name: dumps
+          persistentVolumeClaim:
+            claimName: dumps
+        - name: pg-ca
+          secret:
+            secretName: nextcloud-db-ca
+            items:
+              - { key: ca.crt, path: ca.crt }
+        - name: tmp
+          emptyDir: {}
