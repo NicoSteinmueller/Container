@@ -14,6 +14,13 @@
       '(^|/)[^/]*compose[^/]*\\.ya?ml$',
     ],
   },
+  // Reine Kubernetes-Manifeste unter k8s/flux (Deployments ohne Chart,
+  // z.B. apps/ntfy). HelmReleases deckt der flux-Manager ab.
+  kubernetes: {
+    managerFilePatterns: [
+      '/^k8s\\/flux\\/.+\\.ya?ml$/',
+    ],
+  },
   dockerfile: {
     enabled: true,
     managerFilePatterns: [
@@ -275,6 +282,24 @@
       prBodyNotes: [
         '### 🧩 Update eines HelmRelease\n\n⚠️ Anders als bei den Terraform-Modulen genügt hier der Merge: Flux zieht die neue Chart-Version von selbst nach, ein `apply` gibt es nicht. Der Review ist deshalb die einzige Stelle, an der ein Breaking Change auffallen kann.\n\nNach dem Merge:\n\n```bash\nkubectl -n flux-system get helmrelease\nkubectl -n flux-system get kustomization\n```\n\nHängt eines auf `False`, steht der Grund in `kubectl -n flux-system describe helmrelease <name>`.',
       ],
+    },
+    {
+      description: 'Kubernetes-Manifeste: wie die HelmReleases nur mit Review, Flux rollt nach dem Merge selbst aus',
+      matchManagers: [
+        'kubernetes',
+      ],
+      automerge: false,
+      prCreation: 'immediate',
+    },
+    {
+      description: 'CNPG-Postgres nicht doppelt: das hebt der eigene Regex-Manager, Instanz und Dump-Job gemeinsam',
+      matchManagers: [
+        'kubernetes',
+      ],
+      matchPackageNames: [
+        'ghcr.io/cloudnative-pg/postgresql',
+      ],
+      enabled: false,
     },
     {
       description: 'CNPG-Postgres: Instanz und Dump-Job gemeinsam, immer mit Review',

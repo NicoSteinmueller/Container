@@ -5,7 +5,7 @@ einer Rotation mit dem alten Wert weiter.
 
 - **`autoReloadAll: true`**: Im Blickfeld gilt jeder Workload als annotiert.
 - **Blickfeld ist eine Namespace-Liste** (`watchGlobally: false`): `crowdsec`,
-  `monitoring`, `traefik-internal`, `traefik-public`. Das Chart legt dann nur
+  `monitoring`, `ntfy`, `traefik-internal`, `traefik-public`. Das Chart legt dann nur
   Roles an, keine ClusterRole - sonst dürfte Reloader Workloads in jedem
   Namespace patchen, `kube-system` eingeschlossen.
 - **Ein neuer Dienst mit Secret gehört in die Liste**, sonst läuft er nach einer

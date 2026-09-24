@@ -1,0 +1,153 @@
+# ntfy - Push-Benachrichtigungen unter https://ntfy.nico-steinmueller.de
+# Namespace: ntfy
+#
+# Kein Chart: ein Container, eine Datei. Benutzer, Rechte und Tokens stehen
+# deklarativ im Secret `ntfy-auth` - die SQLite-Dateien auf dem Volume sind
+# damit nur Cache und Vorlieben, ihr Verlust kostet nichts, was ein Client braucht.
+---
+# auth.db, cache.db, Anhänge. local-path: SQLite gehört nicht auf NFS.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ntfy-data
+  namespace: ntfy
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 6Gi            # local-path erzwingt nichts; die Grenze ist NTFY_ATTACHMENT_TOTAL_SIZE_LIMIT
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ntfy
+  namespace: ntfy
+spec:
+  selector:
+    app.kubernetes.io/name: ntfy
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ntfy
+  namespace: ntfy
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  # Zwei Pods auf demselben SQLite-Volume wären einer zu viel.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ntfy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ntfy
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ntfy
+          image: binwiederhier/ntfy:v2.27.0@sha256:f2419f405127afa868f10985c1a41449e673477cee1eb19994339a5ae8b592e7
+          args:
+            - serve
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: TZ
+              value: Europe/Berlin
+            # Konfiguration: https://docs.ntfy.sh/config/
+            - name: NTFY_BASE_URL
+              value: https://ntfy.nico-steinmueller.de
+            # 8080 statt 80: kein privilegierter Port für einen Nicht-Root-Prozess.
+            - name: NTFY_LISTEN_HTTP
+              value: ":8080"
+            # traefik-public setzt X-Forwarded-For auf die echte Client-Adresse
+            # (externalTrafficPolicy: Local) - ntfy begrenzt damit je
+            # Besucher, nicht je Proxy.
+            - name: NTFY_BEHIND_PROXY
+              value: "true"
+            - name: NTFY_AUTH_FILE
+              value: /var/lib/ntfy/auth.db
+            - name: NTFY_AUTH_DEFAULT_ACCESS
+              value: deny-all
+            - name: NTFY_ENABLE_LOGIN
+              value: "true"
+            - name: NTFY_CACHE_FILE
+              value: /var/lib/ntfy/cache.db
+            - name: NTFY_CACHE_DURATION
+              value: 30d
+            - name: NTFY_ATTACHMENT_CACHE_DIR
+              value: /var/lib/ntfy/attachments
+            - name: NTFY_ATTACHMENT_FILE_SIZE_LIMIT
+              value: 50M
+            # Unter Docker 20G, genutzt nie. Kleiner, weil local-path die Größe
+            # nicht erzwingt und die Daten-Disk sich alle Dienste teilen.
+            - name: NTFY_ATTACHMENT_TOTAL_SIZE_LIMIT
+              value: 5G
+            - name: NTFY_ATTACHMENT_EXPIRY_DURATION
+              value: 30d
+            # Benutzer, Rechte, Tokens. Ein aus dem Secret entfernter Eintrag
+            # wird beim nächsten Start aus auth.db gelöscht; Reloader startet
+            # nach einer Änderung neu.
+            - name: NTFY_AUTH_USERS
+              valueFrom:
+                secretKeyRef:
+                  name: ntfy-auth
+                  key: NTFY_AUTH_USERS
+            - name: NTFY_AUTH_ACCESS
+              valueFrom:
+                secretKeyRef:
+                  name: ntfy-auth
+                  key: NTFY_AUTH_ACCESS
+            - name: NTFY_AUTH_TOKENS
+              valueFrom:
+                secretKeyRef:
+                  name: ntfy-auth
+                  key: NTFY_AUTH_TOKENS
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/ntfy
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: ntfy-data

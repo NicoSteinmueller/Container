@@ -45,6 +45,7 @@ spec:
       namespaces:
         - crowdsec
         - monitoring
+        - ntfy
         - traefik-internal
         - traefik-public
 
