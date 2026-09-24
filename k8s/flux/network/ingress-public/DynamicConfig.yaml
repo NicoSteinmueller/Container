@@ -32,6 +32,13 @@ data:
             - websecure
           service: whoami
 
+        # Push-Benachrichtigungen (../../apps/ntfy)
+        ntfy:
+          rule: Host(`ntfy.nico-steinmueller.de`)
+          entryPoints:
+            - websecure
+          service: ntfy
+
       # Über den Service-Namen statt über Endpoints: Traefik braucht dafür
       # keine Leserechte im Namespace des Dienstes.
       services:
@@ -39,6 +46,10 @@ data:
           loadBalancer:
             servers:
               - url: http://whoami.whoami.svc.cluster.local:80
+        ntfy:
+          loadBalancer:
+            servers:
+              - url: http://ntfy.ntfy.svc.cluster.local:80
 
   middlewares.yaml: |
     http:
@@ -119,18 +130,18 @@ data:
   tls.yaml: |
     # `sniStrict` ohne Default-Zertifikat: unbekannte Namen enden im
     # Handshake, nicht in einer Antwort. `default` gilt für jeden Router.
+    #
+    # Die Zertifikate sind ECDSA (`keyType: EC256`), für TLS 1.2 zählen also
+    # nur ECDSA-Suiten - mit RSA-Suiten allein kam 1.2 nie zustande. TLS 1.3
+    # wählt Go selbst. Keine `curvePreferences`: Go bietet dann X25519MLKEM768
+    # (Post-Quanten-Schlüsseltausch) und X25519 an; P-521/P-384 allein
+    # zwangen jeden Browser in einen zweiten Roundtrip.
     tls:
       options:
         default:
           minVersion: VersionTLS12
           sniStrict: true
           cipherSuites:
-            - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-            - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-            - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
-            - TLS_AES_128_GCM_SHA256
-            - TLS_AES_256_GCM_SHA384
-            - TLS_CHACHA20_POLY1305_SHA256
-          curvePreferences:
-            - CurveP521
-            - CurveP384
+            - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+            - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+            - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305

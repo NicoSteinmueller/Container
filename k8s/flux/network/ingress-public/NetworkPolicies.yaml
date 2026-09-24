@@ -52,6 +52,15 @@ spec:
             - port: "80"
               protocol: TCP
 
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: ntfy
+            app.kubernetes.io/name: ntfy
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
     # ACME: 443 für Let's Encrypt und IONOS, 53 für die Propagationsprüfung.
     - toCIDRSet:
         - cidr: 0.0.0.0/0
