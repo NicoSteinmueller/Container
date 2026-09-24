@@ -4,7 +4,7 @@ services:
   # https://docs.linuxserver.io/images/docker-nextcloud
   nextcloud:
     # ------------ Identität ------------------------
-    image: lscr.io/linuxserver/nextcloud:34.0.4@sha256:a197532f22fb3aca9ce4cc3b7e8e76db7f0759c5b96d8421dd57188e38017710
+    image: lscr.io/linuxserver/nextcloud:35.0.1@sha256:887f065c8eca9bd6b1311c3cedaffbba5a9156750840a6b834a2cf014d2be5ba
     container_name: nextcloud
 
     # ------------ Abhängigkeiten & Start -----------
