@@ -89,24 +89,3 @@ Zwei Wege:
 Für einen Cluster mit einer Handvoll Clients ist das eher eine Aufräumaktion
 als eine Notwendigkeit. Erst sinnvoll, wenn Keycloak ohnehin nach Kubernetes
 gezogen ist.
-
-## 3. OpenBao — nur, wenn dynamische Credentials der Grund sind
-
-**Auslöser:** der Wunsch nach Zugangsdaten mit Ablaufdatum statt langlebiger
-Passwörter, oder nach einem Audit-Log darüber, wer welches Geheimnis gelesen
-hat.
-
-Die Database Secrets Engine erzeugt pro Anwendung ein Passwort mit TTL und
-rotiert beide Seiten — statisch abgelegte DB-Passwörter verschwinden ganz. Das
-ist der eine Gewinn, den SOPS strukturell nicht liefern kann. Alles andere, was
-OpenBao mitbringt, ist schon da oder vorgesehen: Versionierung durch Git,
-Zugriffskontrolle durch Gitea, PKI durch step-ca — letzteres kommt mit dem
-Plattform-Stack zurück, es läuft derzeit nicht.
-
-**Wenn, dann außerhalb des Clusters, neben Gitea.** Ein Vault *im* Cluster, der
-die Secrets *des* Clusters hält, ist zirkulär: Node startet neu → Vault ist
-versiegelt → nichts bekommt Zugangsdaten → jemand entsiegelt von Hand. Genau
-dieselbe Überlegung, aus der Gitea außerhalb läuft.
-
-Anmerkung zur Reihenfolge: Nach Stufe 1 und 2 ist der Bedarf kleiner, als er
-heute aussieht. Deshalb steht das hier unten und nicht oben.
