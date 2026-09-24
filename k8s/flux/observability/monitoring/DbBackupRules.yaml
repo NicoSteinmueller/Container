@@ -1,0 +1,63 @@
+# monitoring - Alarme zu den Datenbank-Dumps (k8s/templates/CnpgDatabase.yaml)
+#
+# Erkannt wird ein Dump an seinem CronJob-Namen `<dienst>-db-dump`. Alle Alarme
+# tragen `thema: db-backup` - daran hängt die Route ins ntfy-Topic `db-backup`
+# (HelmRelease.yaml, alertmanager.config).
+#
+# Zwei Regeln, weil sie Verschiedenes fangen:
+#   DbDumpFehlgeschlagen  sofort, wenn ein Lauf scheitert
+#   DbDumpVeraltet        wenn seit 13 h kein Lauf gelungen ist - auch wenn gar
+#                         keiner lief (CronJob angehalten, Node aus, Zeitplan
+#                         kaputt). Das fängt die erste Regel nicht.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: db-backup
+  namespace: monitoring
+spec:
+  groups:
+    - name: db-backup
+      rules:
+        # Ein gescheiterter Job bleibt stehen (failedJobsHistoryLimit), der
+        # Alarm soll es nicht: nur Jobs, die in den letzten 13 h gestartet
+        # sind. `backoffLimit: 2` ist dann schon ausgeschöpft.
+        - alert: DbDumpFehlgeschlagen
+          expr: |
+            (
+              kube_job_failed{condition="true"}
+                * on (namespace, job_name) group_left (owner_name)
+              kube_job_owner{owner_kind="CronJob", owner_name=~".+-db-dump"}
+            ) == 1
+            and on (namespace, job_name)
+            (time() - kube_job_status_start_time) < 13 * 3600
+          labels:
+            severity: warning
+            thema: db-backup
+          annotations:
+            summary: "Dump {{ $labels.owner_name }} in {{ $labels.namespace }} gescheitert"
+            description: >-
+              Job {{ $labels.job_name }} ist fehlgeschlagen. Log:
+              kubectl -n {{ $labels.namespace }} logs job/{{ $labels.job_name }}
+
+        # 12 h Zeitplan plus eine Stunde Spielraum. Der zweite Teil fängt einen
+        # CronJob, der noch nie erfolgreich war - dem fehlt die Metrik ganz.
+        - alert: DbDumpVeraltet
+          expr: |
+            (time() - kube_cronjob_status_last_successful_time{cronjob=~".+-db-dump"}) > 13 * 3600
+            or
+            (
+              (time() - kube_cronjob_created{cronjob=~".+-db-dump"}) > 13 * 3600
+              unless on (namespace, cronjob)
+              kube_cronjob_status_last_successful_time
+            )
+          for: 15m
+          labels:
+            severity: warning
+            thema: db-backup
+          annotations:
+            summary: "Kein Dump {{ $labels.cronjob }} in {{ $labels.namespace }} seit über 13 h"
+            description: >-
+              Der letzte gelungene Lauf ist zu alt oder es gab nie einen. Sofort
+              nachholen: kubectl -n {{ $labels.namespace }} create job
+              --from=cronjob/{{ $labels.cronjob }} dump-manuell

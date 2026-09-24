@@ -24,10 +24,17 @@ kein Internet-Egress.
   `monitoring` - ein ServiceMonitor anderswo wird still ignoriert.
 - **Voraussetzung:** Secret `grafana-admin` (`admin-user`, `admin-password`) in
   `homelab-secrets`, sonst startet Grafana nicht.
+- **Alarme an ntfy:** Was `thema: db-backup` trägt
+  ([`DbBackupRules.yaml`](DbBackupRules.yaml)), geht ins Topic `db-backup`,
+  direkt an den ntfy-Service mit einem Token, das nur dort schreiben darf
+  (Secret `ntfy-alertmanager`). Eine neue Alarmgruppe: eigenes `thema`, eigene
+  Route und eigener Empfänger in `HelmRelease.yaml`, dazu Benutzer oder Recht
+  in `ntfy-auth`.
 
-**Offen:** ein Empfänger für Alarme (alles endet im `null`-Receiver, siehe
-[uptime-kuma/todo.md](../../../../uptime-kuma/todo.md)) und ein Blick von außen
-auf den öffentlichen Ingress.
+**Offen:** Alles andere endet weiter im `null`-Receiver, und ein toter
+Cluster meldet sich nicht - ntfy läuft im selben Cluster. Dafür braucht es
+einen Totmann außerhalb ([uptime-kuma/todo.md](../../../../uptime-kuma/todo.md)).
+Dazu ein Blick von außen auf den öffentlichen Ingress.
 
 ```bash
 kubectl -n monitoring get pods,prometheus,alertmanager,servicemonitor

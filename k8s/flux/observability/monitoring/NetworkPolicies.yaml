@@ -104,3 +104,26 @@ spec:
             io.kubernetes.pod.namespace: kube-system
         - matchLabels:
             io.kubernetes.pod.namespace: flux-system
+
+---
+# Alertmanager -> ntfy (Dump-Alarme, HelmRelease.yaml). Eigene Regel statt eines
+# Blocks in monitoring-egress: Nur Alertmanager darf dorthin, nicht Grafana
+# oder Prometheus.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: alertmanager-to-ntfy
+  namespace: monitoring
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: ntfy
+            app.kubernetes.io/name: ntfy
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP

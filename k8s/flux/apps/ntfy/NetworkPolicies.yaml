@@ -22,5 +22,32 @@ spec:
         - protocol: TCP
           port: 8080
 
+---
+# Alertmanager schickt die Dump-Alarme direkt an den Service, nicht über den
+# Ingress (observability/monitoring/HelmRelease.yaml). Nur er, nicht ganz
+# `monitoring`.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-alertmanager
+  namespace: ntfy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ntfy
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: alertmanager
+      ports:
+        - protocol: TCP
+          port: 8080
+
 # Ausgehend keine Regel: ntfy braucht nichts außer DNS (core/DefaultDenyEgress.yaml)
 # - kein Firebase, kein SMTP, kein Upstream.
