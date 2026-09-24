@@ -10,8 +10,10 @@
 # öffentlich. Ein neuer Dienst braucht einen Router, einen Service und einen
 # `toEndpoints`-Block in NetworkPolicies.yaml.
 #
-# Eine Änderung hier startet traefik-public über Reloader neu (Recreate, kurze
-# Unterbrechung); `providers.file.watch` übernimmt sie meist schon vorher.
+# Eine Änderung hier wirkt erst über den Neustart, den Reloader auslöst
+# (Recreate, kurze Unterbrechung): Die Dateien hängen per subPath, und die
+# sehen keine Updates (HelmRelease.yaml). Ein neuer Schlüssel hier braucht
+# dort auch einen neuen Mount.
 ---
 apiVersion: v1
 kind: ConfigMap
