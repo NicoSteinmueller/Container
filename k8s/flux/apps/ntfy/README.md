@@ -27,8 +27,16 @@ Der Name muss dafür auf `.232` zeigen:
 Benutzer, Rechte und Tokens stehen deklarativ im Secret `ntfy-auth`
 (`homelab-secrets`, Schlüssel `NTFY_AUTH_USERS`, `NTFY_AUTH_ACCESS`,
 `NTFY_AUTH_TOKENS`) und sind dieselben wie unter Docker - Clients ändern
-nichts. `auth.db` entsteht daraus bei jedem Start neu. Ein Token von Hand
-(`ntfy token add`) überlebt einen Volume-Verlust nicht; er gehört ins Secret.
+nichts. `auth.db` bleibt auf dem Volume; ntfy gleicht Benutzer, Rechte und
+Tokens bei jedem Start mit dem Secret ab. Was nur in `auth.db` steht - ein
+Token von Hand (`ntfy token add`), die Abos der Web-App - überlebt einen
+Volume-Verlust nicht; Tokens gehören deshalb ins Secret.
+
+**Keine Abos von Server-Seite:** `nico:*:ro` erlaubt das Lesen aller Topics,
+abonniert aber keines. Welche Topics ein Client zeigt, legt er selbst fest; es
+gibt weder Wildcard-Abos noch eine Liste der Topics. Heute gibt es drei:
+`kopia-nas`, `Unraid` und `db-backup` (Alertmanager, Benutzer `alertmanager`,
+darf nur dort schreiben).
 
 ```bash
 sops edit cluster/ntfy-auth.sops.yaml          # in homelab-secrets

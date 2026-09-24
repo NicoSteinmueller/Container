@@ -84,7 +84,54 @@ spec:
 
     alertmanager:
       enabled: true
+
+      # Route und Empfänger vollständig, nicht nur ergänzt: Helm ersetzt
+      # Listen, statt sie zusammenzuführen. `global`, `inhibit_rules` und
+      # `templates` bleiben Chart-Default.
+      config:
+        route:
+          group_by:
+            - namespace
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 12h
+          receiver: "null"
+          routes:
+            # Feuert immer - beweist nur, dass die Kette lebt.
+            - receiver: "null"
+              matchers:
+                - alertname = "Watchdog"
+
+            # Dump-Alarme (DbBackupRules.yaml) ins ntfy-Topic `db-backup`.
+            - receiver: ntfy-db-backup
+              matchers:
+                - thema = "db-backup"
+              group_by:
+                - alertname
+                - namespace
+
+        receivers:
+          - name: "null"
+
+          # Direkt an den Service, nicht über ingress-public: kein Umweg über
+          # DNS und das Token erlaubt nur Schreiben in `db-backup`.
+          # `template=alertmanager` ist ntfys eingebaute Vorlage
+          # für diese Webhooks - ohne sie käme das rohe JSON an.
+          - name: ntfy-db-backup
+            webhook_configs:
+              - url: http://ntfy.ntfy.svc.cluster.local/db-backup?template=alertmanager
+                send_resolved: true
+                http_config:
+                  authorization:
+                    type: Bearer
+                    # Secret ntfy-alertmanager (homelab-secrets), eingehängt
+                    # über `alertmanagerSpec.secrets` - steht so nicht in der
+                    # generierten Konfiguration.
+                    credentials_file: /etc/alertmanager/secrets/ntfy-alertmanager/token
+
       alertmanagerSpec:
+        secrets:
+          - ntfy-alertmanager
         storage:
           volumeClaimTemplate:
             spec:
