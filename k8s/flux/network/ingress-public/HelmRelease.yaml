@@ -2,7 +2,8 @@
 # Namespace: traefik-public
 #
 # Eigener Controller statt zweitem Entrypoint des internen: eigene Adresse,
-# eigenes RBAC, eigener Zertifikatsspeicher.
+# eigener Zertifikatsspeicher - und kein Zugang zur Kubernetes-API. Die Routen
+# stehen in DynamicConfig.yaml.
 #
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -29,6 +30,25 @@ spec:
   upgrade:
     remediation:
       retries: 3
+
+  # Das Chart schreibt `automountServiceAccountToken: true` fest ins
+  # Pod-Template. Ohne Kubernetes-Provider braucht der Pod kein Token - und
+  # ein Token im exponiertesten Pod ist eines zu viel. `test` vor `replace`:
+  # Ändert ein Chart-Update die Stelle, scheitert das Rendern laut.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: traefik-public
+            patch: |
+              - op: test
+                path: /spec/template/spec/automountServiceAccountToken
+                value: true
+              - op: replace
+                path: /spec/template/spec/automountServiceAccountToken
+                value: false
+
   values:
     deployment:
       kind: Deployment
@@ -51,6 +71,13 @@ spec:
               - key: ca.crt
                 path: ca.crt
             defaultMode: 0444
+
+        # Routen, Middlewares, TLS-Option (DynamicConfig.yaml). Eigene
+        # ConfigMap statt `providers.file.content`, damit die öffentlichen
+        # Routen in einer Datei für sich stehen.
+        - name: dynamic-config
+          configMap:
+            name: traefik-public-dynamic
 
     # Recreate wegen acme.json
     updateStrategy:
@@ -89,6 +116,13 @@ spec:
       - name: crowdsec-ca
         mountPath: /crowdsec-ca
         readOnly: true
+      - name: dynamic-config
+        mountPath: /etc/traefik/dynamic
+        readOnly: true
+
+    additionalArguments:
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
 
     ports:
       web:
@@ -112,7 +146,7 @@ spec:
         http:
           # Am Entrypoint, damit kein Ingress die Kette vergessen kann.
           middlewares:
-            - traefik-public-public-chain@kubernetescrd
+            - public-chain@file
           tls:
             enabled: true
             # Zertifikat je Router statt Wildcard
@@ -175,6 +209,8 @@ spec:
       storageClass: local-path
       path: /data
 
+    # Keine Rechte: Der Controller spricht nicht mit der API (siehe
+    # `providers`). Der ServiceAccount aus RBAC.yaml ist an nichts gebunden.
     rbac:
       enabled: false
 
@@ -184,32 +220,16 @@ spec:
     ingressClass:
       enabled: false
 
+    # Kein Kubernetes-Provider: Jeder startete je beobachtetem Namespace einen
+    # Secrets-Informer, und der exponierteste Pod läse dort alle Secrets -
+    # bei einem Dienst mit Datenbank auch dessen Zugang. Die Routen kommen aus
+    # DynamicConfig.yaml (`additionalArguments` oben); ein Ingress mit Klasse
+    # `public` bewirkt nichts.
     providers:
       kubernetesIngress:
-        enabled: true
-        ingressClass: public
-        allowExternalNameServices: false
-        # Sicherheitsgrenze: was hier nicht steht, wird nicht bedient
-        # Der eigene Namespace muss mit rein.
-        namespaces:
-          - traefik-public
-          - whoami
-
+        enabled: false
       kubernetesCRD:
-        enabled: true
-        # Nur IngressRoute(TCP/UDP) mit `spec.ingressClassName: public` - sonst
-        # wäre jede IngressRoute in einem gelisteten Namespace öffentlich.
-        # Middlewares und TLSOption filtert Traefik nicht nach Klasse.
-        ingressClass: public
-        allowCrossNamespace: false
-        allowExternalNameServices: false
-        # Der eigene Namespace ist zwingend: Kette, TLSOption und Middlewares
-        # sind CRDs und liegen dort. Ein Dienst kommt nur dazu, wenn er eine
-        # IngressRoute oder eigene Middlewares mitbringt - whoami hat einen
-        # gewöhnlichen Ingress.
-        namespaces:
-          - traefik-public
-
+        enabled: false
       kubernetesGateway:
         enabled: false
 

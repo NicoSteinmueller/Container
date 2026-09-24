@@ -8,8 +8,8 @@ metadata:
     # ihn beim Upgrade - samt allem, was darin liegt. `keep` lässt ihn stehen.
     helm.sh/resource-policy: keep
   labels:
-    # Zone: welcher Ingress-Controller diesen Namespace bedienen darf.
-    # Ausgewertet von k8s/flux/core/PublicIngressPolicy.yaml.
+    # Zone: ob der Dienst von außen erreichbar ist. Reine Dokumentation -
+    # die Routen stehen in k8s/flux/network/ingress-*/DynamicConfig.yaml.
     homelab.io/zone: {{ .Values.zone }}
     # Pod Security Admission: verweigert jedes Deployment/Pod-Update, das nicht
     # den "restricted" Anforderungen entspricht (non-root, keine Privilege

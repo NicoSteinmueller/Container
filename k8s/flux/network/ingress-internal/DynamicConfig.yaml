@@ -1,0 +1,89 @@
+# ingress-internal - Routen und Middlewares für den File-Provider
+#
+# Gebaut wie ../ingress-public/DynamicConfig.yaml und aus demselben Grund: Ein
+# Kubernetes-Provider startet je beobachtetem Namespace einen Secrets-Informer,
+# und der Controller läse dort alles - in `monitoring` etwa grafana-admin, in
+# jedem migrierten Dienst dessen DB-Zugang. Über den File-Provider braucht er
+# keine API und kein Token (HelmRelease.yaml).
+#
+# Ein neuer Dienst braucht einen Router, einen Service und einen
+# `toEndpoints`-Block in NetworkPolicies.yaml. Das Wildcard
+# `*.k8s.nico-steinmueller.de` hängt am Entrypoint, ein Router braucht keinen
+# tls-Block.
+#
+# Eine Änderung hier startet traefik-internal über Reloader neu (Recreate,
+# kurze Unterbrechung); `providers.file.watch` übernimmt sie meist schon vorher.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traefik-internal-dynamic
+  namespace: traefik-internal
+data:
+  routes.yaml: |
+    http:
+      routers:
+        headlamp:
+          rule: Host(`dashboard.k8s.nico-steinmueller.de`)
+          entryPoints:
+            - websecure
+          service: headlamp
+
+        grafana:
+          rule: Host(`grafana.k8s.nico-steinmueller.de`)
+          entryPoints:
+            - websecure
+          service: grafana
+
+        whoami:
+          rule: Host(`whoami.k8s.nico-steinmueller.de`)
+          entryPoints:
+            - websecure
+          service: whoami
+
+        # Traefiks eigenes Dashboard. Erst Passwort, dann Umleitung - sonst
+        # verrät der Redirect die Existenz. Match nur auf den Host, sonst wäre
+        # die Adresse ohne Pfad ein 404.
+        dashboard:
+          rule: Host(`traefik.k8s.nico-steinmueller.de`)
+          entryPoints:
+            - websecure
+          service: api@internal
+          middlewares:
+            - traefik-dashboard-auth
+            - traefik-dashboard-root
+
+      # Über den Service-Namen statt über Endpoints: Traefik braucht dafür
+      # keine Leserechte im Namespace des Dienstes.
+      services:
+        headlamp:
+          loadBalancer:
+            servers:
+              - url: http://headlamp.headlamp.svc.cluster.local:80
+        grafana:
+          loadBalancer:
+            servers:
+              - url: http://kube-prometheus-stack-grafana.monitoring.svc.cluster.local:80
+        whoami:
+          loadBalancer:
+            servers:
+              - url: http://whoami.whoami.svc.cluster.local:80
+
+  middlewares.yaml: |
+    http:
+      middlewares:
+        # Zugangsdaten aus dem Secret traefik-dashboard-auth (homelab-secrets),
+        # als Datei eingehängt (HelmRelease.yaml). `removeHeader`: sonst geht
+        # der Benutzer als Authorization-Header an api@internal weiter.
+        traefik-dashboard-auth:
+          basicAuth:
+            usersFile: /traefik-auth/users
+            realm: Traefik
+            removeHeader: true
+
+        # Von / auf /dashboard/ umleiten
+        traefik-dashboard-root:
+          redirectRegex:
+            regex: ^https?://[^/]+/?$
+            replacement: https://traefik.k8s.nico-steinmueller.de/dashboard/
+            permanent: false

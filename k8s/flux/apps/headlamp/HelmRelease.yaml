@@ -80,14 +80,10 @@ spec:
       type: ClusterIP
       port: 80
 
+    # Kein Ingress: Die Route `dashboard.k8s.nico-steinmueller.de` steht in
+    # network/ingress-internal/DynamicConfig.yaml.
     ingress:
-      enabled: true
-      ingressClassName: internal
-      hosts:
-        - host: dashboard.k8s.nico-steinmueller.de
-          paths:
-            - path: /
-              type: Prefix
+      enabled: false
 
     resources:
       requests:

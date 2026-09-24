@@ -158,11 +158,10 @@ spec:
         enabled: true
         size: 4Gi
 
+      # Kein Ingress: Die Route `grafana.k8s.nico-steinmueller.de` steht in
+      # network/ingress-internal/DynamicConfig.yaml.
       ingress:
-        enabled: true
-        ingressClassName: internal
-        hosts:
-          - grafana.k8s.nico-steinmueller.de
+        enabled: false
 
       # Prometheus legt die Charts selbst an, Loki nicht.
       additionalDataSources:

@@ -13,12 +13,20 @@ Traefik fürs Internet auf `192.168.178.232`, gebaut wie
 - **`forwardedHeaders.trustedIPs: []`**: Kein Proxy davor, also überschreibt
   Traefik `X-Forwarded-*`, statt sie zu übernehmen.
 - **`TLSOption` mit `sniStrict`**: Unbekannte Namen enden im Handshake.
-- **Klasse `public` an beiden Providern**: Ingress *und* IngressRoute brauchen
-  `ingressClassName: public`, sonst bedient dieser Controller sie nicht - auch
-  nicht in einem gelisteten Namespace. Middlewares und TLSOption brauchen keine
-  Klasse, Traefik filtert sie nicht.
+- **Kein Kubernetes-Provider, kein Token.** Routen, Middlewares und die
+  TLS-Option stehen in [`DynamicConfig.yaml`](DynamicConfig.yaml) (File-Provider).
+  Ein Kubernetes-Provider startete je Namespace einen Secrets-Informer - der
+  exponierteste Pod läse dann in jedem Dienst-Namespace alles, auch den
+  DB-Zugang. So hat er keine Rechte, kein Token (`postRenderer` in
+  `HelmRelease.yaml`, das Chart setzt es sonst fest) und keinen Weg zur API.
+- **Ein öffentlicher Dienst** braucht drei Einträge: Router und Service in
+  `routes.yaml` (Service per `http://<svc>.<ns>.svc.cluster.local`), einen
+  `toEndpoints`-Block in `NetworkPolicies.yaml` und im Ziel-Namespace eine
+  Policy, die `traefik-public` hereinlässt. Ein Ingress-Objekt
+  lehnt der Cluster ab ([`../../core/NoIngressObjects.yaml`](../../core/NoIngressObjects.yaml)).
+- **Eine Änderung an `DynamicConfig.yaml`** startet den Controller über
+  Reloader neu (`Recreate`, kurze Unterbrechung).
 
 > **Stand:** whoami ist der einzige Dienst. Immich und Nextcloud laufen noch auf
-> dem Unraid-Host; die Stellen zum Nachziehen sind im Ordner als BAUSTELLE
-> markiert. AppSec kommt mit dem ersten Dienst, den eine WAF-Regel schützen
+> dem Unraid-Host. AppSec kommt mit dem ersten Dienst, den eine WAF-Regel schützen
 > soll; die Fritzbox-Freigabe zuletzt.

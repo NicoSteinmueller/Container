@@ -1,60 +1,12 @@
-# ingress-public - ServiceAccount und Bindungen an die Rollen aus
-# ../TraefikRBAC.yaml
+# ingress-public - ServiceAccount, bewusst ohne Rechte
 ---
 # Eigener ServiceAccount, weil das Chart nur bei leerem `serviceAccount.name`
-# einen anlegt - die Bindungen unten brauchen einen festen Namen.
-#
-# `automountServiceAccountToken: false` wirkt nur für fremde Pods mit diesem
-# Account; im Traefik-Pod gewinnt das Pod-Template des Charts.
+# einen anlegt. An nichts gebunden: Der Controller liest keine
+# Kubernetes-Objekte (HelmRelease.yaml, `providers`), und das Token nimmt der
+# postRenderer dort aus dem Pod.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: traefik-public
   namespace: traefik-public
 automountServiceAccountToken: false
-
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: traefik-cluster-public
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: traefik-cluster
-subjects:
-  - kind: ServiceAccount
-    name: traefik-public
-    namespace: traefik-public
-
----
-# Eigener Namespace: Middlewares, TLSOption und der Service
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: traefik-namespaced-public
-  namespace: traefik-public
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: traefik-namespaced
-subjects:
-  - kind: ServiceAccount
-    name: traefik-public
-    namespace: traefik-public
-
----
-# Je öffentlichem Dienst eine Bindung.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: traefik-namespaced-public
-  namespace: whoami
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: traefik-namespaced
-subjects:
-  - kind: ServiceAccount
-    name: traefik-public
-    namespace: traefik-public

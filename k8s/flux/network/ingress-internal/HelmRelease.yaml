@@ -1,5 +1,7 @@
 # ingress-internal - Ingress-Controller fürs Heimnetz
 # Namespace: traefik-internal
+#
+# Ohne Zugang zur Kubernetes-API: Die Routen stehen in DynamicConfig.yaml.
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -25,10 +27,57 @@ spec:
   upgrade:
     remediation:
       retries: 3
+
+  # Das Chart schreibt `automountServiceAccountToken: true` fest ins
+  # Pod-Template. Ohne Kubernetes-Provider braucht der Pod kein Token. `test`
+  # vor `replace`: Ändert ein Chart-Update die Stelle, scheitert das Rendern
+  # laut.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: Deployment
+              name: traefik-internal
+            patch: |
+              - op: test
+                path: /spec/template/spec/automountServiceAccountToken
+                value: true
+              - op: replace
+                path: /spec/template/spec/automountServiceAccountToken
+                value: false
+
   values:
     deployment:
       kind: Deployment
       replicas: 1
+
+      additionalVolumes:
+        # Routen und Middlewares (DynamicConfig.yaml)
+        - name: dynamic-config
+          configMap:
+            name: traefik-internal-dynamic
+
+        # BasicAuth fürs Dashboard: als Datei vom Kubelet eingehängt, nicht
+        # über die API gelesen. Nur der Schlüssel `users`.
+        - name: dashboard-auth
+          secret:
+            secretName: traefik-dashboard-auth
+            items:
+              - key: users
+                path: users
+            defaultMode: 0400
+
+    additionalVolumeMounts:
+      - name: dynamic-config
+        mountPath: /etc/traefik/dynamic
+        readOnly: true
+      - name: dashboard-auth
+        mountPath: /traefik-auth
+        readOnly: true
+
+    additionalArguments:
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
 
     # Recreate wegen acme.json: lego schreibt ohne Sperre
     updateStrategy:
@@ -136,50 +185,30 @@ spec:
       storageClass: local-path
       path: /data
 
-    # RBAC von Hand: Rollen in ../TraefikRBAC.yaml, Bindungen in RBAC.yaml;
-    # den ServiceAccount legt das Chart an.
+    # Keine Rechte: Der Controller spricht nicht mit der API. Den
+    # ServiceAccount legt das Chart an, gebunden ist er an nichts.
     rbac:
       enabled: false
 
-    # Die Klasse steht in IngressClass.yaml, damit sie nicht an der Release hängt.
     ingressClass:
       enabled: false
 
+    # Kein Kubernetes-Provider: Jeder startete je beobachtetem Namespace einen
+    # Secrets-Informer, und der Controller läse dort alle Secrets. Die Routen
+    # kommen aus DynamicConfig.yaml (`additionalArguments` oben).
     providers:
       kubernetesIngress:
-        enabled: true
-        ingressClass: internal
-        allowExternalNameServices: false
-        # Ein Ingress außerhalb dieser Liste wird nicht bedient.
-        namespaces:
-          - traefik-internal
-          - headlamp
-          - monitoring
-          - whoami
-
+        enabled: false
       kubernetesCRD:
-        enabled: true
-        allowCrossNamespace: false
-        allowExternalNameServices: false
-        # Nur, wo IngressRoutes oder Middlewares liegen - bisher allein die des
-        # Dashboards. Ein Dienst mit gewöhnlichem Ingress braucht hier nichts.
-        namespaces:
-          - traefik-internal
-
+        enabled: false
       kubernetesGateway:
         enabled: false
 
-    # Das Dashboard kennt keine eigene Authentifizierung.
+    # Das Dashboard hängt als Router `dashboard` in DynamicConfig.yaml, mit
+    # BasicAuth - die IngressRoute des Charts läse ohne CRD-Provider niemand.
     ingressRoute:
       dashboard:
-        enabled: true
-        entryPoints:
-          - websecure
-        matchRule: Host(`traefik.k8s.nico-steinmueller.de`)
-        # Erst Passwort, dann Umleitung - sonst verrät der Redirect die Existenz.
-        middlewares:
-          - name: traefik-dashboard-auth
-          - name: traefik-dashboard-root
+        enabled: false
       healthcheck:
         enabled: false
 

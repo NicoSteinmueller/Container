@@ -23,7 +23,7 @@ network/
     ├── HelmRelease.yaml      Kopfkommentar, dann die HelmRelease
     ├── NetworkPolicies.yaml  NetworkPolicy, CiliumNetworkPolicy
     ├── RBAC.yaml             ServiceAccount, (Cluster)Role, Bindings
-    └── Middlewares.yaml      alles Weitere eine Datei je Art (IngressClass, TLSOption …)
+    └── DynamicConfig.yaml    alles Weitere eine Datei je Art (ConfigMap, TLSOption …)
 ```
 
 - **Ordner nur ab zwei Dateien.** Eine Komponente mit einer Datei liegt als

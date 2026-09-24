@@ -11,7 +11,7 @@ Als Helm-Chart (`chart/`) statt Kustomize – der Grund ist derselbe wie beim Do
 | `Chart.yaml` | Metadaten (Name, Version). |
 | `values.yaml` | Sichere Voreinstellung: kein Ingress, kein öffentlicher Ingress, `networkPolicy.ingressControllerNamespaces` leer – niemand darf whoami ansprechen, solange keine Umgebung das gezielt öffnet. |
 | `values-minikube.yaml` | Lokales Testsetup: NGINX-Ingress, Host `whoami.k8s.local`, kein TLS. |
-| `values-prod.yaml` | Produktiv-Cluster (talos-cp1). `service.type: ClusterIP` plus Ingress über `ingressClassName: internal`, Host `whoami.k8s.nico-steinmueller.de`. TLS noch aus: Traefik liefert bis zur internen CA sein selbstsigniertes Zertifikat aus. |
+| `values-prod.yaml` | Produktiv-Cluster (talos-cp1). `service.type: ClusterIP`, **kein Ingress**: Beide Traefik-Controller lesen keine Ingress-Objekte, die Routen `whoami.k8s.nico-steinmueller.de` (intern) und `whoami.nico-steinmueller.de` (öffentlich) stehen in `k8s/flux/network/ingress-*/DynamicConfig.yaml`. Die NetworkPolicy lässt beide Controller herein. |
 | `templates/namespace.yaml` | Eigener Namespace `whoami`, Labels `pod-security.kubernetes.io/enforce: restricted` und `homelab.io/zone` (aus `zone`). Nur bei `createNamespace: true` – im Produktiv-Cluster legt ihn `k8s/flux/core/namespaces/Restricted.yaml` an. |
 | `templates/deployment.yaml` | Workload: Image `traefik/whoami:v1.12.0`, per Digest gepinnt, Security-Context (read-only Filesystem, non-root 1000:1000, alle Capabilities gedroppt, Seccomp `RuntimeDefault`), Liveness-/Readiness-Probes. |
 | `templates/service.yaml` | DNS-Name `whoami.whoami.svc.cluster.local`. `service.type`/`service.nodePort` steuern `ClusterIP` (Default) vs. `NodePort`. |
@@ -32,7 +32,7 @@ helm upgrade --install whoami k8s/whoami/chart \
   -f k8s/whoami/chart/values-minikube.yaml
 ```
 
-**Im Produktiv-Cluster (talos-cp1):** über Flux, nicht von Hand – siehe `k8s/flux/apps/Whoami.yaml` und `k8s/flux/apps/README.md`. Push auf den Sync-Branch reicht. Erreichbar danach unter `https://whoami.k8s.nico-steinmueller.de` aus dem LAN – der Name muss dort auf die LAN-Adresse des Nodes zeigen, und der Namespace `whoami` muss in der Namespace-Liste von ingress-internal stehen.
+**Im Produktiv-Cluster (talos-cp1):** über Flux, nicht von Hand – siehe `k8s/flux/apps/Whoami.yaml` und `k8s/flux/apps/README.md`. Push auf den Sync-Branch reicht. Erreichbar danach unter `https://whoami.k8s.nico-steinmueller.de` aus dem LAN – der Name muss dort auf `.231` zeigen, und die Route steht in `k8s/flux/network/ingress-internal/DynamicConfig.yaml`.
 
 ## Sicherheits-Mapping gegenüber Docker Compose
 
@@ -46,4 +46,4 @@ helm upgrade --install whoami k8s/whoami/chart \
 | Traefik `ipallowlist` (local-only) | noch offen, siehe unten |
 | – (kein Äquivalent in Compose) | Namespace-PodSecurity „restricted", Default-Deny-NetworkPolicy, `seccompProfile: RuntimeDefault` |
 
-**Offen:** Die IP-Beschränkung aus Compose (`local-only`-Middleware) ist noch nicht nachgebildet. Im Produktiv-Cluster reicht `ingressClassName: internal` allein schon dafür, dass whoami nicht aus dem Internet erreichbar ist (nur aus dem LAN über die interne Traefik-Instanz) – das ist aber gröber als eine IP-Allowlist. Eine echte Allowlist bräuchte auf Traefik eine `Middleware`-CRD (`ipAllowList`, per Annotation am Ingress referenziert) statt der NGINX-Annotation `whitelist-source-range`; kommt als eigener Schritt, sobald das irgendwo im Repo gebraucht wird.
+**Offen:** Die IP-Beschränkung aus Compose (`local-only`-Middleware) ist noch nicht nachgebildet. Im Produktiv-Cluster reicht die Route im internen Controller allein schon dafür, dass whoami nicht aus dem Internet erreichbar ist (nur aus dem LAN, `allow-from-lan`) – das ist aber gröber als eine IP-Allowlist. Eine echte Allowlist wäre eine `ipAllowList`-Middleware am Router in `DynamicConfig.yaml`.
