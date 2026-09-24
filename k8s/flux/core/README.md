@@ -7,11 +7,12 @@ Der Boden, auf dem alle Gruppen stehen - und die einzige, auf die alle warten.
 | [`namespaces/`](namespaces/Restricted.yaml) | alle Namespaces mit Pod-Security-Stufe: `Restricted.yaml`, `Privileged.yaml` |
 | [`DefaultDenyIngress.yaml`](DefaultDenyIngress.yaml) | eingehend zu für jeden Pod außer in `kube-system`, `flux-system` |
 | [`DefaultDenyEgress.yaml`](DefaultDenyEgress.yaml) | ausgehend zu bis auf DNS, für dieselben Pods |
-| [`PublicIngressPolicy.yaml`](PublicIngressPolicy.yaml) | `ingressClassName: public` nur in Namespaces mit `homelab.io/zone=public` |
+| [`NoIngressObjects.yaml`](NoIngressObjects.yaml) | kein Ingress und keine IngressRoute - Routen stehen im File-Provider |
 
-**Alle Namespaces hier**, damit jede Gruppe nur an `core` hängt: Traefiks
-RoleBindings liegen z. B. in `monitoring` und `headlamp` - sonst hinge `network`
-an `observability` und `apps`.
+**Alle Namespaces hier**, damit jede Gruppe nur an `core` hängt: Objekte einer
+Gruppe liegen oft im Namespace einer anderen (die Rollen von
+`observability` etwa in `monitoring`, das CrowdSec-CA-Zertifikat in
+`traefik-public`).
 
 ## Default-Deny
 
@@ -58,27 +59,27 @@ hostPath verbietet schon `baseline`.
   `flux-system` (die Controller müssen anwenden, was im Repo steht),
   `cilium-secrets` (gehört der Talos-Machine-Config, keine Pods).
 
-## Zweite Sperre gegen „versehentlich öffentlich“
+## Keine Ingress-Objekte
 
-Ohne `PublicIngressPolicy.yaml` reichte ein Namespace zu viel in der Liste von
-`ingress-public`. Mit ihr müssen es zwei Fehler sein: der Listeneintrag **und**
-das Label. Native `ValidatingAdmissionPolicy` statt Kyverno - dieselbe CEL-Regel
-ohne eigenen Controller.
+Beide Traefik-Controller lesen keine Kubernetes-Objekte; ihre Routen stehen in
+[`../network/ingress-*/DynamicConfig.yaml`](../network/README.md). Ein Ingress
+oder eine IngressRoute bliebe still unbedient - `NoIngressObjects.yaml` lehnt
+das Anlegen deshalb ab und nennt den richtigen Ort. Ein Chart, das ab Werk einen
+Ingress mitbringt, scheitert damit laut: `ingress.enabled: false`. Native
+`ValidatingAdmissionPolicy`, kein eigener Controller. Nur `CREATE`, damit Helm
+Altobjekte noch löschen kann.
 
-Sie gilt für `Ingress` und `IngressRoute(TCP/UDP)` und liest die Klasse wie
-Traefik: `spec.ingressClassName`, sonst die Annotation
-`kubernetes.io/ingress.class`. Gegenstück ist `ingressClass: public` an beiden
-Providern von `ingress-public` - ohne Klasse bedient er keine Route.
+Das Label `homelab.io/zone` an den Namespaces wertet niemand aus; es
+dokumentiert, wer von außen erreichbar ist.
 
 ```bash
 # erwartet: beide abgelehnt
-kubectl -n headlamp create ingress test --class=public --rule='x.invalid/*=y:80' --dry-run=server
+kubectl -n headlamp create ingress test --class=internal --rule='x.invalid/*=y:80' --dry-run=server
 kubectl create --dry-run=server -f - <<'Y'
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata: {name: test, namespace: headlamp}
 spec:
-  ingressClassName: public
   routes: [{match: Host(`x.invalid`), kind: Rule, services: [{name: headlamp, port: 80}]}]
 Y
 ```

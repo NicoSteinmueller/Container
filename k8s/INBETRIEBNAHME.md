@@ -583,14 +583,11 @@ Cilium-Identität `host` statt `world` — und damit greift die NetworkPolicy
 Datei beschreibt (Cilium wertet `ipBlock` nicht gegen `host` und `remote-node`
 aus). Zusätzlich sähe CrowdSec später überall dieselbe Quell-IP.
 
-**Ein Eintrag kommt hinzu, den man leicht übersieht:** `traefik-internal`
-gehört jetzt in `providers.kubernetesIngress.namespaces`. Mit dem Service setzt
-das Chart `ingressendpoint.publishedservice`, und Traefik trägt dessen Adresse
-in `status.loadBalancer` jedes Ingress ein — die ADDRESS-Spalte von `kubectl get
-ingress`. Dafür muss es den eigenen Service lesen dürfen, und der
-Ingress-Provider liest nur in den gelisteten Namespaces. Sonst im Log:
-`cannot get service traefik-internal/traefik-internal: namespace is not within
-watched namespaces`.
+**Ein Eintrag kam damals hinzu, der heute entfällt:** Solange der Controller
+Ingress-Objekte las, musste `traefik-internal` in
+`providers.kubernetesIngress.namespaces` stehen, damit Traefik die
+ADDRESS-Spalte der Ingresses füllen konnte. Seit dem File-Provider (Schritt 7)
+gibt es weder Ingresses noch diese Liste.
 
 Zwei Aufräumarbeiten, die jetzt möglich werden:
 
@@ -683,26 +680,19 @@ Danach `--kubelet-insecure-tls` aus den Werten des metrics-server nehmen.
 > `Pending`, und kein Dienst mit Daten kommt hoch — siehe Ende von Schritt 2.
 > Der Abschnitt zum RAM weiter unten gilt unabhängig davon.
 
-Namespaces, NetworkPolicies und die Klasse `internal` stehen wieder; ein
-Ingress braucht nur noch die richtige Klasse:
+Kein Dienst bekommt ein Ingress-Objekt, weder intern noch öffentlich: Beide
+Controller lesen keine Kubernetes-Objekte, und `ingress.enabled` im Chart des
+Dienstes bleibt `false` (sonst lehnt der Cluster ab,
+[flux/core/NoIngressObjects.yaml](flux/core/NoIngressObjects.yaml)). Der Grund:
+Ein Kubernetes-Provider läse in jedem bedienten Namespace alle Secrets, also
+auch den DB-Zugang des Dienstes. Je Dienst und Controller drei Handgriffe:
 
-```yaml
-spec:
-  ingressClassName: internal   # paperless          -> nur aus dem LAN
-  # ingressClassName: public   # nextcloud, immich  -> aus dem Internet
-```
-
-`public` ist dabei noch keine Option: Die Klasse existiert nicht, solange
-`ingress-public` fehlt (Schritt 8). Und zwei Handgriffe kommen je Dienst dazu,
-die es früher nicht gab — beide wegen `rbac.namespaced` am Controller:
-
-- der neue Namespace muss an drei Stellen in
-  [flux/network/ingress-internal/](flux/network/ingress-internal/HelmRelease.yaml)
-  stehen: `providers.kubernetesIngress.namespaces`,
-  `providers.kubernetesCRD.namespaces` und eine RoleBinding auf die ClusterRole
-  `traefik-internal-namespaced`,
-- und er braucht eine NetworkPolicy, die `traefik-internal` hereinlässt —
-  sonst greift sein eigenes Default-Deny.
+- Router und Service in `DynamicConfig.yaml` des Controllers
+  ([intern](flux/network/ingress-internal/DynamicConfig.yaml),
+  [öffentlich](flux/network/ingress-public/DynamicConfig.yaml)),
+- ein `toEndpoints`-Block in `<controller>-egress` (`NetworkPolicies.yaml`),
+- eine NetworkPolicy im Namespace des Dienstes, die den Controller hereinlässt
+  — sonst greift sein eigenes Default-Deny.
 
 **Jeder Dienst kommt zuerst über `ingress-internal` hoch**, auch die beiden,
 die später öffentlich werden. Erst wenn er dort steht und die Daten stimmen,
@@ -732,6 +722,16 @@ Den Container erst löschen, wenn der Dienst im Cluster ein paar Tage steht.
 Bis dahin ist er der Rückweg.
 
 ## 8. `ingress-public` bauen
+
+> **Seit 2026-09-24 anders gebaut als unten beschrieben:** ingress-public
+> liest keine Kubernetes-Objekte mehr (kein Ingress, keine IngressRoute,
+> keine RoleBindings, kein Token, kein Weg zur API). Routen, Middlewares und
+> TLS-Option stehen im File-Provider,
+> [DynamicConfig.yaml](flux/network/ingress-public/DynamicConfig.yaml). Grund:
+> Jeder Kubernetes-Provider liest die Secrets der Namespaces, die er bedient -
+> bei Nextcloud den DB-Zugang. Die Punkte 1, 3 und die Namespace-Listen unten
+> sind damit Geschichte; Aufbau und Handgriffe stehen in
+> [flux/network/ingress-public/README.md](flux/network/ingress-public/README.md).
 
 Steht als [flux/network/ingress-public/](flux/network/ingress-public/HelmRelease.yaml),
 gebaut wie `ingress-internal`, mit fünf Unterschieden:
@@ -817,9 +817,14 @@ Das Zertifikat kommt trotzdem: DNS-01 braucht keinen A-Record.
 
 ## 9. Die Regel gegen „versehentlich öffentlich"
 
-Steht als
-[flux/core/PublicIngressPolicy.yaml](flux/core/PublicIngressPolicy.yaml)
-— eine native `ValidatingAdmissionPolicy` samt Binding, zwei Objekte, kein
+> **Seit 2026-09-24 überholt:** Kein Controller liest mehr Ingress-Objekte
+> (Schritt 7 und 8). Die Policy heißt jetzt `keine-ingress-objekte`
+> ([flux/core/NoIngressObjects.yaml](flux/core/NoIngressObjects.yaml)) und
+> lehnt jedes Ingress- und IngressRoute-Objekt ab. Öffentlich ist nur, was in
+> `ingress-public/DynamicConfig.yaml` steht. Der Abschnitt bleibt wegen der
+> Kyverno-Lehren stehen; die CEL-Regel unten ist Geschichte.
+
+Stand als native `ValidatingAdmissionPolicy` samt Binding, zwei Objekte, kein
 Controller.
 
 > **Der Weg dahin führte über Kyverno, und das ging schief.** Kyverno war am
@@ -983,21 +988,14 @@ Abnahme:
 ```bash
 # Policy und Binding sind da
 kubectl get validatingadmissionpolicy,validatingadmissionpolicybinding \
-  public-ingress-nur-in-public-namespaces
+  keine-ingress-objekte
 
-# muss abgelehnt werden (--dry-run=server wertet die Policy trotzdem aus -
-# und laesst, falls sie doch nicht greift, keinen echten oeffentlichen
-# Ingress in headlamp zurueck)
+# muessen abgelehnt werden (--dry-run=server wertet die Policy trotzdem aus)
 kubectl -n headlamp create ingress test --class=public \
   --rule="x.example/*=headlamp:80" --dry-run=server
-
-# muessen durchgehen
-kubectl -n whoami create ingress test --class=public \
-  --rule="x.example/*=whoami:80" --dry-run=server
 kubectl -n headlamp create ingress test --class=internal \
   --rule="x.example/*=headlamp:80" --dry-run=server
-kubectl -n headlamp create ingress test \
-  --rule="x.example/*=headlamp:80" --dry-run=server   # ganz ohne Klasse
+kubectl get ingress -A          # erwartet: leer
 ```
 
 Die Reloader-Annotation, die Kyverno früher ebenfalls setzte, wird nicht mehr
@@ -1082,11 +1080,11 @@ kubectl -n traefik-public logs deploy/traefik-public | tail -5
 # Die Talos-API ist von einem Nicht-Admin-Host tot
 nmap -Pn -p 50000,6443,10250 192.168.178.230
 
-# Ein interner Dienst lässt sich nicht öffentlich schalten
-kubectl -n headlamp patch ingress headlamp --type merge \
-  -p '{"spec":{"ingressClassName":"public"}}'
-#   -> die ValidatingAdmissionPolicy aus Schritt 9 lehnt ab; und selbst wenn
-#      nicht, bedient ingress-public den Namespace headlamp nicht.
+# Ein interner Dienst lässt sich nicht per Ingress öffentlich schalten
+kubectl -n headlamp create ingress test --class=public \
+  --rule="x.example/*=headlamp:80" --dry-run=server
+#   -> NoIngressObjects.yaml lehnt ab; und selbst wenn nicht, liest
+#      ingress-public keine Ingress-Objekte.
 ```
 
 ## 12. Scharfschalten (nach 1-2 Wochen)
@@ -1122,8 +1120,8 @@ gebannt wird — und dass der eigene LAN-Zugang davon unberührt bleibt.
 | Secret im Cluster enthält wörtlich `ENC[AES256_GCM,…]` | Der `decryption`-Block der Kustomization greift nicht — der age-Schlüssel in `sops-age` passt nicht zu `.sops.yaml` |
 | PVC bleibt `Pending` | Es gibt keine StorageClass, siehe Ende von Schritt 2. `kubectl get storageclass` ist leer |
 | Ingress antwortet nicht | `kubectl -n traefik-internal logs deploy/traefik-internal`. Kommt dort nichts an, ist es fast immer die NetworkPolicy: `kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop`. Notbremse: `kubectl -n traefik-internal delete networkpolicy allow-from-lan` |
-| Ingress wird gar nicht bedient, Objekt sieht richtig aus, Traefik antwortet mit 404 | Zwei Kandidaten: Sein Namespace fehlt in `providers.kubernetesIngress.namespaces` oder hat keine RoleBinding. Oder — falls jemand `rbac.namespaced: true` gesetzt hat — greift `spec.ingressClassName` gar nicht mehr, siehe Abschnitt „RBAC von Hand" in [flux/network/README.md](flux/network/README.md) |
-| `RoleBinding ... cannot change roleRef` beim Apply | Eine gleichnamige Bindung zeigt noch auf eine `Role` statt auf die `ClusterRole`. `roleRef` ist unveränderlich — alte löschen oder unter eigenem Namen anlegen |
+| Route antwortet mit 404, `DynamicConfig.yaml` sieht richtig aus | Noch nicht geladen (Reloader-Neustart abwarten) oder Tippfehler im Router: `kubectl -n traefik-internal logs deploy/traefik-internal \| grep -i -E 'error\|file'`. Kommt die Anfrage an und das Backend nicht, fehlt der `toEndpoints`-Block oder die Policy im Ziel-Namespace |
+| Chart-Installation scheitert mit „Kein Controller liest Ingress- oder IngressRoute-Objekte" | Gewollt: `ingress.enabled: false` im Chart, Route in `DynamicConfig.yaml` |
 | Traefik in CrashLoop mit `bind: permission denied` | Es läuft noch mit `hostNetwork` statt über den LoadBalancer-Service — dann braucht der Node den Sysctl `net.ipv4.ip_unprivileged_port_start=0`. Der Weg dahin zurück ist Schritt 5 |
 | Browser warnt vor dem Zertifikat | Steht `caServer` noch auf dem Staging-Verzeichnis? Dessen Wurzel kennt kein Browser. Sonst: `kubectl -n traefik-internal logs deploy/traefik-internal \| grep -i acme` |
 | ACME schlägt fehl mit DNS-Fehlern | IONOS-API-Key prüfen (`traefik-ionos` in homelab-secrets, Format `<prefix>.<secret>`). Vorsicht mit Wiederholungen: fünf Fehlversuche je Stunde, dann sperrt Let's Encrypt |

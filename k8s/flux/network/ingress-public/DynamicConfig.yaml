@@ -1,0 +1,134 @@
+# ingress-public - Routen, Middlewares und TLS-Option für den File-Provider
+#
+# Der öffentliche Controller liest keine Kubernetes-Objekte mehr, weder
+# Ingress noch IngressRoute. Ein Kubernetes-Provider startet je beobachtetem
+# Namespace einen Secrets-Informer; in einem Dienst-Namespace läse der
+# exponierteste Pod damit auch dessen DB-Zugang. Über den File-Provider
+# braucht er keine API und kein Token (HelmRelease.yaml).
+#
+# `routes.yaml` ist die Sicherheitsgrenze: Was dort nicht steht, ist nicht
+# öffentlich. Ein neuer Dienst braucht einen Router, einen Service und einen
+# `toEndpoints`-Block in NetworkPolicies.yaml.
+#
+# Eine Änderung hier startet traefik-public über Reloader neu (Recreate, kurze
+# Unterbrechung); `providers.file.watch` übernimmt sie meist schon vorher.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traefik-public-dynamic
+  namespace: traefik-public
+data:
+  routes.yaml: |
+    http:
+      routers:
+        # Der Testdienst. Vor der Portfreigabe wieder heraus: whoami gibt per
+        # ?env=true seine Umgebung aus (SICHERHEITSPRUEFUNG.md, Punkt 8).
+        whoami:
+          rule: Host(`whoami.nico-steinmueller.de`)
+          entryPoints:
+            - websecure
+          service: whoami
+
+      # Über den Service-Namen statt über Endpoints: Traefik braucht dafür
+      # keine Leserechte im Namespace des Dienstes.
+      services:
+        whoami:
+          loadBalancer:
+            servers:
+              - url: http://whoami.whoami.svc.cluster.local:80
+
+  middlewares.yaml: |
+    http:
+      middlewares:
+        # Der Bouncer fragt vor jeder Anfrage die LAPI. `live` heißt ohne
+        # Cache - eine Sperre wirkt sofort.
+        crowdsec:
+          plugin:
+            crowdsec-bouncer:
+              enabled: true
+              crowdsecMode: live
+              crowdsecLapiScheme: https
+              crowdsecLapiHost: crowdsec-service.crowdsec.svc.cluster.local:8080
+              crowdsecLapiKeyFile: /crowdsec/traefik_public
+              # CA und Schlüssel als Datei statt im Manifest: cert-manager hält
+              # die CA aktuell, und ohne Vertrauensanker startet das Plugin bei
+              # `https` nicht.
+              crowdsecLapiTlsCertificateAuthorityFile: /crowdsec-ca/ca.crt
+              # Das Heimnetz: ein Sync-Client von dort sieht für einen
+              # Scanner-Detektor aus wie ein Scanner.
+              clientTrustedIPs:
+                - 192.168.178.0/24
+              logLevel: INFO
+
+        # HSTS und Antwort-Kopfzeilen. Kein `sslRedirect` - in v3 wirkungslos,
+        # die Umleitung passiert am Entrypoint `web`.
+        secure-headers:
+          headers:
+            frameDeny: true
+            browserXssFilter: true
+            contentTypeNosniff: true
+            forceSTSHeader: true
+            stsIncludeSubdomains: true
+            stsPreload: true
+            stsSeconds: 31536000
+            referrerPolicy: strict-origin-when-cross-origin
+            customFrameOptionsValue: SAMEORIGIN
+
+        # Ratelimit Stufe 1: gilt für alle
+        rate-limit:
+          rateLimit:
+            average: 100
+            burst: 50
+            period: 30s
+            sourceCriterion:
+              ipStrategy:
+                depth: 0
+
+        # Stufe 2, Anmeldemasken: Login-Pfade der Dienste
+        rate-limit-auth:
+          rateLimit:
+            average: 10
+            burst: 5
+            period: 1m
+            sourceCriterion:
+              ipStrategy:
+                depth: 0
+
+        # Stufe 3, Sync-Clients: hunderte Anfragen je Adresse
+        rate-limit-sync:
+          rateLimit:
+            average: 2000
+            burst: 500
+            period: 1m
+            sourceCriterion:
+              ipStrategy:
+                depth: 0
+
+        # Hängt am Entrypoint websecure. Reihenfolge: bekannte Angreifer
+        # fliegen raus, dann die Kopfzeilen, dann das Limit.
+        public-chain:
+          chain:
+            middlewares:
+              - crowdsec
+              - secure-headers
+              - rate-limit
+
+  tls.yaml: |
+    # `sniStrict` ohne Default-Zertifikat: unbekannte Namen enden im
+    # Handshake, nicht in einer Antwort. `default` gilt für jeden Router.
+    tls:
+      options:
+        default:
+          minVersion: VersionTLS12
+          sniStrict: true
+          cipherSuites:
+            - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+            - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+            - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
+            - TLS_AES_128_GCM_SHA256
+            - TLS_AES_256_GCM_SHA384
+            - TLS_CHACHA20_POLY1305_SHA256
+          curvePreferences:
+            - CurveP521
+            - CurveP384

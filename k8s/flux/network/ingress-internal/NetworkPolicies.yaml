@@ -29,15 +29,11 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    - toEntities:
-        - kube-apiserver
-      toPorts:
-        - ports:
-            - port: "6443"
-              protocol: TCP
+    # Kein Weg zur API: Der Controller liest keine Kubernetes-Objekte
+    # (DynamicConfig.yaml).
 
-    # Die bedienten Namespaces - fehlt einer, nimmt der Controller den Ingress
-    # an und erreicht das Backend nicht.
+    # Die bedienten Dienste, passend zu den Services in DynamicConfig.yaml -
+    # fehlt einer, steht die Route und erreicht das Backend nicht.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: headlamp

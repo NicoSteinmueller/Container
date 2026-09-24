@@ -1,26 +1,19 @@
 # Produktiv-Cluster (talos-cp1).
 #
-# Ingress statt NodePort, seit ingress-internal steht
-# (k8s/flux/network/ingress-internal/). whoami ist der
-# Testdienst, an dem sich der Weg von außen zeigen soll - und der Weg ist
-# jetzt der über den Controller, nicht mehr der über Port 30083.
+# Kein Ingress-Objekt: Beide Controller lesen keine Kubernetes-Objekte, die
+# Routen stehen in k8s/flux/network/ingress-*/DynamicConfig.yaml -
+# `whoami.k8s.nico-steinmueller.de` intern, `whoami.nico-steinmueller.de`
+# öffentlich. Das Chart liefert hier nur Deployment, Service und die
+# NetworkPolicy, die beide Controller hereinlässt.
 #
-# `tls.enabled` bleibt aus, und das ist hier kein Mangel: Das Zertifikat
-# hängt am Entrypoint von ingress-internal — ein Wildcard von Let's Encrypt
-# für `*.k8s.nico-steinmueller.de`, das jeder Router dort bekommt. Ein
-# `tls:`-Block hier verwiese auf ein Secret, das niemand füllt.
-#
-# Der Hostname muss im Heimnetz auf die LAN-Adresse des Nodes zeigen (AdGuard
-# oder Fritzbox) und hat im öffentlichen DNS nichts verloren.
+# Der interne Hostname muss im Heimnetz auf .231 zeigen (AdGuard oder
+# Fritzbox) und hat im öffentlichen DNS nichts verloren.
 
 service:
   type: ClusterIP
 
 ingress:
-  enabled: true
-  className: internal
-  host: whoami.k8s.nico-steinmueller.de
-  # Kein tls-Block nötig — siehe oben.
+  enabled: false
 
 networkPolicy:
   # Ohne diese Zeilen greift nur das Default-Deny des Charts, und die
@@ -29,27 +22,11 @@ networkPolicy:
     - traefik-internal
     - traefik-public
 
-#
-# Der öffentliche Weg - whoami ist der Testdienst, an dem sich zeigen soll,
-# dass er trägt, bevor Immich und Nextcloud daran hängen.
-#
-# Der Name steht im öffentlichen DNS, anders als `whoami.k8s....`, und muss
-# dort auf die WAN-Adresse zeigen, sobald die Fritzbox weiterleitet
-# (Schritt 11). Bis dahin ist er nur über die LB-Adresse .232 erreichbar -
-# im LAN also per Split-DNS oder `curl --resolve`.
-#
-# Kein tls-Block: Das Zertifikat holt ingress-public selbst per DNS-01,
-# je Name. Das braucht keinen A-Record und funktioniert deshalb schon,
-# bevor die Portfreigabe steht.
-#
 ingressPublic:
-  enabled: true
-  className: public
-  host: whoami.nico-steinmueller.de
+  enabled: false
 
 #
 # Der Namespace steht in k8s/flux/core/namespaces/Restricted.yaml (mit
-# `homelab.io/zone: public`): Traefiks RoleBindings liegen darin, und
-# `network` soll nur an `core` hängen, nicht an `apps`.
+# `homelab.io/zone: public`), wie alle anderen.
 #
 createNamespace: false

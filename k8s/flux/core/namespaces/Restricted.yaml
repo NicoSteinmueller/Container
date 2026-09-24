@@ -97,9 +97,10 @@ metadata:
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
 ---
-# Der Testdienst. `public`, obwohl er auch intern hängt: Ein einziger
-# öffentlicher Ingress macht den Namespace öffentlich - die Zone richtet sich
-# nach der riskanteren Seite (siehe PublicIngressPolicy.yaml).
+# Der Testdienst. `public`, obwohl er auch intern hängt: Eine einzige
+# öffentliche Route macht den Namespace öffentlich - die Zone richtet sich
+# nach der riskanteren Seite. Das Label dokumentiert nur, ausgewertet wird es
+# nicht (Routen: network/ingress-*/DynamicConfig.yaml).
 #
 # Früher vom whoami-Chart angelegt; `keep`, damit Helm ihn bei der Übergabe
 # nicht löscht.

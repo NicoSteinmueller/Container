@@ -29,14 +29,8 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    # Nur die API, wie beim internen Controller - nicht `host`, das auch das
-    # Kubelet (10250) einschlösse.
-    - toEntities:
-        - kube-apiserver
-      toPorts:
-        - ports:
-            - port: "6443"
-              protocol: TCP
+    # Kein Weg zur API: Der Controller liest keine Kubernetes-Objekte
+    # (DynamicConfig.yaml).
 
     # Die LAPI, die der Bouncer fragt.
     - toEndpoints:
