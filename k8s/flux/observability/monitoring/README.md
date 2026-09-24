@@ -17,6 +17,11 @@ kein Internet-Egress.
   (siehe [../../core/README.md](../../core/README.md)). Seine Zertifikate kommen
   von cert-manager statt aus den Helm-Hook-Jobs der Chart (Fremd-Image mit
   Cluster-Admin).
+- **Keine clusterweiten Secret-Rechte** ([`RBAC.yaml`](RBAC.yaml)): Grafana
+  liest nur ConfigMaps in `monitoring`, der Operator Secrets nur hier (die
+  Regel nimmt ein `postRenderer` aus seiner ClusterRole), kube-state-metrics
+  ohne Collector `secrets`. **Falle:** Der Operator beobachtet nur
+  `monitoring` - ein ServiceMonitor anderswo wird still ignoriert.
 - **Voraussetzung:** Secret `grafana-admin` (`admin-user`, `admin-password`) in
   `homelab-secrets`, sonst startet Grafana nicht.
 

@@ -1,0 +1,60 @@
+# monitoring - Rollen, die die Charts ab Werk clusterweit vergeben
+#
+# Beide Charts binden ihre ServiceAccounts sonst an Secrets im ganzen Cluster,
+# `flux-system/sops-age` eingeschlossen. Hier stehen die Rechte nur für
+# `monitoring`; die Werte dazu in HelmRelease.yaml.
+---
+# Grafana-Sidecars (Dashboards, Datasources): nur ConfigMaps lesen, keine
+# Secrets. Gebunden vom Chart über `grafana.rbac.useExistingRole`.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: grafana-sidecar
+  namespace: monitoring
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+# prometheus-operator: die Regel, die der postRenderer in HelmRelease.yaml aus
+# seiner ClusterRole nimmt, hier nur für `monitoring`. Er schreibt dort die
+# Konfiguration von Prometheus und Alertmanager als Secrets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: prometheus-operator-secrets
+  namespace: monitoring
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prometheus-operator-secrets
+  namespace: monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: prometheus-operator-secrets
+subjects:
+  - kind: ServiceAccount
+    name: kube-prometheus-stack-operator
+    namespace: monitoring

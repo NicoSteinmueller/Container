@@ -133,6 +133,33 @@ spec:
             }
           }
 
+    # Nur, was die Config oben braucht: Pods für discovery.kubernetes, Events
+    # für loki.source.kubernetes_events. Der Chart-Default gäbe zusätzlich
+    # Secrets im ganzen Cluster (für remote.kubernetes.*, hier ungenutzt) und
+    # Node-Endpunkte.
+    #
+    # Auf beide Listen verteilt, weil das Chart sie aneinanderhängt: Eine leere
+    # Liste (`[]`) ergäbe ungültiges YAML. Beide landen in derselben ClusterRole.
+    rbac:
+      rules:
+        - apiGroups:
+            - ""
+          resources:
+            - pods
+          verbs:
+            - get
+            - list
+            - watch
+      clusterRules:
+        - apiGroups:
+            - ""
+          resources:
+            - events
+          verbs:
+            - get
+            - list
+            - watch
+
     controller:
       type: daemonset
 

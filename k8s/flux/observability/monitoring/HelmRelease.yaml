@@ -28,6 +28,27 @@ spec:
     remediation:
       retries: 3
   timeout: 20m
+
+  # Die ClusterRole des Operators darf ab Werk jedes Secret im Cluster lesen
+  # und schreiben. Das Chart kennt keine namespaced Variante, deshalb fliegt
+  # die Regel hier heraus und kommt als Role in `monitoring` zurück (RBAC.yaml);
+  # `prometheusOperator.namespaces` unten beschränkt die Informer passend.
+  #
+  # `test` vor `remove`: Verschiebt ein Chart-Update die Regel, scheitert das
+  # Rendern laut, statt still eine andere Regel zu löschen.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              kind: ClusterRole
+              name: kube-prometheus-stack-operator
+            patch: |
+              - op: test
+                path: /rules/4/resources
+                value: [configmaps, secrets]
+              - op: remove
+                path: /rules/4
+
   values:
     prometheus:
       enabled: true
@@ -81,6 +102,15 @@ spec:
 
     prometheusOperator:
       enabled: true
+
+      # Nur `monitoring` beobachten - Gegenstück zur Role in RBAC.yaml. Ein
+      # ServiceMonitor in einem anderen Namespace wird damit nicht mehr
+      # gesehen; er gehört hierher oder sein Namespace unter `additional`
+      # (dann auch dort eine Role).
+      namespaces:
+        releaseNamespace: true
+        additional: []
+
       resources:
         requests:
           cpu: 50m
@@ -106,6 +136,23 @@ spec:
         existingSecret: grafana-admin
         userKey: admin-user
         passwordKey: admin-password
+
+      # Ab Werk bekommen die Sidecars eine ClusterRole auf `configmaps` und
+      # `secrets` im ganzen Cluster - und das Token steckt auch im
+      # Grafana-Container.
+      # Stattdessen eine Role nur auf ConfigMaps in `monitoring` (RBAC.yaml);
+      # alle Dashboards und Datasources liegen ohnehin hier.
+      rbac:
+        namespaced: true
+        useExistingRole: grafana-sidecar
+
+      sidecar:
+        dashboards:
+          # kube-prometheus-stack setzt ALL
+          searchNamespace: monitoring
+          resource: configmap
+        datasources:
+          resource: configmap
 
       persistence:
         enabled: true
@@ -164,6 +211,38 @@ spec:
         insecureSkipVerify: true
 
     kube-state-metrics:
+      # Die Default-Liste ohne `secrets`: Der Collector braucht `list` auf
+      # Secrets im ganzen Cluster, und `list` liefert die Inhalte mit. Das
+      # Chart leitet die RBAC aus dieser Liste ab.
+      collectors:
+        - certificatesigningrequests
+        - configmaps
+        - cronjobs
+        - daemonsets
+        - deployments
+        - endpointslices
+        - horizontalpodautoscalers
+        - ingresses
+        - jobs
+        - leases
+        - limitranges
+        - mutatingwebhookconfigurations
+        - namespaces
+        - networkpolicies
+        - nodes
+        - persistentvolumeclaims
+        - persistentvolumes
+        - poddisruptionbudgets
+        - pods
+        - replicasets
+        - replicationcontrollers
+        - resourcequotas
+        - services
+        - statefulsets
+        - storageclasses
+        - validatingwebhookconfigurations
+        - volumeattachments
+
       resources:
         requests:
           cpu: 25m
