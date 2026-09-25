@@ -70,9 +70,9 @@ und mountet es nach `/var/mnt/local-path`; daraus macht
 Default-StorageClass.
 
 Getrennt von der System-Disk, und zwar **nicht** wegen Geschwindigkeit — beide
-qcow2-Dateien liegen auf derselben SSD des Hypervisors. Es geht um die
+qcow2-Dateien liegen auf derselben NVMe des Hypervisors. Es geht um die
 Kopplung: Auf der `EPHEMERAL`-Partition lägen Datenbanken sonst neben dem
-containerd-Image-Cache und den Logs. Läuft sie voll, setzt das kubelet
+containerd-Image-Cache, den Logs und etcd. Läuft sie voll, setzt das kubelet
 `DiskPressure`, evictet Pods und räumt Images ab — und trifft die Datenbank mit.
 Zwei Disks machen daraus zwei unabhängige Ausfälle.
 
@@ -108,6 +108,26 @@ Und der Vorbehalt, der dazugehört: Diese Disk ist **kein Backup und ersetzt
 keins**. `tofu destroy` nimmt sie mit. Ein Sicherungsweg aus dem Cluster heraus
 steht noch aus; wenn er kommt, gehört er nach Kopia auf dem Unraid-Host — bei
 Datenbanken als Dump und nicht als Dateikopie.
+
+## Neuaufbau
+
+Zum Beispiel für einen Umzug auf eine andere Platte (`pool_path`) oder eine
+neue Größe von `vm_data_disk_gib`.
+
+Alles im Cluster steht in Git, bis auf Daten auf `local-path`. Vorher
+prüfen, dass jede Datenbank einen frischen Dump auf NFS hat; der Rest
+(Zertifikate, Prometheus, Loki, CrowdSec) entsteht neu.
+
+```bash
+cd vm/talos
+git -C "$HOMELAB_VALUES" pull
+../../tools/tf destroy -var wait_for_health=false   # VM, Platten, Cluster-PKI
+../../tools/tf apply
+# dann k8s/bootstrap: tools/tf apply und die drei Secrets von Hand
+```
+
+`destroy` nimmt auch `talos_machine_secrets` mit: neue PKI, neue
+`kubeconfig`/`talosconfig`.
 
 ## Zugang
 
@@ -436,8 +456,10 @@ nachziehen.
 - **Plattform-Stack** (cert-manager, Traefik, Kyverno, CrowdSec, Headlamp).
 - **serverTLSBootstrap** fürs Kubelet. Braucht einen Genehmiger im Cluster;
   ohne ihn bleibt der CSR `Pending` und der Health-Check bricht ab.
-- **Secure Boot und LUKS2**, dann mit den `secureboot`-Varianten der Image
-  Factory und eigenen Keys.
+- **Secure Boot**, mit den `secureboot`-Varianten der Image Factory und
+  eigenen Keys.
+
+Bewusst nicht vorgesehen: **Die Platten der VM werden nicht verschlüsselt.**
 
 ## macvtap: wer wen erreicht
 

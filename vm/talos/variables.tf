@@ -312,7 +312,7 @@ variable "vm_vcpu" {
 variable "vm_disk_gib" {
   description = "Größe der System-Disk in GiB. qcow2 ist dünn alloziert, der Platz wird also nicht sofort belegt. Großzügig wählen: Die Kapazität nachträglich zu ändern, ersetzt das Volume und damit den Cluster."
   type        = number
-  default     = 100
+  default     = 200
 }
 
 variable "vm_data_disk_gib" {
@@ -335,7 +335,7 @@ variable "vm_data_disk_gib" {
     ersetzt dagegen das Volume - und damit den Inhalt.
   EOT
   type        = number
-  default     = 100
+  default     = 400
 }
 
 variable "install_disk" {
