@@ -97,6 +97,11 @@ rollOutCiliumPods: true
 # `hubble observe` funktioniert auch ohne Relay direkt im Agent-Pod:
 #   kubectl -n kube-system exec ds/cilium -- hubble observe --follow
 #
+# Eingeschaltet brauchen beide eine Egress-Freigabe: kube-system steht unter
+# k8s/flux/core/DefaultDenyEgress.yaml (nur CoreDNS ist ausgenommen). Relay
+# spricht die Agents auf dem Node an (`host`/`remote-node`, 4244), die UI den
+# Relay; Muster: `metrics-server-egress` in k8s/flux/observability/.
+#
 # l7Proxy bringt seit 1.16 ein eigenes DaemonSet `cilium-envoy` mit - ein Pod
 # mehr auf dem Node, dafür überlebt der Proxy einen Neustart des Agents.
 #

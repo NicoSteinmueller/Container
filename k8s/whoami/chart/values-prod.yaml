@@ -20,6 +20,9 @@ networkPolicy:
   # öffentlich.
   ingressControllerNamespaces:
     - traefik-internal
+  # DNS kommt mit Namensliste aus k8s/flux/core/DefaultDenyEgress.yaml. Eine
+  # Port-53-Freigabe hier höbe sie auf (core/DnsAllowlist.yaml lehnt sie ab).
+  dnsEgress: false
 
 ingressPublic:
   enabled: false

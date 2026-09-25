@@ -31,9 +31,17 @@ spec:
           port: 8080
 
 ---
-# Ausgehend erlaubt; Sperre und DNS kommen aus core/DefaultDenyEgress.yaml.
-# Eng, weil der Agent mit den Zugriffslogs von außen bestimmte Eingaben
-# verarbeitet und sonst an jedes Gerät im Heimnetz käme.
+# Ausgehend - Sperre und `**.cluster.local` kommen aus
+# core/DefaultDenyEgress.yaml. Je Rolle nur die Namen, die sie braucht, und
+# nur dorthin eine Verbindung: Der Agent verarbeitet mit den Zugriffslogs
+# Eingaben von außen und ist damit der wahrscheinlichste Einstieg.
+#
+# Gemessen (Logs, Hub-Index-Zeitstempel, Hubble):
+#   hub-data.crowdsec.net  Hub-Index und -Inhalte, beide Rollen beim Start
+#   api.crowdsec.net       Central API (Anmeldung, Community-Blocklist,
+#                          Metriken) - nur die LAPI
+# Nicht eingetragen, weil nicht genutzt: papi.api.crowdsec.net (erst mit
+# Console-Anmeldung), cti.api.crowdsec.net (CTI-Schlüssel).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -42,7 +50,30 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    # Agent -> LAPI, derselbe Selektor wie im Ingress oben.
+    - toFQDNs:
+        - matchName: hub-data.crowdsec.net
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+---
+# Agent -> LAPI, derselbe Selektor wie im Ingress oben. Dazu Reverse-DNS:
+# Die Postoverflows `rdns` und `seo-bots-whitelist` fragen den PTR-Namen der
+# Angreifer-IP - ohne ihn würden echte Suchmaschinen-Crawler gesperrt. Nur
+# IPv4 und genau vier Labels; ein Rückkanal darüber bräuchte eine eigene
+# Reverse-Zone.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: crowdsec-agent-egress
+  namespace: crowdsec
+spec:
+  endpointSelector:
+    matchLabels:
+      k8s-app: crowdsec
+      type: agent
+  egress:
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: crowdsec
@@ -53,16 +84,47 @@ spec:
             - port: "8080"
               protocol: TCP
 
-    # LAPI -> Central API und Hub. Das `except` ist die eigentliche Regel:
-    # Internet ja, Heimnetz nein.
-    - toCIDRSet:
-        - cidr: 0.0.0.0/0
-          except:
-            - 10.0.0.0/8
-            - 172.16.0.0/12
-            - 192.168.0.0/16
-            - 169.254.0.0/16
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: hub-data.crowdsec.net
+              - matchPattern: "*.*.*.*.in-addr.arpa"
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: crowdsec-lapi-egress
+  namespace: crowdsec
+spec:
+  endpointSelector:
+    matchLabels:
+      k8s-app: crowdsec
+      type: lapi
+  egress:
+    - toFQDNs:
+        - matchName: api.crowdsec.net
       toPorts:
         - ports:
             - port: "443"
               protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: hub-data.crowdsec.net
+              - matchName: api.crowdsec.net

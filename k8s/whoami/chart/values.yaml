@@ -38,6 +38,9 @@ networkPolicy:
   # Traffic erlaubt wird. Leer = niemand darf whoami ansprechen, auch nicht
   # der Ingress-Controller - der sichere Default ohne ingress.enabled.
   ingressControllerNamespaces: []
+  # Eigene DNS-Freigabe (Port 53 zu kube-system). Nur ohne clusterweite
+  # DNS-Regel nötig - auf minikube.
+  dnsEgress: true
 
 ingress:
   enabled: false

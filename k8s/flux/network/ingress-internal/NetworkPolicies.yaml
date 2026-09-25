@@ -59,8 +59,8 @@ spec:
             - port: "80"
               protocol: TCP
 
-    # DNS über CoreDNS mit DNS-Regel, damit Cilium die Adressen hinter den
-    # Namen unten kennt - wie ../ingress-public/NetworkPolicies.yaml.
+    # DNS für genau die Namen unten, zusätzlich zu `**.cluster.local` aus
+    # core/DefaultDenyEgress.yaml - wie ../ingress-public/NetworkPolicies.yaml.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: kube-system
@@ -71,7 +71,8 @@ spec:
               protocol: ANY
           rules:
             dns:
-              - matchPattern: "*"
+              - matchName: acme-v02.api.letsencrypt.org
+              - matchName: api.hosting.ionos.com
 
     # Internet nur für das Wildcard-Zertifikat (DNS-01), statt `0.0.0.0/0`.
     # Kein Plugin, keine Versionsprüfung (HelmRelease.yaml) - mehr braucht

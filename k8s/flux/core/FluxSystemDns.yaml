@@ -1,0 +1,101 @@
+# DNS-Allowlist für flux-system - das Gegenstück zu DefaultDenyEgress.yaml.
+#
+# Eigene Datei statt Teil der Clusterregel: Fehlt hier ein Name, den der Sync
+# selbst braucht (github.com, Gitea), repariert sich Flux nicht mehr aus Git.
+# Dann diese Policies löschen - `allow-egress` bleibt, DNS ist wieder frei,
+# Flux holt den Fix und legt sie neu an:
+#
+#   kubectl -n flux-system delete cnp flux-dns flux-source-dns flux-operator-dns
+#
+# Achtung: Ohne `allow-egress` (networkPolicy: false) sperrten diese Policies
+# allen Verkehr außer DNS.
+---
+# Alle Flux-Pods: nur Namen im Cluster (Artefakte vom source-controller,
+# Events an den notification-controller).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: flux-dns
+  namespace: flux-system
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "**.cluster.local"
+
+---
+# source-controller holt alles, was in den GitRepository- und
+# HelmRepository-Objekten steht (`*/Sources.yaml`, sync/). Eine neue Quelle
+# braucht hier ihren Host - sonst REFUSED und Alarm `DnsAbfrageBlockiert`.
+# Charts auf GitHub-Releases leiten nach release-assets.githubusercontent.com
+# um (nachgemessen).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: flux-source-dns
+  namespace: flux-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app: source-controller
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              # Git: Container-Repo, csi-driver-nfs, local-path-provisioner
+              - matchName: github.com
+              - matchName: release-assets.githubusercontent.com
+              # homelab-secrets
+              - matchName: git.local.nico-steinmueller.de
+              # Helm-Repositories
+              - matchName: charts.jetstack.io
+              - matchName: cloudnative-pg.io
+              - matchName: crowdsecurity.github.io
+              - matchName: grafana.github.io
+              - matchName: kubernetes-sigs.github.io
+              - matchName: prometheus-community.github.io
+              - matchName: stakater.github.io
+              - matchName: traefik.github.io
+
+---
+# flux-operator lädt die Flux-Manifeste als OCI-Artefakt
+# (`oci://ghcr.io/controlplaneio-fluxcd/flux-operator-manifests`); die
+# Blobs liegen hinter einer Umleitung auf pkg-containers.githubusercontent.com.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: flux-operator-dns
+  namespace: flux-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: flux-operator
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: ghcr.io
+              - matchName: pkg-containers.githubusercontent.com
