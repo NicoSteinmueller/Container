@@ -1,0 +1,80 @@
+# Wer eine Adresse im LAN bekommt. Ein LoadBalancer- oder NodePort-Service ist
+# eine Tür am Node vorbei an Talos' Ingress-Firewall (Cilium bedient beide in
+# eBPF, vm/talos/patches/firewall.yaml.tftpl) - deshalb nur, wo sie gewollt ist.
+#
+# Ausnahme für einen Test (etwa die L2-Gegenprobe in INBETRIEBNAHME.md,
+# Schritt 4): das Binding kurz auf `Warn` stellen, danach zurück.
+#
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: service-freigabe
+spec:
+  # Greift nur, wenn die CEL-Auswertung selbst scheitert.
+  failurePolicy: Fail
+
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - services
+
+  variables:
+    - name: lb
+      expression: object.spec.?type.orValue("ClusterIP") == "LoadBalancer"
+    - name: nodePort
+      expression: object.spec.?type.orValue("ClusterIP") == "NodePort"
+
+  validations:
+    # Ohne das Flag vergibt Kubernetes je Port einen NodePort - auf der
+    # Node-Adresse erreichbar, an der Firewall vorbei.
+    - expression: >-
+        !variables.lb ||
+        object.spec.?allocateLoadBalancerNodePorts.orValue(true) == false
+      message: >-
+        LoadBalancer-Services brauchen allocateLoadBalancerNodePorts: false.
+
+    # Das Flag wirkt nur beim Anlegen: nachträglich gesetzt, bleiben vergebene
+    # NodePorts stehen. Diese Regel fängt genau das beim nächsten Update.
+    - expression: >-
+        !variables.lb ||
+        object.spec.ports.all(p, p.?nodePort.orValue(0) == 0)
+      message: >-
+        Der Service trägt noch vergebene NodePorts. Entfernen:
+        kubectl patch svc <name> --type=json
+        -p='[{"op":"remove","path":"/spec/ports/0/nodePort"}]' (je Port).
+
+    - expression: >-
+        !variables.lb ||
+        namespaceObject.metadata.name in ["traefik-internal", "traefik-public"]
+      message: >-
+        LoadBalancer-Services nur für die beiden Ingress-Controller. Ein
+        Dienst bekommt seine Adresse über eine Route in
+        k8s/flux/network/ingress-*/DynamicConfig.yaml.
+
+    # Die Flux-Statusseite (k8s/bootstrap, service_type = NodePort), begrenzt
+    # auf die Verwaltungsrechner per NetworkPolicy.
+    - expression: >-
+        !variables.nodePort ||
+        (namespaceObject.metadata.name == "flux-system" &&
+         object.metadata.name == "flux-operator-nodeport")
+      message: >-
+        NodePort-Services gibt es nur für die Flux-Statusseite. Alles andere
+        über die Ingress-Controller.
+
+---
+# Erst das Binding schaltet die Policy scharf. `matchResources` leer: gilt cluster-weit.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: service-freigabe
+spec:
+  policyName: service-freigabe
+  validationActions:
+    - Deny

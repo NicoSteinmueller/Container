@@ -8,6 +8,7 @@ Der Boden, auf dem alle Gruppen stehen - und die einzige, auf die alle warten.
 | [`DefaultDenyIngress.yaml`](DefaultDenyIngress.yaml) | eingehend zu für jeden Pod außer in `kube-system`, `flux-system` |
 | [`DefaultDenyEgress.yaml`](DefaultDenyEgress.yaml) | ausgehend zu bis auf DNS, für dieselben Pods |
 | [`NoIngressObjects.yaml`](NoIngressObjects.yaml) | kein Ingress und keine IngressRoute - Routen stehen im File-Provider |
+| [`ServiceExposure.yaml`](ServiceExposure.yaml) | LoadBalancer nur für die Ingress-Controller, ohne NodePorts; NodePort nur für die Flux-Statusseite |
 
 **Alle Namespaces hier**, damit jede Gruppe nur an `core` hängt: Objekte einer
 Gruppe liegen oft im Namespace einer anderen (die Rollen von
@@ -83,3 +84,25 @@ spec:
   routes: [{match: Host(`x.invalid`), kind: Rule, services: [{name: headlamp, port: 80}]}]
 Y
 ```
+
+## Wer eine Adresse im LAN bekommt
+
+LoadBalancer- und NodePort-Services bedient Cilium in eBPF, an Talos'
+Ingress-Firewall vorbei. `ServiceExposure.yaml` lässt deshalb nur zu:
+
+- **LoadBalancer** in `traefik-internal` und `traefik-public`, mit
+  `allocateLoadBalancerNodePorts: false` und ohne vergebene NodePorts. Das
+  Flag wirkt nur beim Anlegen; nachträglich gesetzt, blieben die NodePorts
+  stehen - die zweite Regel fängt das beim nächsten Update.
+- **NodePort** nur `flux-system/flux-operator-nodeport` (Flux-Statusseite).
+
+Für einen Test mit eigenem LoadBalancer (L2-Gegenprobe) das Binding kurz auf
+`Warn` stellen:
+
+```bash
+kubectl patch validatingadmissionpolicybinding service-freigabe --type=merge -p '{"spec":{"validationActions":["Warn"]}}'
+# ... Test ...
+kubectl patch validatingadmissionpolicybinding service-freigabe --type=merge -p '{"spec":{"validationActions":["Deny"]}}'
+```
+
+Flux setzt es spätestens beim nächsten Abgleich ohnehin zurück.
