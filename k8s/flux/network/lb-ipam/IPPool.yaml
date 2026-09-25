@@ -4,18 +4,38 @@
 #
 # Die Ankündigung braucht zusätzlich `l2announcements.enabled: true` in
 # vm/talos/values/cilium.yaml.tftpl.
----
+#
 # Außerhalb des DHCP-Bereichs und ohne Kollision mit `lan_ip`:
 #
 #   192.168.178.230  Node selbst
 #   192.168.178.231  ingress-internal - nur LAN
 #   192.168.178.232  ingress-public   - Internet
 #
+# Ein Pool je Adresse, gebunden an genau einen Service.
+---
 apiVersion: cilium.io/v2
 kind: CiliumLoadBalancerIPPool
 metadata:
-  name: lan
+  name: traefik-internal
 spec:
   blocks:
     - start: "192.168.178.231"
+      stop: "192.168.178.231"
+  serviceSelector:
+    matchLabels:
+      io.kubernetes.service.namespace: traefik-internal
+      io.kubernetes.service.name: traefik-internal
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: traefik-public
+spec:
+  blocks:
+    - start: "192.168.178.232"
       stop: "192.168.178.232"
+  serviceSelector:
+    matchLabels:
+      io.kubernetes.service.namespace: traefik-public
+      io.kubernetes.service.name: traefik-public

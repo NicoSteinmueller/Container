@@ -187,7 +187,8 @@ spec:
           trustedIPs: []
           insecure: false
 
-    # .232 aus dem Pool `lan` (../lb-ipam/IPPool.yaml), .231 gehört dem internen.
+    # .232 aus dem Pool `traefik-public` (../lb-ipam/IPPool.yaml), der nur
+    # diesen Service bedient.
     service:
       enabled: true
       annotations:

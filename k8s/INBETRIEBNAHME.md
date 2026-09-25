@@ -465,7 +465,8 @@ Cilium liegt als Inline-Manifest in der Machine-Config, das ist also ein
 
 Dazu das Flux-Manifest
 [flux/network/lb-ipam/](flux/network/lb-ipam/IPPool.yaml):
-der `CiliumLoadBalancerIPPool` mit `.231`–`.232` und die
+je ein `CiliumLoadBalancerIPPool` für `.231` und `.232`, per `serviceSelector`
+an genau einen Service gebunden, und die
 `CiliumL2AnnouncementPolicy` auf `enp1s0`. Begruendungen stehen als Kommentare
 in der Datei; zwei Dinge, die beim Abschreiben aus der Cilium-Doku auffallen:
 
@@ -1122,7 +1123,7 @@ gebannt wird — und dass der eigene LAN-Zugang davon unberührt bleibt.
 | Talos bleibt NotReady | `kubectl -n kube-system get pods -l k8s-app=cilium`, `talosctl -n … dmesg` |
 | Dienst über NodePort im Timeout, Service und Endpoint sehen gesund aus | Fast immer eine NetworkPolicy, oft eine vom Chart mitgebrachte — mit Cilium werden sie erstmals durchgesetzt, unter Flannel waren sie wirkungslos. `kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop`; Quelle `(world)` heißt: Regel ohne `ipBlock` erfasst LAN-Clients nicht |
 | Node nicht mehr erreichbar | `admin_sources` falsch → serielle Konsole, siehe vm/talos/README.md |
-| LoadBalancer-Service bleibt ohne `EXTERNAL-IP` | Kein passender `CiliumLoadBalancerIPPool`, oder die Adresse liegt außerhalb des Blocks. `kubectl get ciliumloadbalancerippool`, `kubectl describe svc <name>` |
+| LoadBalancer-Service bleibt ohne `EXTERNAL-IP` | Kein passender `CiliumLoadBalancerIPPool` - jeder Pool bedient nur einen Service (`serviceSelector`) -, oder die Adresse liegt außerhalb des Blocks. `kubectl get ciliumloadbalancerippool`, `kubectl describe svc <name>` |
 | `EXTERNAL-IP` steht, antwortet aber nicht | L2-Announcement kommt nicht durch. `ip -4 neigh show \| grep <adresse>` von einem LAN-Rechner — steht dort nicht die MAC des Nodes, stimmt `interfaces` in der `CiliumL2AnnouncementPolicy` nicht, oder macvtap schluckt das Gratuitous ARP |
 | Im Log steht überall die Node-Adresse als Client-IP | `externalTrafficPolicy: Local` fehlt am Service — siehe Schritt 5 |
 | ACME schlägt fehl | Zeit (NTP), DNS-Provider-Credentials, Staging-Verzeichnis verwenden |
