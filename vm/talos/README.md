@@ -159,7 +159,8 @@ Gemessen von einer Adresse aus `admin_sources`, während die Regeln standen:
 |---|---|---|
 | 50000, 6443, 10250 | offen | apid, kube-apiserver, Kubelet |
 | 2379, 2380 | geblockt | etcd — vorher LAN-weit erreichbar |
-| 4244, 9963, 9964 | geblockt | Hubble und Metrik-Endpunkte |
+| 4244 | geblockt | Hubble-API |
+| 9962–9965 | geblockt aus dem LAN | Cilium-Metriken; offen nur fürs Pod-Netz (Regel `cilium-metrics`) |
 
 ### Regeln ändern: erst `try`, dann `apply`
 

@@ -1,0 +1,65 @@
+# Scrape der Cilium-Metriken
+#
+# Die Endpunkte schaltet vm/talos/values/cilium.yaml.tftpl ein (`prometheus`,
+# `hubble.metrics`). PodMonitors statt der ServiceMonitors aus dem Chart: Cilium
+# kommt als Inline-Manifest beim Bootstrap, lange vor den CRDs, und braucht so
+# auch keine zusätzlichen Services.
+#
+# Die Objekte liegen in `monitoring`, weil der Operator nur dort sucht
+# (observability/monitoring/HelmRelease.yaml, `prometheusOperator.namespaces`),
+# die Pods selbst in `kube-system`. Alle laufen im Host-Netz des Nodes; der
+# Weg dorthin braucht zwei Freigaben: `monitoring-egress` (Ports 9962-9965 zu
+# `host`) und die Talos-Firewall (Regel `cilium-metrics`).
+---
+# Agent (:9962) und Hubble (:9965) - derselbe Pod, zwei Endpunkte.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cilium-agent
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  selector:
+    matchLabels:
+      k8s-app: cilium
+  podMetricsEndpoints:
+    - port: prometheus
+      interval: 30s
+    - port: hubble-metrics
+      interval: 30s
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cilium-operator
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  selector:
+    matchLabels:
+      io.cilium/app: operator
+  podMetricsEndpoints:
+    - port: prometheus
+      interval: 30s
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cilium-envoy
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  selector:
+    matchLabels:
+      k8s-app: cilium-envoy
+  podMetricsEndpoints:
+    - port: envoy-metrics
+      interval: 30s
