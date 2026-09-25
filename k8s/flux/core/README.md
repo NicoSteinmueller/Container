@@ -6,7 +6,9 @@ Der Boden, auf dem alle Gruppen stehen - und die einzige, auf die alle warten.
 |---|---|
 | [`namespaces/`](namespaces/Restricted.yaml) | alle Namespaces mit Pod-Security-Stufe: `Restricted.yaml`, `Privileged.yaml` |
 | [`DefaultDenyIngress.yaml`](DefaultDenyIngress.yaml) | eingehend zu für jeden Pod außer in `kube-system`, `flux-system` |
-| [`DefaultDenyEgress.yaml`](DefaultDenyEgress.yaml) | ausgehend zu bis auf DNS, für dieselben Pods |
+| [`DefaultDenyEgress.yaml`](DefaultDenyEgress.yaml) | ausgehend zu bis auf DNS für `**.cluster.local` - dazu `kube-system` außer CoreDNS |
+| [`FluxSystemDns.yaml`](FluxSystemDns.yaml) | DNS-Allowlist für `flux-system` (Git- und Helm-Quellen) |
+| [`DnsAllowlist.yaml`](DnsAllowlist.yaml) | keine Freigabe auf Port 53 ohne Namensliste |
 | [`NoIngressObjects.yaml`](NoIngressObjects.yaml) | kein Ingress und keine IngressRoute - Routen stehen im File-Provider |
 | [`ServiceExposure.yaml`](ServiceExposure.yaml) | LoadBalancer nur für die Ingress-Controller, ohne NodePorts; NodePort nur für die Flux-Statusseite |
 
@@ -23,11 +25,13 @@ in `NetworkPolicies.yaml` der Komponente und addieren sich.
 
 - **Ausgenommen:** `kube-system` (ein Fehler träfe CoreDNS und damit jeden Pod),
   `flux-system` (ein Fehler sperrte den Weg, auf dem er repariert würde).
+  Ausgehend gilt das nur noch für CoreDNS und `flux-system`, siehe unten.
 - **Webhooks** brauchen eine Freigabe `fromEntities: [kube-apiserver, host]`
   auf ihren Port: cert-manager `10250`, CloudNativePG `9443`,
   kube-prometheus-stack `10250`. kubelet-Probes kommen ohne durch.
-- **Ausgehend** ist nur DNS pauschal frei. Die API nicht - nicht jeder Pod
-  braucht sie; sie steht in `<name>-egress` der Komponente.
+- **Ausgehend** ist nur DNS pauschal frei, und nur für `**.cluster.local`.
+  Die API nicht - nicht jeder Pod braucht sie; sie steht in `<name>-egress`
+  der Komponente.
 - **Fehlt eine Freigabe**, gibt es einen Timeout statt einer Fehlermeldung.
 
 ```bash
@@ -45,6 +49,38 @@ kind: Cluster
 metadata: {name: probe, namespace: cnpg-system}
 spec: {instances: 1, storage: {size: 1Gi}}
 Y
+```
+
+## DNS-Allowlisten
+
+Jede DNS-Abfrage eines Pods läuft durch Ciliums DNS-Proxy und geht nur durch,
+wenn eine Policy den Namen erlaubt; alles andere bekommt REFUSED. Ohne das
+reichte CoreDNS jeden Namen ins Internet weiter - ein Rückkanal (DNS-Tunnel)
+für jeden Pod, auch ohne Egress-Freigabe.
+
+- **Für alle** `**.cluster.local` ([`DefaultDenyEgress.yaml`](DefaultDenyEgress.yaml)).
+- **Externe Namen** nur, wo auch eine Verbindung dorthin erlaubt ist:
+  `rules.dns` neben den `toFQDNs` der Komponente. Listen addieren sich.
+- **Die Falle** (nachgemessen): Eine Freigabe auf Port 53 ohne `rules.dns` -
+  als CiliumNetworkPolicy oder NetworkPolicy, in irgendeiner Policy des Pods -
+  lässt wieder jeden Namen durch. Freigaben ohne Port nicht.
+  [`DnsAllowlist.yaml`](DnsAllowlist.yaml) lehnt sie deshalb ab, ebenso
+  `matchPattern: "*"`. Ausnahme: Port 53 zu festen externen Adressen
+  (`toCIDR`, Traefik → 1.1.1.1).
+- **`flux-system`**: Die Sperre kommt von Flux' `allow-egress` (alles erlaubt
+  außer DNS, das die Liste regelt). Fehlt ein Name, den der Sync selbst
+  braucht, repariert sich Flux nicht aus Git - dann
+  `kubectl -n flux-system delete cnp flux-dns flux-source-dns flux-operator-dns`,
+  Fix pushen, Flux legt sie neu an.
+- **`enableDefaultDeny: false`** taugt nicht für eine Liste: Ohne
+  Default-Deny leitet der Proxy auch nicht gelistete Namen weiter
+  (nachgemessen).
+- **Neue Quelle, neuer Dienst mit Internet:** Host in `toFQDNs` und
+  `rules.dns`, sonst REFUSED und Alarm.
+
+```bash
+# abgelehnte Namen live
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- hubble observe --protocol DNS --verdict DROPPED --follow
 ```
 
 ## Pod Security

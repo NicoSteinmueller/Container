@@ -252,6 +252,11 @@ spec:
         plugins:
           # Deaktiviert das automatische Nachladen der Plugin-Liste von grafana.com.
           preinstall_disabled: true
+        security:
+          # Avatare holt Grafana serverseitig von secure.gravatar.com - den
+          # Namen lehnt die DNS-Allowlist ab (core/DefaultDenyEgress.yaml),
+          # und jeder Seitenaufruf löste den Alarm DnsAbfrageBlockiert aus.
+          disable_gravatar: true
 
       resources:
         requests:

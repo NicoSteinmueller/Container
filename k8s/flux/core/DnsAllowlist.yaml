@@ -1,0 +1,105 @@
+# Hält die DNS-Allowlisten dicht (core/DefaultDenyEgress.yaml).
+#
+# Eine einzige Freigabe auf Port 53 ohne `rules.dns` hebt jede Liste des
+# betroffenen Pods auf.
+#
+# Verboten ist deshalb:
+#   - Port 53 (auch benannt oder als Bereich) ohne `rules.dns` - außer zu
+#     festen Adressen außerhalb (`toCIDR`, `toCIDRSet`, `toFQDNs`): Das ist
+#     eine eigene, bewusste Freigabe und berührt den Weg über CoreDNS nicht.
+#   - `matchPattern` nur aus `*` und `.` - das ist keine Liste.
+#   - eine NetworkPolicy mit Port 53 zu anderem als `ipBlock`; sie kennt
+#     keine DNS-Regel.
+#
+# Prüft nur beim Anlegen und Ändern.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: dns-allowlist
+spec:
+  failurePolicy: Fail
+
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - cilium.io
+        apiVersions:
+          - "*"
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - ciliumnetworkpolicies
+          - ciliumclusterwidenetworkpolicies
+      - apiGroups:
+          - networking.k8s.io
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - networkpolicies
+
+  variables:
+    - name: cilium
+      expression: object.apiVersion.startsWith("cilium.io/")
+    # `spec` und die Liste `specs` in eine Liste; `dyn`, weil beide im Schema
+    # verschiedene Typen sind.
+    - name: specs
+      expression: >-
+        !variables.cilium ? [] :
+        (has(object.spec) ? [dyn(object.spec)] : []) +
+        object.?specs.orValue([]).map(s, dyn(s))
+
+  validations:
+    - expression: >-
+        variables.specs.all(s, s.?egress.orValue([]).all(r,
+          !r.?toPorts.orValue([]).exists(tp,
+            tp.?ports.orValue([]).exists(p,
+              !has(p.port) ||
+              p.port in ["0", "53", "dns", "dns-tcp", "domain"] ||
+              (p.port.matches('^[0-9]+$') && int(p.port) <= 53 &&
+               p.?endPort.orValue(0) >= 53)) &&
+            !(has(tp.rules) && has(tp.rules.dns)))
+          ||
+          (!has(r.toEndpoints) && !has(r.toEntities) && !has(r.toServices) &&
+           !has(r.toNodes) && !has(r.toGroups) && !has(r.toRequires) &&
+           (has(r.toCIDR) || has(r.toCIDRSet) || has(r.toFQDNs)))))
+      message: >-
+        Port 53 ohne rules.dns hebt die DNS-Allowliste auf. DNS-Freigaben
+        mit Namensliste schreiben (rules.dns mit matchName/matchPattern),
+        siehe k8s/flux/core/DefaultDenyEgress.yaml.
+
+    - expression: >-
+        variables.specs.all(s, s.?egress.orValue([]).all(r,
+          r.?toPorts.orValue([]).all(tp,
+            !(has(tp.rules) && has(tp.rules.dns)) ||
+            tp.rules.dns.all(d, !d.?matchPattern.orValue("x").matches('^[*.]+$')))))
+      message: >-
+        Ein matchPattern nur aus Sternen erlaubt jeden Namen. Namen einzeln
+        freigeben.
+
+    - expression: >-
+        variables.cilium ||
+        object.spec.?egress.orValue([]).all(e,
+          !e.?ports.orValue([]).exists(p,
+            !has(p.port) ||
+            p.port == 53 || p.port in ["53", "dns", "dns-tcp", "domain"] ||
+            (type(p.port) == int && p.port <= 53 &&
+             p.?endPort.orValue(0) >= 53))
+          ||
+          (e.?to.orValue([]).size() > 0 && e.to.all(t, has(t.ipBlock))))
+      message: >-
+        Eine NetworkPolicy mit Port 53 hebt die DNS-Allowliste auf. DNS nur
+        als CiliumNetworkPolicy mit rules.dns freigeben.
+
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: dns-allowlist
+spec:
+  policyName: dns-allowlist
+  validationActions:
+    - Deny

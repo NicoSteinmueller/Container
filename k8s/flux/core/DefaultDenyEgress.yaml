@@ -1,47 +1,75 @@
-# DefaultDenyEgress - ausgehend geschlossen bis auf DNS.
-# Gilt für alle Pods außer in kube-system und flux-system.
+# DefaultDenyEgress - ausgehend geschlossen bis auf DNS für Namen im Cluster.
+# Gilt für alle Pods außer CoreDNS und flux-system.
 #
 # Ausgehend ist die gefährlichere Richtung: Ein Pod ohne Egress-Regel erreicht
 # das ganze Heimnetz. Mit dieser Regel ist ein neuer Namespace direkt zu.
 #
-# Erlaubt ist hier nur DNS, weil es jeder Pod braucht. Alles andere steht bei
-# der Komponente, in der `<name>-egress` ihrer NetworkPolicies.yaml.
+# DNS nur für `**.cluster.local`: Jede Abfrage läuft durch Ciliums DNS-Proxy,
+# und der lehnt jeden anderen Namen mit REFUSED ab. `cluster.local` beantwortet CoreDNS
+# selbst, davon geht nichts nach draußen. Weitere Namen gibt es nur zusammen
+# mit einer Verbindung dorthin: als `rules.dns` neben den `toFQDNs` in
+# `<name>-egress` der Komponente. Die Listen addieren sich.
 #
-# Fehlt eine Freigabe, hängt die Anwendung in einem Timeout statt einer klaren
-# Fehlermeldung. Nachsehen mit
+# Abgelehnte Namen: Dashboard „DNS-Blockaden“, Alarm `DnsAbfrageBlockiert`
+# (ntfy-Topic `cluster`). Fehlt eine Freigabe, hängt die Anwendung sonst in
+# einem Timeout statt einer klaren Fehlermeldung. Nachsehen mit
 #
 #   kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop
+#   kubectl -n kube-system exec ds/cilium -- hubble observe --protocol DNS --verdict DROPPED
+#
+# Ausgenommen:
+#   CoreDNS      ist der Resolver selbst; ein Fehler hier träfe jeden Pod.
+#   flux-system  bekommt dieselbe Liste als eigene Policy (FluxSystemDns.yaml) -
+#                dort lässt sie sich im Notfall allein löschen.
 #
 # Pods mit hostNetwork trifft die Regel nicht.
 apiVersion: cilium.io/v2
 kind: CiliumClusterwideNetworkPolicy
 metadata:
   name: default-deny-egress
-spec:
-  # Derselbe Selektor wie in DefaultDenyIngress.yaml.
-  endpointSelector:
-    matchExpressions:
-      - key: io.kubernetes.pod.namespace
-        operator: Exists
-      - key: io.kubernetes.pod.namespace
-        operator: NotIn
-        values:
-          - kube-system
-          - flux-system
+# Zwei Specs mit derselben Regel, weil ein Selektor kein "außer CoreDNS in
+# kube-system" kennt: `k8s-app NotIn [kube-dns]` allein nähme einen so
+# beschrifteten Pod in jedem Namespace aus. `Exists` zuerst, aus demselben
+# Grund wie in DefaultDenyIngress.yaml (cilium-health).
+specs:
+  - endpointSelector:
+      matchExpressions:
+        - key: io.kubernetes.pod.namespace
+          operator: Exists
+        - key: io.kubernetes.pod.namespace
+          operator: NotIn
+          values:
+            - kube-system
+            - flux-system
+    enableDefaultDeny: &defaultDeny
+      ingress: false
+      egress: true
+    egress: &dns
+      - toEndpoints:
+          - matchLabels:
+              io.kubernetes.pod.namespace: kube-system
+              k8s-app: kube-dns
+        toPorts:
+          - ports:
+              - port: "53"
+                protocol: UDP
+              - port: "53"
+                protocol: TCP
+            rules:
+              dns:
+                # Auch die Suchdomänen-Varianten externer Namen
+                # (`api.example.com.<ns>.svc.cluster.local`), die jeder Pod
+                # wegen `ndots:5` zuerst fragt - sie enden mit NXDOMAIN.
+                - matchPattern: "**.cluster.local"
 
-  # Ausdrücklich nur ausgehend - eingehend regelt DefaultDenyIngress.yaml.
-  enableDefaultDeny:
-    ingress: false
-    egress: true
-
-  egress:
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: UDP
-            - port: "53"
-              protocol: TCP
+  # kube-system ohne CoreDNS.
+  - endpointSelector:
+      matchLabels:
+        io.kubernetes.pod.namespace: kube-system
+      matchExpressions:
+        - key: k8s-app
+          operator: NotIn
+          values:
+            - kube-dns
+    enableDefaultDeny: *defaultDeny
+    egress: *dns

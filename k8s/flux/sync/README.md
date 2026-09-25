@@ -44,25 +44,30 @@ kubectl -n flux-system describe kustomization <name>   # bei False steht hier de
 
 ## Egress
 
-Ausgehend ist alles zu bis auf DNS
+Ausgehend ist alles zu bis auf DNS für `**.cluster.local`
 ([`../core/DefaultDenyEgress.yaml`](../core/DefaultDenyEgress.yaml)); was ein
-Namespace darüber hinaus braucht, steht in seiner `<name>-egress`. Ins Heimnetz
-darf keiner: Internet-Regeln sind `toCIDRSet` auf `0.0.0.0/0` ohne RFC 1918 und
-`169.254.0.0/16` - oder, strenger, `toFQDNs` auf einzelne Namen (beide Traefik-Controller).
+Namespace darüber hinaus braucht, steht in seiner `<name>-egress`. Ins Internet
+nur per `toFQDNs` auf einzelne Namen, und genau diese Namen stehen daneben als
+`rules.dns` - jeder andere Name bekommt REFUSED (Dashboard „DNS-Blockaden“,
+Alarm `DnsAbfrageBlockiert`). Ins Heimnetz darf keiner.
 
-| Namespace | darf außer DNS hinaus zu |
-|---|---|
-| `crowdsec` | LAPI `:8080` · Internet `:443` (CAPI, Hub) |
-| `headlamp`, `reloader`, `local-path-storage`, `cert-manager` | kube-apiserver `:6443` |
-| `cnpg-system` | kube-apiserver · Instanzen `:5432`/`:8000` |
-| `monitoring` | kube-apiserver · Kubelet `:10250` · node-exporter `:9100` · Cilium `:9962`–`:9965` · Traefik `:9100` · Scrape-Ziele in `kube-system`/`flux-system` · Alertmanager → ntfy `:8080` - **kein Internet** |
-| `traefik-internal` | headlamp `:4466` · Grafana `:3000` · whoami `:80` · nur `acme-v02.api.letsencrypt.org`, `api.hosting.ionos.com` `:443` (`toFQDNs`) · 1.1.1.1/8.8.8.8 `:53` |
-| `traefik-public` | LAPI `:8080` · ntfy `:8080` · nur `plugins.traefik.io`, `acme-v02.api.letsencrypt.org`, `api.hosting.ionos.com` `:443` (`toFQDNs`) · 1.1.1.1/8.8.8.8 `:53` |
-| `ntfy` | nichts |
+| Namespace | darf außer DNS hinaus zu | DNS-Namen außer `cluster.local` |
+|---|---|---|
+| `crowdsec` | Agent → LAPI `:8080` · `hub-data.crowdsec.net` `:443` · LAPI zusätzlich `api.crowdsec.net` `:443` | dieselben · Agent: PTR `*.*.*.*.in-addr.arpa` (rDNS) |
+| `headlamp`, `reloader`, `local-path-storage`, `cert-manager` | kube-apiserver `:6443` | - |
+| `cnpg-system` | kube-apiserver · Instanzen `:5432`/`:8000` | - |
+| `monitoring` | kube-apiserver · Kubelet `:10250` · node-exporter `:9100` · Cilium `:9962`–`:9965` · Traefik `:9100` · Scrape-Ziele in `kube-system`/`flux-system` · Alertmanager → ntfy `:8080` - **kein Internet** | - |
+| `traefik-internal` | headlamp `:4466` · Grafana `:3000` · whoami `:80` · `acme-v02.api.letsencrypt.org`, `api.hosting.ionos.com` `:443` · 1.1.1.1/8.8.8.8 `:53` | dieselben zwei |
+| `traefik-public` | LAPI `:8080` · ntfy `:8080` · `plugins.traefik.io`, `acme-v02.api.letsencrypt.org`, `api.hosting.ionos.com` `:443` · 1.1.1.1/8.8.8.8 `:53` | dieselben drei |
+| `ntfy` | nichts | - |
+| `kube-system` (metrics-server) | kube-apiserver · Kubelet `:10250` | - |
+| `flux-system` | alles (Flux' eigene `allow-egress`) | Git- und Helm-Quellen, `ghcr.io` ([`../core/FluxSystemDns.yaml`](../core/FluxSystemDns.yaml)) |
 
-Keine Regel greift auf hostNetwork-Pods (`csi-driver-nfs`, node-exporter, die
-meisten in `kube-system`). `kube-system` ist zudem ausgenommen: CoreDNS braucht
-den Resolver im LAN, und eine Regel dafür koppelte Flux an die tfvars.
+Keine Regel greift auf hostNetwork-Pods (`csi-driver-nfs`, node-exporter,
+Cilium, Control-Plane) und auf CoreDNS selbst - es ist der Resolver.
+
+**Offen:** Traefik fragt für DNS-01 1.1.1.1/8.8.8.8 direkt, am DNS-Proxy
+vorbei. Das ist ein zweiter DNS-Weg ohne Namensliste, nur für diese beiden Pods.
 
 ```bash
 kubectl -n crowdsec exec ds/crowdsec-agent -- nc -z -w3 192.168.178.3 80   # erwartet: kein Durchkommen

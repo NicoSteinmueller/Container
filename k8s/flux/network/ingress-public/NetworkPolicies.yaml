@@ -53,11 +53,9 @@ spec:
             - port: "8080"
               protocol: TCP
 
-    # DNS über CoreDNS - dieselbe Freigabe wie in core/DefaultDenyEgress.yaml,
-    # hier mit DNS-Regel: Damit läuft die Auflösung durch Ciliums DNS-Proxy,
-    # und nur so weiß Cilium, welche Adressen hinter den Namen unten stehen.
-    # Aufgelöst werden darf alles (die Clusterregel erlaubt DNS ohnehin);
-    # begrenzt ist, wohin danach eine Verbindung geht.
+    # DNS für genau die Namen unten - zusätzlich zu `**.cluster.local` aus
+    # core/DefaultDenyEgress.yaml. Über den DNS-Proxy erfährt Cilium auch,
+    # welche Adressen hinter den Namen stehen (`toFQDNs`).
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: kube-system
@@ -68,7 +66,9 @@ spec:
               protocol: ANY
           rules:
             dns:
-              - matchPattern: "*"
+              - matchName: plugins.traefik.io
+              - matchName: acme-v02.api.letsencrypt.org
+              - matchName: api.hosting.ionos.com
 
     # Internet nur zu diesen Namen, statt `0.0.0.0/0` - sonst hätte jeder, der
     # den Pod übernimmt, einen Rückkanal zu beliebigen Zielen. Gemessen mit

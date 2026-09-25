@@ -59,3 +59,30 @@ spec:
         memory: 64Mi
       limits:
         memory: 128Mi
+
+---
+# Ausgehend: kube-system steht unter core/DefaultDenyEgress.yaml (nur CoreDNS
+# ist ausgenommen). metrics-server fragt die Kubelets ab und meldet sich bei
+# der API; DNS braucht er keinen, die Kubelets spricht er über InternalIP an.
+# Der Weg zum Kubelet braucht zusätzlich die Talos-Regel `kubelet`
+# (vm/talos/patches/firewall.yaml.tftpl, pod_subnet).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: metrics-server-egress
+  namespace: kube-system
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: metrics-server
+  egress:
+    - toEntities:
+        - kube-apiserver
+
+    - toEntities:
+        - host
+        - remote-node
+      toPorts:
+        - ports:
+            - port: "10250"
+              protocol: TCP

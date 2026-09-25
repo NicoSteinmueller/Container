@@ -85,9 +85,13 @@ spec:
           port: 80
 {{- end }}
 
+{{- if .Values.networkPolicy.dnsEgress }}
 ---
 # whoami braucht selbst keine Verbindungen nach außen, außer DNS-Auflösung
 # (z.B. für spätere gesundheits-/Update-Checks). Alles andere bleibt verboten.
+# Abschaltbar (networkPolicy.dnsEgress): Im Talos-Cluster kommt DNS mit
+# Namensliste aus k8s/flux/core/DefaultDenyEgress.yaml, und diese Regel
+# höbe die Liste auf.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -109,3 +113,4 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+{{- end }}
