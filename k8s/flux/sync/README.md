@@ -12,14 +12,13 @@ nur Kustomizations, eine je Gruppe.
 | [`network`](Network.yaml) | [`../network`](../network) | Ingress-Controller, CrowdSec, LB-IPAM |
 | [`observability`](Observability.yaml) | [`../observability`](../observability) | Prometheus, Loki/Alloy, metrics-server, eigene Dashboards |
 | [`observability-rules`](ObservabilityRules.yaml) | [`../observability-rules`](../observability-rules) | eigene Alarmregeln und Scrape-Ziele (`PrometheusRule`, `PodMonitor`) |
-| [`observability-rules`](ObservabilityRules.yaml) | [`../observability-rules`](../observability-rules) | eigene Alarmregeln (`PrometheusRule`) |
-| [`apps`](Apps.yaml) | [`../apps`](../apps) | Headlamp, whoami |
+| [`apps`](Apps.yaml) | [`../apps`](../apps) | Headlamp, ntfy, whoami, die umgezogenen Dienste |
 | [`homelab-secrets`](Secrets.yaml) | eigenes Repo im Gitea | SOPS-verschlüsselte Secrets |
 
 ```
 core ──┬── storage ── observability ── observability-rules
        ├── platform ── cert-manager-issuers ── network
-       └── apps
+       └── apps        (auch an platform, storage, homelab-secrets)
 homelab-secrets        (eigene Quelle, hängt an nichts)
 ```
 
