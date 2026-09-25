@@ -46,3 +46,9 @@ configMapGenerator:
     files:
       - hubble-network-overview-namespace.json
 
+
+  # Eigenes Dashboard: blockierte DNS-Abfragen (Alarm dazu in
+  # observability-rules/DnsBlockRules.yaml) und verworfene Pakete.
+  - name: dashboard-dns-blockaden
+    files:
+      - dns-blockaden.json

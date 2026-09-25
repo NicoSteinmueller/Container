@@ -1,0 +1,310 @@
+{
+  "uid": "dns-blockaden",
+  "title": "DNS-Blockaden",
+  "tags": [
+    "cilium",
+    "sicherheit"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Blockierte DNS-Abfragen im Zeitraum",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "description": "Vom DNS-Proxy des Cilium-Agents abgelehnt (cilium_policy_l7_total). Zählt jede Ablehnung, unabhängig vom Namespace.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "round(sum(increase(cilium_policy_l7_total{proxy_type=\"fqdn\", rule=\"denied\"}[$__range])))",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Namespaces mit Blockaden",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count((sum by (source_namespace) (increase(hubble_flows_processed_total{type=\"L7\", subtype=\"DNS\", verdict=\"DROPPED\"}[$__range])) > 0) or (sum by (source_namespace) (hubble_flows_processed_total{type=\"L7\", subtype=\"DNS\", verdict=\"DROPPED\"} unless hubble_flows_processed_total{type=\"L7\", subtype=\"DNS\", verdict=\"DROPPED\"} offset $__range) > 0)) or vector(0)",
+          "instant": true
+        }
+      ],
+      "description": "Mitgezählt auch ein Namespace, dessen erste Ablehnung die Zeitreihe erst angelegt hat - increase allein sähe sie nicht."
+    },
+    {
+      "id": 3,
+      "type": "text",
+      "title": "Welche Namen?",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 5
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Die Namen blockierter Abfragen stehen in keiner Metrik - Hubble führt sie nur als Flow:\n\n```\nkubectl -n kube-system exec ds/cilium -c cilium-agent -- \\\n  hubble observe --protocol DNS --verdict DROPPED --last 100\n```\n\nAlarm: `DnsAbfrageBlockiert` (observability-rules/DnsBlockRules.yaml), ntfy-Topic `cluster`."
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Blockierte DNS-Abfragen je Namespace",
+      "description": "Hubble: L7-DNS-Flows mit Verdict DROPPED.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (source_namespace) (increase(hubble_flows_processed_total{type=\"L7\", subtype=\"DNS\", verdict=\"DROPPED\"}[$__interval]))",
+          "legendFormat": "{{source_namespace}}",
+          "interval": "1m"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "DNS-Proxy: weitergeleitet und abgelehnt",
+      "description": "Alle Abfragen, die durch Ciliums DNS-Proxy laufen (Namespaces mit DNS-Regel).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (rule) (rate(cilium_policy_l7_total{proxy_type=\"fqdn\", rule=~\"forwarded|denied\"}[5m]))",
+          "legendFormat": "{{rule}}",
+          "interval": "1m"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Verworfene Pakete je Namespace und Grund",
+      "description": "L3/L4: abgewiesene Verbindungen, z.B. ein Ziel außerhalb der toFQDNs-Liste (POLICY_DENIED).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pps",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (source_namespace, reason) (rate(hubble_drop_total[5m]))",
+          "legendFormat": "{{source_namespace}} - {{reason}}",
+          "interval": "1m"
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  }
+}

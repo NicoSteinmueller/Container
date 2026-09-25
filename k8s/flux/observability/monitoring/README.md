@@ -31,6 +31,13 @@ kein Internet-Egress.
   (Secret `ntfy-alertmanager`). Eine neue Alarmgruppe: eigenes `thema`, eigene
   Route und eigener Empfänger in `HelmRelease.yaml`, dazu Benutzer oder Recht
   in `ntfy-auth`.
+- **Topic `cluster`:** Zertifikate (`thema: zertifikat`, Laufzeit unter 14 und
+  7 Tagen, fehlende Daten) und blockierte DNS-Abfragen (`thema: dns`). Regeln
+  in `observability-rules/`, Dashboard „DNS-Blockaden“.
+- **Cilium und Traefik** werden gescrapt (PodMonitors in
+  `observability-rules/`), beide im Host-Netz bzw. hinter Default-Deny - je
+  Ziel braucht es eine Freigabe in `monitoring-egress` und eine auf der
+  Gegenseite.
 
 **Offen:** Alles andere endet weiter im `null`-Receiver, und ein toter
 Cluster meldet sich nicht - ntfy läuft im selben Cluster. Dafür braucht es
