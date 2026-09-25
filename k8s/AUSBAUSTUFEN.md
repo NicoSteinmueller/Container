@@ -13,6 +13,12 @@ dafür, dass es weniger zu verwalten gibt.
 zieht. Nextcloud, Immich, Paperless, Linkwarden und Keycloak bringen je eines
 mit.
 
+**Stand:** vorbereitet. Der Operator läuft
+([flux/platform/cloudnative-pg/](flux/platform/cloudnative-pg/README.md)),
+Vorlagen für Datenbank, Dump und Restore liegen unter
+[templates/](templates/CnpgDatabase.yaml), ein Restore ist durchgespielt.
+Eine Datenbank eines echten Dienstes gibt es noch nicht.
+
 Heute steht in jeder `example.env` derselbe String zweimal — einmal für den
 `postgres`-Container, einmal für die Anwendung:
 
@@ -42,21 +48,23 @@ Zwei Dinge kommen dazu, die sonst Handarbeit blieben:
   `bootstrap.initdb.import` scheidet aus: Die Container veröffentlichen 5432
   nicht. Ablauf in `flux/platform/cloudnative-pg/README.md`.
 
-Dazu WAL-Archivierung und `ScheduledBackup` als CR — was im
-Sicherheitskonzept unter „Postgres auf die SSD-vDisk" und „append-only
-Backup-Repository" steht, deklarativ.
+Nicht dazu gekommen sind WAL-Archivierung und `ScheduledBackup`: Beide
+wollen Objektspeicher oder CSI-Snapshots, und `local-path` kann keins von
+beiden. An ihrer Stelle steht ein `pg_dump`-CronJob alle 12 h auf
+`nfs-unraid` - ohne Point-in-Time-Recovery, zurück geht es nur auf den letzten
+Dump.
 
-**Was davon gesichert werden muss, ist wenig:** nur der Dump, den der Operator
-erzeugt. Nicht das PGDATA auf `local-path`, nicht der Operator, nicht die
+**Was davon gesichert werden muss, ist wenig:** nur dieser Dump. Nicht das PGDATA auf `local-path`, nicht der Operator, nicht die
 `Cluster`-CRs — die stehen in Git und kommen über Flux zurück, und ein
 Dateiabzug eines laufenden PGDATA wäre ohnehin ein zerrissener Stand. Der Weg
 zurück ist: CR anwenden, leere Instanz, Dump einspielen. Das vom Operator
 gewürfelte Passwort entsteht dabei neu und fehlt niemandem, solange die
 Anwendung es per `secretKeyRef` liest — genau die Eigenschaft, um die es in
-diesem Abschnitt geht. Die Ablage regelt
-[CHECKLISTE.md](CHECKLISTE.md), Abschnitt A.
+diesem Abschnitt geht. Die Dumps liegen unter
+`/mnt/user/k8s/<dienst>/dumps`, Kopia sichert sie von dort
+([flux/storage/nfs-storage/](flux/storage/nfs-storage/README.md)).
 
-**Kosten:** Operator-Deployment, grob 100–200 MiB. Die Postgres-Instanzen selbst
+**Kosten:** Operator-Deployment, gemessen unter 40 MiB bei 100 MiB Request. Die Postgres-Instanzen selbst
 kosten nichts zusätzlich — es sind dieselben fünf, die heute als Container auf
 dem Host laufen. Ein `Cluster` pro Dienst ist die vorgesehene Bauweise, keine
 Verschwendung. Bei `instances: 1` gibt es keine Hochverfügbarkeit; ein

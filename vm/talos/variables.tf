@@ -38,8 +38,8 @@ variable "cilium_version" {
 
 variable "hubble_relay_enabled" {
   description = <<-EOT
-    Hubble-Relay ausrollen. Standardmäßig aus, weil das RAM-Budget knapp ist
-    (siehe vm_memory_mib). Flows lassen sich auch ohne Relay ansehen:
+    Hubble-Relay ausrollen. Standardmäßig aus - Flows lassen sich auch ohne
+    Relay ansehen:
 
       kubectl -n kube-system exec ds/cilium -- hubble observe --follow
 
@@ -289,10 +289,8 @@ variable "service_subnet" {
 #
 variable "vm_memory_mib" {
   description = <<-EOT
-    RAM der VM in MiB. 4096 trägt einen leeren Cluster mit Cilium und CoreDNS;
-    Cilium kostet gegenüber Flannel rund ein halbes GB, Hubble-Relay und -UI
-    kämen obendrauf (siehe hubble_relay_enabled). Vor jeder Erhöhung auf dem
-    Hypervisor gegenprüfen:
+    RAM der VM in MiB. 4096 trägt einen leeren Cluster mit Cilium und CoreDNS.
+    Vor jeder Erhöhung auf dem Hypervisor gegenprüfen:
 
       ssh root@<host> free -m
 

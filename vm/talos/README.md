@@ -195,7 +195,7 @@ Erst wenn das durchläuft, `tofu apply`. Geht doch etwas schief und der
 Rückweg über die API ist zu: serielle Konsole.
 
 ```bash
-virsh -c "$libvirt_uri" console homelab-cp1
+virsh -c "$libvirt_uri" console talos-cp1
 ```
 
 ## Cilium
@@ -448,13 +448,10 @@ nachziehen.
 
 ## Was hier bewusst fehlt
 
- Für später vorgesehen:
+Die Ingress-Firewall steht inzwischen (siehe oben); der Plattform-Stack kommt
+nicht aus diesem Modul, sondern per Flux aus [../../k8s/flux](../../k8s/flux/README.md).
+Für später vorgesehen:
 
-- **Ingress-Firewall mit `admin_sources`.** Der Node hängt offen im LAN, die
-  Talos-API ist dort nur durch Client-Zertifikate geschützt. Das muss stehen,
-  bevor die Fritzbox irgendetwas weiterleitet — der Ablauf steht in
-  [../../k8s/INBETRIEBNAHME.md](../../k8s/INBETRIEBNAHME.md), Schritt 3.
-- **Plattform-Stack** (cert-manager, Traefik, Kyverno, CrowdSec, Headlamp).
 - **serverTLSBootstrap** fürs Kubelet. Braucht einen Genehmiger im Cluster;
   ohne ihn bleibt der CSR `Pending` und der Health-Check bricht ab.
 - **Secure Boot**, mit den `secureboot`-Varianten der Image Factory und
