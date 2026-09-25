@@ -122,6 +122,18 @@ spec:
                 - source_namespace
                 - cn
 
+            # Alles Übrige mit Gewicht - die Chart-Regeln (CrashLoop, volle
+            # PVCs, Node-Platte, Target down …) und jede künftige eigene
+            # Regel ohne `thema` - ins ntfy-Topic `alarme`. Steht zuletzt:
+            # die Routen oben greifen zuerst, ihre Alarme kommen nicht doppelt.
+            # `info` und `none` bleiben im `null`-Receiver.
+            - receiver: ntfy-alarme
+              matchers:
+                - severity =~ "warning|critical"
+              group_by:
+                - alertname
+                - namespace
+
         receivers:
           - name: "null"
 
@@ -142,10 +154,20 @@ spec:
                     credentials_file: /etc/alertmanager/secrets/ntfy-alertmanager/token
 
           # Gleicher Weg, gleicher Token; der Benutzer `alertmanager` darf in
-          # `db-backup` und `cluster` schreiben (ntfy-auth in homelab-secrets).
+          # `db-backup`, `cluster` und `alarme` schreiben (ntfy-auth in
+          # homelab-secrets).
           - name: ntfy-cluster
             webhook_configs:
               - url: http://ntfy.ntfy.svc.cluster.local/cluster?template=alertmanager
+                send_resolved: true
+                http_config:
+                  authorization:
+                    type: Bearer
+                    credentials_file: /etc/alertmanager/secrets/ntfy-alertmanager/token
+
+          - name: ntfy-alarme
+            webhook_configs:
+              - url: http://ntfy.ntfy.svc.cluster.local/alarme?template=alertmanager
                 send_resolved: true
                 http_config:
                   authorization:

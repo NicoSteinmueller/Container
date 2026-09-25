@@ -41,8 +41,14 @@ kein Internet-Egress.
   Ziel braucht es eine Freigabe in `monitoring-egress` und eine auf der
   Gegenseite.
 
-**Offen:** Alles andere endet weiter im `null`-Receiver, und ein toter
-Cluster meldet sich nicht - ntfy läuft im selben Cluster. Dafür braucht es
+- **Topic `alarme`:** alles Übrige mit `severity` `warning` oder `critical` -
+  die Regeln der Chart (CrashLoop, volle PVCs, Node-Platte, Target down …)
+  und eigene Regeln ohne `thema`. Die Route steht zuletzt, die Themen-Routen
+  greifen vorher. `info`, `none` und `Watchdog` enden im `null`-Receiver.
+
+**Offen:** Flux meldet nichts - eine gescheiterte HelmRelease erreicht weder
+Prometheus noch ntfy. Und ein toter Cluster meldet sich nicht - ntfy läuft im
+selben Cluster. Dafür braucht es
 einen Totmann außerhalb ([uptime-kuma/todo.md](../../../../uptime-kuma/todo.md)).
 Dazu ein Blick von außen auf den öffentlichen Ingress.
 

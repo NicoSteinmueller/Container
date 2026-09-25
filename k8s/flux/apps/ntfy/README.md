@@ -34,9 +34,11 @@ Volume-Verlust nicht; Tokens gehören deshalb ins Secret.
 
 **Keine Abos von Server-Seite:** `nico:*:ro` erlaubt das Lesen aller Topics,
 abonniert aber keines. Welche Topics ein Client zeigt, legt er selbst fest; es
-gibt weder Wildcard-Abos noch eine Liste der Topics. Heute gibt es drei:
-`kopia-nas`, `Unraid` und `db-backup` (Alertmanager, Benutzer `alertmanager`,
-darf nur dort schreiben).
+gibt weder Wildcard-Abos noch eine Liste der Topics. Heute gibt es fünf:
+`kopia-nas` und `Unraid` vom Host, `db-backup`, `cluster` und `alarme` vom
+Alertmanager (Benutzer `alertmanager`, darf nur in diese drei schreiben). Was
+wohin geht:
+[`../../observability/monitoring/README.md`](../../observability/monitoring/README.md).
 
 ```bash
 sops edit cluster/ntfy-auth.sops.yaml          # in homelab-secrets
