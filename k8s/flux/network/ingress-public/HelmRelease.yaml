@@ -100,14 +100,31 @@ spec:
           - ALL
 
     # Traefik lädt das Plugin beim Start von plugins.traefik.io - Code aus dem
-    # Internet im Anfragepfad, deshalb feste Version. `abortOnPluginFailure`:
-    # fällt der Download aus, startet Traefik nicht statt ohne Bouncer.
+    # Internet im Anfragepfad, deshalb feste Version und fester Hash.
+    # `abortOnPluginFailure`: fällt der Download aus, startet Traefik nicht
+    # statt ohne Bouncer.
+    #
+    # `hash` ist der SHA-256 des Zip-Archivs. Ohne ihn fragt Traefik die
+    # Registry, ob das Archiv stimmt - dieselbe Stelle, die es geliefert hat.
+    # Mit ihm vergleicht er selbst; ein abweichendes Archiv (neu getaggt,
+    # manipuliert) lässt den Start scheitern. Bei jedem Versionswechsel neu:
+    #
+    #   curl -sL https://plugins.traefik.io/public/download/<moduleName>/<version> | sha256sum
+    #
+    # Renovate sieht diese Stelle nicht - ein Update ist Handarbeit.
     experimental:
       abortOnPluginFailure: true
       plugins:
         crowdsec-bouncer:
           moduleName: github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
           version: v1.6.0
+          hash: 207f2cdef1116a436be38839169118bd8f70c32e451be864d9b0ae3b82f96849
+
+    # Keine Versionsprüfung: Sie ruft täglich update.traefik.io an - ein Ziel
+    # mehr im Egress (NetworkPolicies.yaml), für eine Meldung ins Log, die
+    # Renovate ohnehin abdeckt.
+    global:
+      checkNewVersion: false
 
     additionalVolumeMounts:
       - name: crowdsec-key
@@ -191,7 +208,8 @@ spec:
     # TLS-ALPN-01 läuft im Handshake auf 443 und braucht keinen Schlüssel.
     #   - `dnsChallenge` durch `tlsChallenge: {}` ersetzen, `env` IONOS_API_KEY
     #     streichen, traefik-ionos-public.sops.yaml aus homelab-secrets löschen
-    #   - in NetworkPolicies.yaml den Egress auf 53 streichen
+    #   - in NetworkPolicies.yaml `api.hosting.ionos.com` und den Block zu
+    #     1.1.1.1/8.8.8.8:53 streichen
     #   - vorher gegen das Staging-Verzeichnis testen, ob `sniStrict` (TLSOption
     #     in DynamicConfig.yaml) die Challenge durchlässt; acme.json danach weg
     #   - optional CAA für die öffentlichen Namen: nur letsencrypt.org, eigenes
@@ -217,6 +235,10 @@ spec:
               - 8.8.8.8:53
             propagation:
               delayBeforeChecks: 30s
+              # Keine Prüfung direkt bei IONOS' Nameservern: deren Adressen
+              # stehen nicht im Egress (NetworkPolicies.yaml), nur die beiden
+              # Resolver oben.
+              disableANSChecks: true
 
     env:
       - name: IONOS_API_KEY

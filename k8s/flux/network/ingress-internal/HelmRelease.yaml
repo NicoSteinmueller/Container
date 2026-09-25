@@ -88,6 +88,11 @@ spec:
     additionalArguments:
       - --providers.file.directory=/etc/traefik/dynamic
 
+    # Keine Versionsprüfung: Sie ruft täglich update.traefik.io an - ein Ziel
+    # mehr im Egress (NetworkPolicies.yaml).
+    global:
+      checkNewVersion: false
+
     # Recreate wegen acme.json: lego schreibt ohne Sperre
     updateStrategy:
       type: Recreate
@@ -176,6 +181,9 @@ spec:
               - 8.8.8.8:53
             propagation:
               delayBeforeChecks: 30s
+              # Keine Prüfung direkt bei IONOS' Nameservern: deren Adressen
+              # stehen nicht im Egress (NetworkPolicies.yaml).
+              disableANSChecks: true
 
     # lego liest den Key nur aus der Umgebung.
     env:

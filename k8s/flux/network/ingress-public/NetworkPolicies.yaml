@@ -53,18 +53,47 @@ spec:
             - port: "8080"
               protocol: TCP
 
-    # ACME: 443 für Let's Encrypt und IONOS, 53 für die Propagationsprüfung.
-    - toCIDRSet:
-        - cidr: 0.0.0.0/0
-          except:
-            - 10.0.0.0/8
-            - 172.16.0.0/12
-            - 192.168.0.0/16
-            - 169.254.0.0/16
+    # DNS über CoreDNS - dieselbe Freigabe wie in core/DefaultDenyEgress.yaml,
+    # hier mit DNS-Regel: Damit läuft die Auflösung durch Ciliums DNS-Proxy,
+    # und nur so weiß Cilium, welche Adressen hinter den Namen unten stehen.
+    # Aufgelöst werden darf alles (die Clusterregel erlaubt DNS ohnehin);
+    # begrenzt ist, wohin danach eine Verbindung geht.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+
+    # Internet nur zu diesen Namen, statt `0.0.0.0/0` - sonst hätte jeder, der
+    # den Pod übernimmt, einen Rückkanal zu beliebigen Zielen. Gemessen mit
+    # einem Traefik 3.7.11 hinter protokollierendem DNS und im lego-Quelltext:
+    #   plugins.traefik.io            CrowdSec-Plugin beim Start (HelmRelease.yaml)
+    #   acme-v02.api.letsencrypt.org  ACME
+    #   api.hosting.ionos.com         DNS-01 (lego, Provider ionos)
+    - toFQDNs:
+        - matchName: plugins.traefik.io
+        - matchName: acme-v02.api.letsencrypt.org
+        - matchName: api.hosting.ionos.com
       toPorts:
         - ports:
             - port: "443"
               protocol: TCP
+
+    # DNS-01: lego prüft die Propagation über genau diese beiden Resolver
+    # (`dnsChallenge.resolvers` in HelmRelease.yaml). Die Prüfung gegen die
+    # autoritativen Nameserver ist dort abgeschaltet - deren Adressen kennt
+    # hier niemand im Voraus.
+    - toCIDR:
+        - 1.1.1.1/32
+        - 8.8.8.8/32
+      toPorts:
+        - ports:
             - port: "53"
               protocol: UDP
             - port: "53"
