@@ -22,6 +22,9 @@ Keine Egress-Policy: Beide Pods laufen auf hostNetwork, keine Policy griffe.
 - Der Weg zum Host hängt an Unraids *Host access to custom networks*
   ([vm/talos/README.md](../../../../vm/talos/README.md#macvtap-wer-wen-erreicht)).
 
+## Backup
+
+`kopia_nas` bindet den Share read-only als `/data/k8s` ein.
 ```bash
 kubectl -n csi-driver-nfs exec ds/csi-nfs-node -c nfs -- timeout 10 showmount -e 192.168.178.3
 kubectl -n csi-driver-nfs logs ds/csi-nfs-node -c nfs | tail

@@ -202,6 +202,15 @@ services:
         bind:
           create_host_path: false
 
+      # Kubernetes - der Share hinter der StorageClass `nfs-unraid`, je PVC ein
+      # Verzeichnis <namespace>/<pvc-name>.
+      - type: bind
+        source: /mnt/user/k8s
+        target: /data/k8s
+        read_only: true
+        bind:
+          create_host_path: false
+
 
     labels:
       - "traefik.enable=true"
@@ -210,7 +219,8 @@ services:
       - "traefik.http.routers.kopia-${INSTANCE}.entrypoints=websecure"
       - "traefik.http.routers.kopia-${INSTANCE}.middlewares=local-only"
       - "traefik.http.services.kopia-${INSTANCE}.loadbalancer.server.port=51515"
-
+<UTC-Zeit>:
+  dump:
 networks:
   proxy:
     external: true
