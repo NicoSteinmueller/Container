@@ -12,7 +12,11 @@ Traefik fürs Internet auf `192.168.178.232`, gebaut wie
   Node-Adresse.
 - **`forwardedHeaders.trustedIPs: []`**: Kein Proxy davor, also überschreibt
   Traefik `X-Forwarded-*`, statt sie zu übernehmen.
-- **`TLSOption` mit `sniStrict`**: Unbekannte Namen enden im Handshake.
+- **Zwei TLS-Stufen** (`tls.yaml` in `DynamicConfig.yaml`): `default` nur
+  TLS 1.3, `kompatibel` zusätzlich TLS 1.2 für Router mit alten Clients - der
+  Router nennt dann `tls.options: kompatibel` **und** `certResolver`, sonst
+  bekommt er kein Zertifikat. Beide mit `sniStrict`: Unbekannte Namen enden
+  im Handshake.
 - **Kein Kubernetes-Provider, kein Token.** Routen, Middlewares und die
   TLS-Option stehen in [`DynamicConfig.yaml`](DynamicConfig.yaml) (File-Provider).
   Ein Kubernetes-Provider startete je Namespace einen Secrets-Informer - der

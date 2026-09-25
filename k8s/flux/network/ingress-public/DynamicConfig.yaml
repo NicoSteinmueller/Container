@@ -117,17 +117,33 @@ data:
               - rate-limit
 
   tls.yaml: |
-    # `sniStrict` ohne Default-Zertifikat: unbekannte Namen enden im
-    # Handshake, nicht in einer Antwort. `default` gilt für jeden Router.
+    # Zwei Stufen. `default` gilt für jeden Router ohne eigene Angabe und für
+    # jeden unbekannten Namen: nur TLS 1.3. `kompatibel` erlaubt zusätzlich
+    # TLS 1.2 - für Dienste mit alten Clients (Nextcloud-Sync und WebDAV auf
+    # älteren Geräten, Android vor 10). Ein Router bekommt sie so:
+    #
+    #   nextcloud:
+    #     rule: Host(`cloud.nico-steinmueller.de`)
+    #     entryPoints: [websecure]
+    #     service: nextcloud
+    #     tls:
+    #       options: kompatibel
+    #       # Mit eigenem tls-Block gilt der certResolver des Entrypoints
+    #       # nicht mehr von selbst - ausdrücklich nennen.
+    #       certResolver: letsencrypt
+    #
+    # Beide mit `sniStrict` ohne Default-Zertifikat: unbekannte Namen enden im
+    # Handshake, nicht in einer Antwort.
     #
     # Die Zertifikate sind ECDSA (`keyType: EC256`), für TLS 1.2 zählen also
-    # nur ECDSA-Suiten - mit RSA-Suiten allein kam 1.2 nie zustande. TLS 1.3
-    # wählt Go selbst. Keine `curvePreferences`: Go bietet dann X25519MLKEM768
-    # (Post-Quanten-Schlüsseltausch) und X25519 an; P-521/P-384 allein
-    # zwangen jeden Browser in einen zweiten Roundtrip.
+    # nur ECDSA-Suiten. TLS 1.3 wählt Go selbst. Keine `curvePreferences`: Go
+    # bietet dann X25519MLKEM768 (Post-Quanten-Schlüsseltausch) und X25519 an.
     tls:
       options:
         default:
+          minVersion: VersionTLS13
+          sniStrict: true
+        kompatibel:
           minVersion: VersionTLS12
           sniStrict: true
           cipherSuites:
