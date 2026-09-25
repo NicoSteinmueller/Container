@@ -25,7 +25,8 @@ kein Internet-Egress.
 - **Voraussetzung:** Secret `grafana-admin` (`admin-user`, `admin-password`) in
   `homelab-secrets`, sonst startet Grafana nicht.
 - **Alarme an ntfy:** Was `thema: db-backup` trägt
-  ([`DbBackupRules.yaml`](DbBackupRules.yaml)), geht ins Topic `db-backup`,
+  ([`../../observability-rules/DbBackupRules.yaml`](../../observability-rules/DbBackupRules.yaml),
+  eigene Gruppe wegen der CRD), geht ins Topic `db-backup`,
   direkt an den ntfy-Service mit einem Token, das nur dort schreiben darf
   (Secret `ntfy-alertmanager`). Eine neue Alarmgruppe: eigenes `thema`, eigene
   Route und eigener Empfänger in `HelmRelease.yaml`, dazu Benutzer oder Recht
