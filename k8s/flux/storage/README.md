@@ -1,7 +1,7 @@
 # storage
 
-Aufgeteilt nach **Zugriffsmuster**, nicht nach Durchsatz - physisch liegt beides
-auf derselben SSD.
+Aufgeteilt nach **Zugriffsmuster**. Die Aufteilung folgt auch der Hardware:
+`local-path` liegt auf der NVMe, `nfs-unraid` auf dem Array.
 
 | | [`local-path/`](local-path) (Default) | [`nfs-storage/`](nfs-storage) → `nfs-unraid` |
 |---|---|---|
