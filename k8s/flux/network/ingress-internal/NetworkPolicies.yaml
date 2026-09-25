@@ -59,19 +59,39 @@ spec:
             - port: "80"
               protocol: TCP
 
-    # ACME: 443 für Let's Encrypt und IONOS, 53 für die Propagationsprüfung.
-    # `except`: Internet ja, Heimnetz nein.
-    - toCIDRSet:
-        - cidr: 0.0.0.0/0
-          except:
-            - 10.0.0.0/8
-            - 172.16.0.0/12
-            - 192.168.0.0/16
-            - 169.254.0.0/16
+    # DNS über CoreDNS mit DNS-Regel, damit Cilium die Adressen hinter den
+    # Namen unten kennt - wie ../ingress-public/NetworkPolicies.yaml.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+
+    # Internet nur für das Wildcard-Zertifikat (DNS-01), statt `0.0.0.0/0`.
+    # Kein Plugin, keine Versionsprüfung (HelmRelease.yaml) - mehr braucht
+    # dieser Controller nicht.
+    - toFQDNs:
+        - matchName: acme-v02.api.letsencrypt.org
+        - matchName: api.hosting.ionos.com
       toPorts:
         - ports:
             - port: "443"
               protocol: TCP
+
+    # DNS-01: Propagationsprüfung nur über die beiden Resolver aus
+    # HelmRelease.yaml; die Prüfung bei den autoritativen Nameservern ist dort
+    # abgeschaltet.
+    - toCIDR:
+        - 1.1.1.1/32
+        - 8.8.8.8/32
+      toPorts:
+        - ports:
             - port: "53"
               protocol: UDP
             - port: "53"

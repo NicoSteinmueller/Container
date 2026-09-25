@@ -48,7 +48,7 @@ Ausgehend ist alles zu bis auf DNS
 ([`../core/DefaultDenyEgress.yaml`](../core/DefaultDenyEgress.yaml)); was ein
 Namespace darüber hinaus braucht, steht in seiner `<name>-egress`. Ins Heimnetz
 darf keiner: Internet-Regeln sind `toCIDRSet` auf `0.0.0.0/0` ohne RFC 1918 und
-`169.254.0.0/16`.
+`169.254.0.0/16` - oder, strenger, `toFQDNs` auf einzelne Namen (beide Traefik-Controller).
 
 | Namespace | darf außer DNS hinaus zu |
 |---|---|
@@ -56,8 +56,8 @@ darf keiner: Internet-Regeln sind `toCIDRSet` auf `0.0.0.0/0` ohne RFC 1918 und
 | `headlamp`, `reloader`, `local-path-storage`, `cert-manager` | kube-apiserver `:6443` |
 | `cnpg-system` | kube-apiserver · Instanzen `:5432`/`:8000` |
 | `monitoring` | kube-apiserver · Kubelet `:10250` · node-exporter `:9100` · Scrape-Ziele in `kube-system`/`flux-system` · Alertmanager → ntfy `:8080` - **kein Internet** |
-| `traefik-internal` | headlamp `:4466` · Grafana `:3000` · whoami `:80` · Internet `:443`/`:53` (ACME) |
-| `traefik-public` | LAPI `:8080` · ntfy `:8080` · Internet `:443`/`:53` (ACME) |
+| `traefik-internal` | headlamp `:4466` · Grafana `:3000` · whoami `:80` · nur `acme-v02.api.letsencrypt.org`, `api.hosting.ionos.com` `:443` (`toFQDNs`) · 1.1.1.1/8.8.8.8 `:53` |
+| `traefik-public` | LAPI `:8080` · ntfy `:8080` · nur `plugins.traefik.io`, `acme-v02.api.letsencrypt.org`, `api.hosting.ionos.com` `:443` (`toFQDNs`) · 1.1.1.1/8.8.8.8 `:53` |
 | `ntfy` | nichts |
 
 Keine Regel greift auf hostNetwork-Pods (`csi-driver-nfs`, node-exporter, die
