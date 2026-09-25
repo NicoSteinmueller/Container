@@ -38,6 +38,8 @@ spec:
 #
 # Gemessen (Logs, Hub-Index-Zeitstempel, Hubble):
 #   hub-data.crowdsec.net  Hub-Index und -Inhalte, beide Rollen beim Start
+#   version.crowdsec.net   `cscli hub update` wählt damit den Hub-Zweig;
+#                          ohne startet der Agent nicht (CrashLoop, gemessen)
 #   api.crowdsec.net       Central API (Anmeldung, Community-Blocklist,
 #                          Metriken) - nur die LAPI
 # Nicht eingetragen, weil nicht genutzt: papi.api.crowdsec.net (erst mit
@@ -52,6 +54,7 @@ spec:
   egress:
     - toFQDNs:
         - matchName: hub-data.crowdsec.net
+        - matchName: version.crowdsec.net
       toPorts:
         - ports:
             - port: "443"
@@ -95,6 +98,7 @@ spec:
           rules:
             dns:
               - matchName: hub-data.crowdsec.net
+              - matchName: version.crowdsec.net
               - matchPattern: "*.*.*.*.in-addr.arpa"
 
 ---
@@ -127,4 +131,5 @@ spec:
           rules:
             dns:
               - matchName: hub-data.crowdsec.net
+              - matchName: version.crowdsec.net
               - matchName: api.crowdsec.net
