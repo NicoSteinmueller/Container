@@ -53,7 +53,7 @@ Alarm `DnsAbfrageBlockiert`). Ins Heimnetz darf keiner.
 
 | Namespace | darf außer DNS hinaus zu | DNS-Namen außer `cluster.local` |
 |---|---|---|
-| `crowdsec` | Agent → LAPI `:8080` · `hub-data.crowdsec.net` `:443` · LAPI zusätzlich `api.crowdsec.net` `:443` | dieselben · Agent: PTR `*.*.*.*.in-addr.arpa` (rDNS) |
+| `crowdsec` | Agent → LAPI `:8080` · `hub-data.crowdsec.net`, `version.crowdsec.net` `:443` · LAPI zusätzlich `api.crowdsec.net` `:443` | dieselben · Agent: PTR `*.*.*.*.in-addr.arpa` (rDNS) |
 | `headlamp`, `reloader`, `local-path-storage`, `cert-manager` | kube-apiserver `:6443` | - |
 | `cnpg-system` | kube-apiserver · Instanzen `:5432`/`:8000` | - |
 | `monitoring` | kube-apiserver · Kubelet `:10250` · node-exporter `:9100` · Cilium `:9962`–`:9965` · Traefik `:9100` · Scrape-Ziele in `kube-system`/`flux-system` · Alertmanager → ntfy `:8080` - **kein Internet** | - |
