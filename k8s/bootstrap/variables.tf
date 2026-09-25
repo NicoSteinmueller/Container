@@ -28,7 +28,11 @@ variable "flux_instance_chart_version" {
 }
 
 variable "flux_version" {
-  description = "Flux-Distribution der FluxInstance. \"2.9.x\": Patch-Releases zieht der Operator selbst nach."
+  description = <<-EOT
+    Flux-Distribution der FluxInstance. "2.9.x" heißt: die höchste 2.9, die
+    das Artefakt aus flux_manifests_version kennt - mit festem Artefakt also
+    ebenfalls fest, kein Nachziehen im Hintergrund.
+  EOT
   type        = string
   default     = "2.9.x"
 }
