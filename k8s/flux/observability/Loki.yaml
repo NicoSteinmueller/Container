@@ -60,6 +60,10 @@ spec:
         retention_enabled: true
         delete_request_store: filesystem
 
+      # Anonyme Nutzungsstatistik an stats.grafana.org, ab Werk an.
+      analytics:
+        reporting_enabled: false
+
     singleBinary:
       replicas: 1
       persistence:

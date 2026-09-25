@@ -35,7 +35,7 @@ spec:
 ---
 # source-controller holt alles, was in den GitRepository- und
 # HelmRepository-Objekten steht (`*/Sources.yaml`, sync/). Eine neue Quelle
-# braucht hier ihren Host - sonst REFUSED und Alarm `DnsAbfrageBlockiert`.
+# braucht hier ihren Host - sonst NXDOMAIN und Alarm `DnsAbfrageBlockiert`.
 # Charts auf GitHub-Releases leiten nach release-assets.githubusercontent.com
 # um (nachgemessen).
 apiVersion: cilium.io/v2

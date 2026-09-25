@@ -107,6 +107,15 @@ rollOutCiliumPods: true
 #
 l7Proxy: true
 
+#
+# Antwort auf einen Namen, den die DNS-Allowlist ablehnt
+# (k8s/flux/core/DefaultDenyEgress.yaml): NXDOMAIN statt REFUSED.
+#
+# Mit REFUSED brechen ältere Resolver ab, statt die Suchdomänen zu probieren.
+#
+dnsProxy:
+  dnsRejectResponseCode: nameError
+
 # Aus demselben Grund wie beim Operator oben: sonst `BestEffort`, und damit
 # erstes Opfer des OOM-Controllers. Beim Envoy wiegt das schwerer als beim
 # Operator - er sitzt im Datenpfad jeder L7-Policy. Gemessener Bedarf:
