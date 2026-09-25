@@ -33,7 +33,9 @@ kein Internet-Egress.
   in `ntfy-auth`.
 - **Topic `cluster`:** Zertifikate (`thema: zertifikat`, Laufzeit unter 14 und
   7 Tagen, fehlende Daten) und blockierte DNS-Abfragen (`thema: dns`). Regeln
-  in `observability-rules/`, Dashboard „DNS-Blockaden“.
+  in `observability-rules/`, Dashboard „DNS-Blockaden“. Dessen Namen kommen
+  aus Loki: Cilium schreibt abgelehnte DNS-Abfragen als Flow ins Agent-Log
+  (`hubble.export` in `vm/talos/values/cilium.yaml.tftpl`).
 - **Cilium und Traefik** werden gescrapt (PodMonitors in
   `observability-rules/`), beide im Host-Netz bzw. hinter Default-Deny - je
   Ziel braucht es eine Freigabe in `monitoring-egress` und eine auf der

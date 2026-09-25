@@ -7,7 +7,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "time": {
     "from": "now-24h",
     "to": "now"
@@ -129,7 +129,7 @@
     {
       "id": 3,
       "type": "text",
-      "title": "Welche Namen?",
+      "title": "Woher die Namen kommen",
       "gridPos": {
         "x": 12,
         "y": 0,
@@ -138,7 +138,126 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "Die Namen blockierter Abfragen stehen in keiner Metrik - Hubble führt sie nur als Flow:\n\n```\nkubectl -n kube-system exec ds/cilium -c cilium-agent -- \\\n  hubble observe --protocol DNS --verdict DROPPED --last 100\n```\n\nAlarm: `DnsAbfrageBlockiert` (observability-rules/DnsBlockRules.yaml), ntfy-Topic `cluster`."
+        "content": "Die Namen stehen in keiner Metrik. Cilium schreibt jede abgelehnte DNS-Abfrage als Flow ins Log des Agents (`hubble.export` in vm/talos/values/cilium.yaml.tftpl), Alloy bringt sie nach Loki - 30 Tage.\n\nLive:\n```\nkubectl -n kube-system exec ds/cilium -c cilium-agent -- \\\n  hubble observe --protocol DNS --verdict DROPPED --follow\n```\n\nAlarm: `DnsAbfrageBlockiert` (observability-rules/DnsBlockRules.yaml), ntfy-Topic `cluster`."
+      }
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Blockierte Namen im Zeitraum",
+      "description": "Je Name, Namespace und Workload, meiste Versuche oben. Aus Loki (Flow-Export des Cilium-Agents).",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "queryType": "instant",
+          "instant": true,
+          "expr": "sort_desc(sum by (name, typ, ns, workload) (count_over_time({namespace=\"kube-system\", container=\"cilium-agent\"} |= \"\\\"flow\\\"\" | json verdict=\"flow.verdict\", name=\"flow.l7.dns.query\", ns=\"flow.source.namespace\", quellpod=\"flow.source.pod_name\", workload=\"flow.source.workloads[0].name\", typ=\"flow.l7.dns.qtypes[0]\" | __error__=\"\" | verdict=\"DROPPED\" [$__range])))"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "name": 0,
+              "typ": 1,
+              "ns": 2,
+              "workload": 3,
+              "Value": 4
+            },
+            "renameByName": {
+              "name": "Name",
+              "typ": "Typ",
+              "ns": "Namespace",
+              "workload": "Workload",
+              "Value": "Versuche",
+              "Value #A": "Versuche"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "Versuche",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 8,
+      "type": "logs",
+      "title": "Letzte Ablehnungen",
+      "description": "Namespace/Pod, Abfragetyp und Name - jede Zeile ein Versuch.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "queryType": "range",
+          "expr": "{namespace=\"kube-system\", container=\"cilium-agent\"} |= \"\\\"flow\\\"\" | json verdict=\"flow.verdict\", name=\"flow.l7.dns.query\", ns=\"flow.source.namespace\", quellpod=\"flow.source.pod_name\", workload=\"flow.source.workloads[0].name\", typ=\"flow.l7.dns.qtypes[0]\" | __error__=\"\" | verdict=\"DROPPED\" | line_format \"{{.ns}}/{{.quellpod}}  {{.typ}}  {{.name}}\""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": false,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
       }
     },
     {
@@ -152,7 +271,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 5,
+        "y": 15,
         "w": 24,
         "h": 8
       },
@@ -205,7 +324,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 13,
+        "y": 23,
         "w": 12,
         "h": 8
       },
@@ -258,7 +377,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 13,
+        "y": 23,
         "w": 12,
         "h": 8
       },
