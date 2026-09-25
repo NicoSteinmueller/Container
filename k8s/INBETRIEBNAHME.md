@@ -485,6 +485,11 @@ in der Datei; zwei Dinge, die beim Abschreiben aus der Cilium-Doku auffallen:
 Zwei Fallen stecken in dieser Messung, und beide liefern ein **falsches
 Negativ**: Man misst nichts, glaubt aber, die Ankuendigung sei kaputt.
 
+**Vorher das Binding `service-freigabe` auf `Warn` stellen**, sonst lehnt
+der Cluster den LoadBalancer im Namespace `l2-test` ab
+([flux/core/README.md](flux/core/README.md), „Wer eine Adresse im LAN
+bekommt“) - und danach zurück auf `Deny`.
+
 **Nicht `whoami` nehmen.** Dessen Namespace traegt `whoami-default-deny` plus
 eine Regel, die ausschliesslich `traefik-internal` auf Port 80 zulaesst. Ein
 `curl` direkt auf die LB-Adresse wird von der NetworkPolicy verworfen — auch

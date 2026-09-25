@@ -174,7 +174,15 @@ ingress:
 # Deshalb tragen die LoadBalancer-Services seit
 # k8s/flux/network/ingress-*.yaml `allocateLoadBalancerNodePorts:
 # false`: Was keinen NodePort hat, ist auf der Node-Adresse auch nicht
-# erreichbar. Wer diese Ports einschränken will, tut das in den
+# erreichbar. Das Flag wirkt nur beim Anlegen - nachträglich gesetzt, bleiben
+# vergebene NodePorts bestehen (so bis zum Neuaufbau 09/2026: 30603, 31098
+# offen). Dann gehören sie von Hand entfernt:
+#
+#   kubectl -n <ns> patch svc <name> --type=json -p='[
+#     {"op":"remove","path":"/spec/ports/0/nodePort"},
+#     {"op":"remove","path":"/spec/ports/1/nodePort"}]'
+#
+# Wer diese Ports einschränken will, tut das in den
 # NetworkPolicies - `allow-from-lan` in ingress-internal/NetworkPolicies.yaml ist die
 # Stelle, nicht diese.
 #
