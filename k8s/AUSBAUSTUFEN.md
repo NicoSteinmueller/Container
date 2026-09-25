@@ -35,10 +35,12 @@ Zwei Dinge kommen dazu, die sonst Handarbeit blieben:
 - **Rotation auf beiden Seiten.** Über `spec.managed.roles` mit `passwordSecret`
   führt der Operator das `ALTER ROLE` selbst aus. Das schließt genau die Lücke,
   die Reloader offenlässt (siehe `flux/README.md`, Abschnitt Secrets).
-- **Migration aus dem laufenden Docker-Container.** `bootstrap.initdb.import`
-  mit `type: microservice` fährt `pg_dump`/`pg_restore` gegen die alte
-  Instanz — inklusive Versionssprung. Das alte `POSTGRES_PASSWORD` braucht man
-  dabei ein letztes Mal als temporäres Secret, danach nie wieder.
+- **Migration aus dem laufenden Docker-Container.** `pg_dump` im alten
+  Container über den lokalen Socket, `pg_restore` mit dem Restore-Job der
+  Vorlage — dasselbe Werkzeug wie im Ernstfall, also zugleich ein Restore-Test.
+  Das alte `POSTGRES_PASSWORD` braucht man dabei nicht einmal mehr.
+  `bootstrap.initdb.import` scheidet aus: Die Container veröffentlichen 5432
+  nicht. Ablauf in `flux/platform/cloudnative-pg/README.md`.
 
 Dazu WAL-Archivierung und `ScheduledBackup` als CR — was im
 Sicherheitskonzept unter „Postgres auf die SSD-vDisk" und „append-only

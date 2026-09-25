@@ -1,5 +1,14 @@
-# apps - was der Cluster für Menschen bereitstellt: Headlamp und whoami.
-# Darf jederzeit scheitern, deshalb hängt keine andere Gruppe daran.
+# apps - was der Cluster für Menschen bereitstellt: Headlamp, ntfy, whoami und
+# die umgezogenen Dienste. Darf jederzeit scheitern, deshalb hängt keine andere
+# Gruppe daran.
+#
+# `dependsOn` auf alles, was ein Dienst mit Postgres mitbringt:
+#   platform         die CNPG-CRDs - ein `Cluster` scheitert sonst schon im
+#                    Server-Side-Dry-Run und nimmt die ganze Gruppe mit.
+#                    Trägt `wait: true`, ist also erst fertig, wenn sie stehen.
+#   storage          die Default-StorageClass; ohne sie bleiben PVCs Pending.
+#   homelab-secrets  Zugangsdaten wie `ntfy-auth`; ohne sie startet der Pod
+#                    nicht (CreateContainerConfigError).
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -14,5 +23,8 @@ spec:
     name: flux-system
   dependsOn:
     - name: core
+    - name: platform
+    - name: storage
+    - name: homelab-secrets
   prune: true
   timeout: 5m

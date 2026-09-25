@@ -1,5 +1,7 @@
-# Vorlage: einen Dump aus CnpgDatabase.yaml zurückspielen. Von Hand anwenden,
-# nie über Flux - ein Job läuft beim Anlegen los.
+# Vorlage: einen Dump aus CnpgDatabase.yaml zurückspielen - oder beim Umzug
+# den `migration-`-Dump aus dem Docker-Container (Ablauf:
+# k8s/flux/platform/cloudnative-pg/README.md). Von Hand anwenden, nie über
+# Flux - ein Job läuft beim Anlegen los.
 #
 #   ssh root@192.168.178.3 ls -lt /mnt/user/k8s/nextcloud/dumps/   # Dump wählen
 #   # DUMP unten eintragen, `nextcloud` durch den Dienst ersetzen
