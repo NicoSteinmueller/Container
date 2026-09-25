@@ -54,7 +54,10 @@ Y
 ## DNS-Allowlisten
 
 Jede DNS-Abfrage eines Pods läuft durch Ciliums DNS-Proxy und geht nur durch,
-wenn eine Policy den Namen erlaubt; alles andere bekommt REFUSED. Ohne das
+wenn eine Policy den Namen erlaubt; alles andere bekommt NXDOMAIN. Nicht
+REFUSED: Daran scheitern alte Resolver wie busybox 1.28, statt die
+Suchdomänen zu probieren (`dnsProxy` in
+[`vm/talos/values/cilium.yaml.tftpl`](../../../vm/talos/values/cilium.yaml.tftpl)). Ohne das
 reichte CoreDNS jeden Namen ins Internet weiter - ein Rückkanal (DNS-Tunnel)
 für jeden Pod, auch ohne Egress-Freigabe.
 
@@ -76,7 +79,7 @@ für jeden Pod, auch ohne Egress-Freigabe.
   Default-Deny leitet der Proxy auch nicht gelistete Namen weiter
   (nachgemessen).
 - **Neue Quelle, neuer Dienst mit Internet:** Host in `toFQDNs` und
-  `rules.dns`, sonst REFUSED und Alarm.
+  `rules.dns`, sonst NXDOMAIN und Alarm.
 
 ```bash
 # abgelehnte Namen live

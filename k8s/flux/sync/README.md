@@ -48,7 +48,7 @@ Ausgehend ist alles zu bis auf DNS für `**.cluster.local`
 ([`../core/DefaultDenyEgress.yaml`](../core/DefaultDenyEgress.yaml)); was ein
 Namespace darüber hinaus braucht, steht in seiner `<name>-egress`. Ins Internet
 nur per `toFQDNs` auf einzelne Namen, und genau diese Namen stehen daneben als
-`rules.dns` - jeder andere Name bekommt REFUSED (Dashboard „DNS-Blockaden“,
+`rules.dns` - jeder andere Name bekommt NXDOMAIN (Dashboard „DNS-Blockaden“,
 Alarm `DnsAbfrageBlockiert`). Ins Heimnetz darf keiner.
 
 | Namespace | darf außer DNS hinaus zu | DNS-Namen außer `cluster.local` |

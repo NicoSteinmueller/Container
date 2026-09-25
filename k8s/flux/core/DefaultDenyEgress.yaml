@@ -5,7 +5,8 @@
 # das ganze Heimnetz. Mit dieser Regel ist ein neuer Namespace direkt zu.
 #
 # DNS nur für `**.cluster.local`: Jede Abfrage läuft durch Ciliums DNS-Proxy,
-# und der lehnt jeden anderen Namen mit REFUSED ab. `cluster.local` beantwortet CoreDNS
+# und der beantwortet jeden anderen Namen mit NXDOMAIN (`dnsProxy` in
+# vm/talos/values/cilium.yaml.tftpl). `cluster.local` beantwortet CoreDNS
 # selbst, davon geht nichts nach draußen. Weitere Namen gibt es nur zusammen
 # mit einer Verbindung dorthin: als `rules.dns` neben den `toFQDNs` in
 # `<name>-egress` der Komponente. Die Listen addieren sich.
