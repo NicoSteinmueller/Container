@@ -1,10 +1,9 @@
 # Produktiv-Cluster (talos-cp1).
 #
-# Kein Ingress-Objekt: Beide Controller lesen keine Kubernetes-Objekte, die
-# Routen stehen in k8s/flux/network/ingress-*/DynamicConfig.yaml -
-# `whoami.k8s.nico-steinmueller.de` intern, `whoami.nico-steinmueller.de`
-# öffentlich. Das Chart liefert hier nur Deployment, Service und die
-# NetworkPolicy, die beide Controller hereinlässt.
+# Kein Ingress-Objekt: Die Route `whoami.k8s.nico-steinmueller.de` steht in
+# k8s/flux/network/ingress-internal/DynamicConfig.yaml. Das Chart liefert hier
+# nur Deployment, Service und die NetworkPolicy für den internen Controller.
+# Es gibt per ?env=true seine Umgebung aus.
 #
 # Der interne Hostname muss im Heimnetz auf .231 zeigen (AdGuard oder
 # Fritzbox) und hat im öffentlichen DNS nichts verloren.
@@ -16,17 +15,17 @@ ingress:
   enabled: false
 
 networkPolicy:
-  # Ohne diese Zeilen greift nur das Default-Deny des Charts, und die
-  # Controller kämen nicht an whoami heran. Seit ingress-public sind es zwei.
+  # Ohne diese Zeile greift nur das Default-Deny des Charts, und der
+  # Controller käme nicht an whoami heran. Nur der interne: whoami ist nicht
+  # öffentlich.
   ingressControllerNamespaces:
     - traefik-internal
-    - traefik-public
 
 ingressPublic:
   enabled: false
 
 #
 # Der Namespace steht in k8s/flux/core/namespaces/Restricted.yaml (mit
-# `homelab.io/zone: public`), wie alle anderen.
+# `homelab.io/zone: internal`), wie alle anderen.
 #
 createNamespace: false

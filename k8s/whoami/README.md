@@ -11,7 +11,7 @@ Als Helm-Chart (`chart/`) statt Kustomize – der Grund ist derselbe wie beim Do
 | `Chart.yaml` | Metadaten (Name, Version). |
 | `values.yaml` | Sichere Voreinstellung: kein Ingress, kein öffentlicher Ingress, `networkPolicy.ingressControllerNamespaces` leer – niemand darf whoami ansprechen, solange keine Umgebung das gezielt öffnet. |
 | `values-minikube.yaml` | Lokales Testsetup: NGINX-Ingress, Host `whoami.k8s.local`, kein TLS. |
-| `values-prod.yaml` | Produktiv-Cluster (talos-cp1). `service.type: ClusterIP`, **kein Ingress**: Beide Traefik-Controller lesen keine Ingress-Objekte, die Routen `whoami.k8s.nico-steinmueller.de` (intern) und `whoami.nico-steinmueller.de` (öffentlich) stehen in `k8s/flux/network/ingress-*/DynamicConfig.yaml`. Die NetworkPolicy lässt beide Controller herein. |
+| `values-prod.yaml` | Produktiv-Cluster (talos-cp1). `service.type: ClusterIP`, **kein Ingress**: Die Route `whoami.k8s.nico-steinmueller.de` steht in `k8s/flux/network/ingress-internal/DynamicConfig.yaml`, die NetworkPolicy lässt nur den internen Controller herein. whoami gibt per `?env=true` seine Umgebung aus. |
 | `templates/namespace.yaml` | Eigener Namespace `whoami`, Labels `pod-security.kubernetes.io/enforce: restricted` und `homelab.io/zone` (aus `zone`). Nur bei `createNamespace: true` – im Produktiv-Cluster legt ihn `k8s/flux/core/namespaces/Restricted.yaml` an. |
 | `templates/deployment.yaml` | Workload: Image `traefik/whoami:v1.12.0`, per Digest gepinnt, Security-Context (read-only Filesystem, non-root 1000:1000, alle Capabilities gedroppt, Seccomp `RuntimeDefault`), Liveness-/Readiness-Probes. |
 | `templates/service.yaml` | DNS-Name `whoami.whoami.svc.cluster.local`. `service.type`/`service.nodePort` steuern `ClusterIP` (Default) vs. `NodePort`. |

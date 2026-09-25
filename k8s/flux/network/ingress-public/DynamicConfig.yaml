@@ -24,13 +24,6 @@ data:
   routes.yaml: |
     http:
       routers:
-        # Der Testdienst. Vor der Portfreigabe wieder heraus: whoami gibt per
-        # ?env=true seine Umgebung aus (SICHERHEITSPRUEFUNG.md, Punkt 8).
-        whoami:
-          rule: Host(`whoami.nico-steinmueller.de`)
-          entryPoints:
-            - websecure
-          service: whoami
 
         # Push-Benachrichtigungen (../../apps/ntfy)
         ntfy:
@@ -42,10 +35,6 @@ data:
       # Über den Service-Namen statt über Endpoints: Traefik braucht dafür
       # keine Leserechte im Namespace des Dienstes.
       services:
-        whoami:
-          loadBalancer:
-            servers:
-              - url: http://whoami.whoami.svc.cluster.local:80
         ntfy:
           loadBalancer:
             servers:

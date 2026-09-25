@@ -14,7 +14,7 @@ Der Docker-Traefik ist nicht beteiligt.
 Der Name muss dafür auf `.232` zeigen:
 
 - **Im LAN** per AdGuard-Umschreibung `ntfy.nico-steinmueller.de ->
-  192.168.178.232`, neben `whoami.nico-steinmueller.de`. Sie muss vor dem
+  192.168.178.232`. Sie muss vor dem
   Wildcard `*.nico-steinmueller.de -> .5` greifen - AdGuard nimmt den genauen
   Namen vor dem Wildcard.
 - **Aus dem Internet vorerst nicht** (Stand 2026-09-24): Die Fritzbox gibt 443

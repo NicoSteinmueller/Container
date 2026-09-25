@@ -57,7 +57,7 @@ darf keiner: Internet-Regeln sind `toCIDRSet` auf `0.0.0.0/0` ohne RFC 1918 und
 | `cnpg-system` | kube-apiserver · Instanzen `:5432`/`:8000` |
 | `monitoring` | kube-apiserver · Kubelet `:10250` · node-exporter `:9100` · Scrape-Ziele in `kube-system`/`flux-system` · Alertmanager → ntfy `:8080` - **kein Internet** |
 | `traefik-internal` | headlamp `:4466` · Grafana `:3000` · whoami `:80` · Internet `:443`/`:53` (ACME) |
-| `traefik-public` | LAPI `:8080` · whoami `:80` · ntfy `:8080` · Internet `:443`/`:53` (ACME) |
+| `traefik-public` | LAPI `:8080` · ntfy `:8080` · Internet `:443`/`:53` (ACME) |
 | `ntfy` | nichts |
 
 Keine Regel greift auf hostNetwork-Pods (`csi-driver-nfs`, node-exporter, die
