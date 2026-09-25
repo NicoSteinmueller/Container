@@ -296,70 +296,70 @@ services:
       VERSION: 1       # Erlaubt Traefik die API-Version abzufragen
 
 
-  traefik-logrotate:
-    # ------------ Identität ------------------------
-    container_name: traefik_logrotate
-    # Eigenes Mini-Image mit vorinstalliertem logrotate (kein Paketdownload zur Laufzeit).
-    build:
-      context: ./logrotate
-      dockerfile: Dockerfile
-    image: traefik-logrotate:local
-
-    # ------------ Abhängigkeiten & Start -----------
-    init: true
-    command:
-      - /bin/sh
-      - -c
-      - |
-        set -eu
-        while true; do
-          logrotate -s /state/status /etc/logrotate.d/access.logrotate
-          sleep 86400
-        done
-    restart: unless-stopped
-    healthcheck:
-      # Gesund wenn Traefik im geteilten PID-NS erreichbar ist und logrotate kuerzlich lief.
-      test: ["CMD-SHELL", "kill -0 1 && test -f /state/status && find /state/status -mtime -2 | grep -q /state/status"]
-      interval: 30m
-      timeout: 10s
-      retries: 3
-      start_period: 2m
-    depends_on:
-      traefik:
-        condition: service_started
-        restart: true
-    # Gemeinsamer PID-Namespace mit traefik → Traefik laeuft als PID 1 → kill -USR1 1 moeglich,
-    # ohne Docker-Socket im Sidecar zu benoetigen.
-    pid: "service:traefik"
-    network_mode: none
-
-    # ----------- Ressourcen -----------
-    deploy:
-      resources:
-        limits:
-          cpus: 0.1
-          memory: 64M
-          pids: 64
-        reservations:
-          memory: 16M
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: 3
-
-    # ----------- Sicherheit -----------
-    security_opt:
-      - no-new-privileges:true
-#    cap_drop:
-#      - ALL
-
-    # ---------- Environment -----------
-    environment:
-      TZ: Europe/Berlin
-
-    # ----------- Speicher -----------
-    read_only: true
+#  traefik-logrotate:
+#    # ------------ Identität ------------------------
+#    container_name: traefik_logrotate
+#    # Eigenes Mini-Image mit vorinstalliertem logrotate (kein Paketdownload zur Laufzeit).
+#    build:
+#      context: ./logrotate
+#      dockerfile: Dockerfile
+#    image: traefik-logrotate:local
+#
+#    # ------------ Abhängigkeiten & Start -----------
+#    init: true
+#    command:
+#      - /bin/sh
+#      - -c
+#      - |
+#        set -eu
+#        while true; do
+#          logrotate -s /state/status /etc/logrotate.d/access.logrotate
+#          sleep 86400
+#        done
+#    restart: unless-stopped
+#    healthcheck:
+#      # Gesund wenn Traefik im geteilten PID-NS erreichbar ist und logrotate kuerzlich lief.
+#      test: ["CMD-SHELL", "kill -0 1 && test -f /state/status && find /state/status -mtime -2 | grep -q /state/status"]
+#      interval: 30m
+#      timeout: 10s
+#      retries: 3
+#      start_period: 2m
+#    depends_on:
+#      traefik:
+#        condition: service_started
+#        restart: true
+#    # Gemeinsamer PID-Namespace mit traefik → Traefik laeuft als PID 1 → kill -USR1 1 moeglich,
+#    # ohne Docker-Socket im Sidecar zu benoetigen.
+#    pid: "service:traefik"
+#    network_mode: none
+#
+#    # ----------- Ressourcen -----------
+#    deploy:
+#      resources:
+#        limits:
+#          cpus: 0.1
+#          memory: 64M
+#          pids: 64
+#        reservations:
+#          memory: 16M
+#    logging:
+#      driver: json-file
+#      options:
+#        max-size: 10m
+#        max-file: 3
+#
+#    # ----------- Sicherheit -----------
+#    security_opt:
+#      - no-new-privileges:true
+##    cap_drop:
+##      - ALL
+#
+#    # ---------- Environment -----------
+#    environment:
+#      TZ: Europe/Berlin
+#
+#    # ----------- Speicher -----------
+#    read_only: true
 
 
   crowdsec:
