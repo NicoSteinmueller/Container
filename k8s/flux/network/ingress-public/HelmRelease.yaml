@@ -184,6 +184,18 @@ spec:
         allocateLoadBalancerNodePorts: false
 
     # Let's Encrypt per DNS-01 über IONOS, je Name.
+    #
+    # TODO: Auf TLS-ALPN-01 umstellen, sobald die Fritzbox 443 an .232 gibt
+    # (INBETRIEBNAHME.md, Schritt 11) - vorher kommt die Challenge nie hier an.
+    # Grund: Der IONOS-Key soll raus.
+    # TLS-ALPN-01 läuft im Handshake auf 443 und braucht keinen Schlüssel.
+    #   - `dnsChallenge` durch `tlsChallenge: {}` ersetzen, `env` IONOS_API_KEY
+    #     streichen, traefik-ionos-public.sops.yaml aus homelab-secrets löschen
+    #   - in NetworkPolicies.yaml den Egress auf 53 streichen
+    #   - vorher gegen das Staging-Verzeichnis testen, ob `sniStrict` (TLSOption
+    #     in DynamicConfig.yaml) die Challenge durchlässt; acme.json danach weg
+    #   - optional CAA für die öffentlichen Namen: nur letsencrypt.org, eigenes
+    #     Konto (accounturi), validationmethods=tls-alpn-01
     certificatesResolvers:
       letsencrypt:
         acme:
