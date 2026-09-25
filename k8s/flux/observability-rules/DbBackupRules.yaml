@@ -1,8 +1,8 @@
-# monitoring - Alarme zu den Datenbank-Dumps (k8s/templates/CnpgDatabase.yaml)
+# Alarme zu den Datenbank-Dumps
 #
 # Erkannt wird ein Dump an seinem CronJob-Namen `<dienst>-db-dump`. Alle Alarme
 # tragen `thema: db-backup` - daran hängt die Route ins ntfy-Topic `db-backup`
-# (HelmRelease.yaml, alertmanager.config).
+# (../observability/monitoring/HelmRelease.yaml, alertmanager.config).
 #
 # Zwei Regeln, weil sie Verschiedenes fangen:
 #   DbDumpFehlgeschlagen  sofort, wenn ein Lauf scheitert

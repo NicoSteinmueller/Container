@@ -9,6 +9,7 @@ clusterweite Regeln: [`sync/README.md`](sync/README.md).
 sync/                    eine Kustomization je Gruppe
 core/ storage/ platform/ network/ observability/ apps/
 cert-manager-issuers/    eigene Gruppe: CRDs entstehen erst mit cert-manager
+observability-rules/     eigene Gruppe: CRDs entstehen erst mit kube-prometheus-stack
 ```
 
 ## Aufbau einer Gruppe
