@@ -27,6 +27,6 @@ Traefik fürs Internet auf `192.168.178.232`, gebaut wie
 - **Eine Änderung an `DynamicConfig.yaml`** startet den Controller über
   Reloader neu (`Recreate`, kurze Unterbrechung).
 
-> **Stand:** whoami ist der einzige Dienst. Immich und Nextcloud laufen noch auf
+> **Stand:** ntfy ist der einzige Dienst. Immich und Nextcloud laufen noch auf
 > dem Unraid-Host. AppSec kommt mit dem ersten Dienst, den eine WAF-Regel schützen
 > soll; die Fritzbox-Freigabe zuletzt.

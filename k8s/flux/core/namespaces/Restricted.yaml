@@ -97,10 +97,7 @@ metadata:
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
 ---
-# Der Testdienst. `public`, obwohl er auch intern hängt: Eine einzige
-# öffentliche Route macht den Namespace öffentlich - die Zone richtet sich
-# nach der riskanteren Seite. Das Label dokumentiert nur, ausgewertet wird es
-# nicht (Routen: network/ingress-*/DynamicConfig.yaml).
+# Der Testdienst, nur im Heimnetz . Das Label dokumentiert nur.
 #
 # Früher vom whoami-Chart angelegt; `keep`, damit Helm ihn bei der Übergabe
 # nicht löscht.
@@ -111,7 +108,7 @@ metadata:
   annotations:
     helm.sh/resource-policy: keep
   labels:
-    homelab.io/zone: public
+    homelab.io/zone: internal
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
