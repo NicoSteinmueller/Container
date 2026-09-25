@@ -23,3 +23,26 @@ configMapGenerator:
   - name: dashboard-node-exporter-full
     files:
       - node-exporter-full.json
+
+  # Cilium und Hubble, aus dem Chart von Cilium 1.20.1
+  # (install/kubernetes/cilium/files/*/dashboards). Die Metriken schaltet
+  # vm/talos/values/cilium.yaml.tftpl ein, den Scrape
+  # observability-rules/CiliumPodMonitors.yaml. Beim Cilium-Update mitziehen.
+  - name: dashboard-cilium-agent
+    files:
+      - cilium-dashboard.json
+  - name: dashboard-cilium-operator
+    files:
+      - cilium-operator-dashboard.json
+  - name: dashboard-hubble
+    files:
+      - hubble-dashboard.json
+  # Blockierte und fehlgeschlagene DNS-Abfragen je Namespace
+  - name: dashboard-hubble-dns
+    files:
+      - hubble-dns-namespace.json
+  # Verworfene Pakete und Policy-Entscheidungen je Namespace
+  - name: dashboard-hubble-network
+    files:
+      - hubble-network-overview-namespace.json
+

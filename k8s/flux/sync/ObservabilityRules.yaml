@@ -1,4 +1,5 @@
-# observability-rules - eigene Alarmregeln (PrometheusRule).
+# observability-rules - eigene Objekte der Operator-CRDs: Alarmregeln
+# (PrometheusRule) und Scrape-Ziele (PodMonitor).
 # Eigene Gruppe, weil kube-prometheus-stack in `observability` die CRD erst
 # mitbringt.
 #

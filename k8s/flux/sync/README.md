@@ -11,7 +11,7 @@ nur Kustomizations, eine je Gruppe.
 | [`cert-manager-issuers`](CertManagerIssuers.yaml) | [`../cert-manager-issuers`](../cert-manager-issuers) | eigene CA und ihre Zertifikate |
 | [`network`](Network.yaml) | [`../network`](../network) | Ingress-Controller, CrowdSec, LB-IPAM |
 | [`observability`](Observability.yaml) | [`../observability`](../observability) | Prometheus, Loki/Alloy, metrics-server, eigene Dashboards |
-| [`observability-rules`](ObservabilityRules.yaml) | [`../observability-rules`](../observability-rules) | eigene Alarmregeln (`PrometheusRule`) |
+| [`observability-rules`](ObservabilityRules.yaml) | [`../observability-rules`](../observability-rules) | eigene Alarmregeln und Scrape-Ziele (`PrometheusRule`, `PodMonitor`) |
 | [`observability-rules`](ObservabilityRules.yaml) | [`../observability-rules`](../observability-rules) | eigene Alarmregeln (`PrometheusRule`) |
 | [`apps`](Apps.yaml) | [`../apps`](../apps) | Headlamp, whoami |
 | [`homelab-secrets`](Secrets.yaml) | eigenes Repo im Gitea | SOPS-verschlüsselte Secrets |
@@ -55,7 +55,7 @@ darf keiner: Internet-Regeln sind `toCIDRSet` auf `0.0.0.0/0` ohne RFC 1918 und
 | `crowdsec` | LAPI `:8080` · Internet `:443` (CAPI, Hub) |
 | `headlamp`, `reloader`, `local-path-storage`, `cert-manager` | kube-apiserver `:6443` |
 | `cnpg-system` | kube-apiserver · Instanzen `:5432`/`:8000` |
-| `monitoring` | kube-apiserver · Kubelet `:10250` · node-exporter `:9100` · Scrape-Ziele in `kube-system`/`flux-system` · Alertmanager → ntfy `:8080` - **kein Internet** |
+| `monitoring` | kube-apiserver · Kubelet `:10250` · node-exporter `:9100` · Cilium `:9962`–`:9965` · Scrape-Ziele in `kube-system`/`flux-system` · Alertmanager → ntfy `:8080` - **kein Internet** |
 | `traefik-internal` | headlamp `:4466` · Grafana `:3000` · whoami `:80` · nur `acme-v02.api.letsencrypt.org`, `api.hosting.ionos.com` `:443` (`toFQDNs`) · 1.1.1.1/8.8.8.8 `:53` |
 | `traefik-public` | LAPI `:8080` · ntfy `:8080` · nur `plugins.traefik.io`, `acme-v02.api.letsencrypt.org`, `api.hosting.ionos.com` `:443` (`toFQDNs`) · 1.1.1.1/8.8.8.8 `:53` |
 | `ntfy` | nichts |

@@ -81,7 +81,9 @@ spec:
               protocol: TCP
 
     # Was auf dem Node lauscht, trägt die Identität `host` und ist über
-    # `toEndpoints` nicht erreichbar: 10250 Kubelet, 9100 node-exporter.
+    # `toEndpoints` nicht erreichbar: 10250 Kubelet, 9100 node-exporter,
+    # 9962-9965 Cilium (Agent, Operator, Envoy, Hubble). Die andere Hälfte
+    # steht in vm/talos/patches/firewall.yaml.tftpl.
     - toEntities:
         - host
       toPorts:
@@ -89,6 +91,14 @@ spec:
             - port: "10250"
               protocol: TCP
             - port: "9100"
+              protocol: TCP
+            - port: "9962"
+              protocol: TCP
+            - port: "9963"
+              protocol: TCP
+            - port: "9964"
+              protocol: TCP
+            - port: "9965"
               protocol: TCP
 
     - toEndpoints:

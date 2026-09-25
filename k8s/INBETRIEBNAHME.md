@@ -410,7 +410,7 @@ talosctl -n 192.168.178.230 get nftableschains   # ingress/drop, prerouting/acce
 |---|---|---|
 | 50000, 6443, 10250 | offen | apid, kube-apiserver, Kubelet |
 | 2379, 2380 | geblockt | etcd — vorher LAN-weit erreichbar |
-| 4244, 9963 | geblockt | Hubble, Cilium-Metriken |
+| 4244, 9962–9965 | geblockt | Hubble-API, Cilium-Metriken (Metriken nur fürs Pod-Netz offen) |
 
 Dazu muss weiterlaufen: `kubectl get node`, `kubectl top node`, der Ingress
 über `.231` und `cilium-health status`.

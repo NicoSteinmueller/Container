@@ -116,6 +116,26 @@ ingress:
 
 ---
 #
+# Cilium-Metriken fuer Prometheus: Agent 9962, Operator 9963, Envoy 9964,
+# Hubble 9965 (values/cilium.yaml.tftpl, `prometheus`). Alle vier laufen im
+# Host-Netz, der Scrape kommt aus dem Pod-Netz - gleiches Muster und gleicher
+# Grund wie node-exporter oben. Aus dem LAN bleiben sie zu.
+#
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: cilium-metrics
+portSelector:
+  ports:
+    - 9962
+    - 9963
+    - 9964
+    - 9965
+  protocol: tcp
+ingress:
+  - subnet: ${pod_subnet}
+
+---
+#
 # Cilium-Health.
 #
 # Der Agent prüft die Erreichbarkeit jedes Nodes über dessen LAN-Adresse auf
