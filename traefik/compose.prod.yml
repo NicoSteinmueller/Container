@@ -64,21 +64,21 @@ services:
       traefik.http.routers.traefik-dashboard.service: api@internal
       traefik.http.services.traefik-dashboard.loadbalancer.server.port: 8080
 
-  traefik-logrotate:
-    user: 99:100
-    volumes:
-      - type: bind
-        source: /mnt/user/logs/traefik
-        target: /logs
-        read_only: false
-        bind:
-          create_host_path: false
-      - type: bind
-        source: /mnt/user/appdata/traefik/logrotate
-        target: /state
-        read_only: false
-        bind:
-          create_host_path: false
+#  traefik-logrotate:
+#    user: 99:100
+#    volumes:
+#      - type: bind
+#        source: /mnt/user/logs/traefik
+#        target: /logs
+#        read_only: false
+#        bind:
+#          create_host_path: false
+#      - type: bind
+#        source: /mnt/user/appdata/traefik/logrotate
+#        target: /state
+#        read_only: false
+#        bind:
+#          create_host_path: false
 
   crowdsec:
     user: 99:100
