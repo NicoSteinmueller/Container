@@ -1,0 +1,24 @@
+# Scrape der beiden Traefik-Controller (:9100, Port `metrics`). Gebraucht vor
+# allem für `traefik_tls_certs_not_after` - die Laufzeit jedes Zertifikats,
+# Grundlage von CertificateRules.yaml.
+#
+# Der Weg braucht zwei Freigaben: `monitoring-egress`
+# (observability/monitoring/NetworkPolicies.yaml) und `allow-metrics-from-prometheus`
+# im Namespace des Controllers (network/ingress-*/NetworkPolicies.yaml).
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: traefik
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - traefik-internal
+      - traefik-public
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: traefik
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 60s

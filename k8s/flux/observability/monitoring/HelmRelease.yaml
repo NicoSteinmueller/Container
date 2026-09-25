@@ -111,6 +111,17 @@ spec:
                 - alertname
                 - namespace
 
+            # Zertifikate und blockierter Verkehr
+            # (../../observability-rules/CertificateRules.yaml, DnsBlockRules.yaml)
+            # ins ntfy-Topic `cluster`.
+            - receiver: ntfy-cluster
+              matchers:
+                - thema =~ "zertifikat|dns"
+              group_by:
+                - alertname
+                - source_namespace
+                - cn
+
         receivers:
           - name: "null"
 
@@ -128,6 +139,17 @@ spec:
                     # Secret ntfy-alertmanager (homelab-secrets), eingehängt
                     # über `alertmanagerSpec.secrets` - steht so nicht in der
                     # generierten Konfiguration.
+                    credentials_file: /etc/alertmanager/secrets/ntfy-alertmanager/token
+
+          # Gleicher Weg, gleicher Token; der Benutzer `alertmanager` darf in
+          # `db-backup` und `cluster` schreiben (ntfy-auth in homelab-secrets).
+          - name: ntfy-cluster
+            webhook_configs:
+              - url: http://ntfy.ntfy.svc.cluster.local/cluster?template=alertmanager
+                send_resolved: true
+                http_config:
+                  authorization:
+                    type: Bearer
                     credentials_file: /etc/alertmanager/secrets/ntfy-alertmanager/token
 
       alertmanagerSpec:

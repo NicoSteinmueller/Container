@@ -1,0 +1,45 @@
+# observability-rules - Alarm auf blockierte DNS-Abfragen
+#
+# Cilium lehnt eine Abfrage ab, wenn eine DNS-Regel (`rules.dns` in einer
+# CiliumNetworkPolicy) den Namen nicht erlaubt. Ein Pod, der dann trotzdem
+# fragt, versucht etwas, das nicht vorgesehen ist - ein Fehler in der Liste
+# oder ein übernommener Pod, der einen Rückkanal sucht.
+#
+# Der zweite Zweig (`unless ... offset`) ist nicht doppelt: Die erste
+# Ablehnung aus einem Namespace legt die Zeitreihe erst an, und `increase`
+# sieht an einer neuen Reihe keinen Anstieg. Ohne ihn fiele genau der erste
+# Versuch durch.
+#
+# Solange noch keine Policy DNS-Namen einschränkt, feuert das nie.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: dns-blockiert
+  namespace: monitoring
+spec:
+  groups:
+    - name: dns-blockiert
+      rules:
+        - alert: DnsAbfrageBlockiert
+          expr: |
+            sum by (source_namespace) (
+              increase(hubble_flows_processed_total{type="L7", subtype="DNS", verdict="DROPPED"}[10m])
+            ) > 0
+            or
+            sum by (source_namespace) (
+              hubble_flows_processed_total{type="L7", subtype="DNS", verdict="DROPPED"}
+              unless
+              hubble_flows_processed_total{type="L7", subtype="DNS", verdict="DROPPED"} offset 10m
+            ) > 0
+          labels:
+            severity: warning
+            thema: dns
+          annotations:
+            summary: "Blockierte DNS-Abfragen aus {{ $labels.source_namespace }}"
+            description: >-
+              Cilium hat DNS-Abfragen aus {{ $labels.source_namespace }}
+              abgelehnt. Welche Namen: Dashboard „DNS-Blockaden“ oder
+              kubectl -n kube-system exec ds/cilium -c cilium-agent --
+              hubble observe --namespace {{ $labels.source_namespace }}
+              --protocol DNS --verdict DROPPED --last 50

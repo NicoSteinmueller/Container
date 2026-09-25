@@ -1,0 +1,68 @@
+# observability-rules - Alarme zur Laufzeit der TLS-Zertifikate
+#
+# Quelle ist `traefik_tls_certs_not_after` beider Controller
+# (TraefikPodMonitors.yaml): Ablaufzeit jedes Zertifikats, das Traefik hält -
+# die von Let's Encrypt und Traefiks eigenes Ersatzzertifikat. Alle Alarme
+# tragen `thema: zertifikat` und gehen ins ntfy-Topic `cluster`
+# (../observability/monitoring/HelmRelease.yaml, alertmanager.config).
+#
+# Traefik erneuert 30 Tage vor Ablauf. Unter 14 Tagen ist also schon über zwei
+# Wochen lang jede Erneuerung gescheitert - DNS-01 (IONOS-Key, Egress) oder
+# die Rate-Limits von Let's Encrypt. Erste Stelle zum Nachsehen:
+#   kubectl -n traefik-public logs deploy/traefik-public | grep -i acme
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: zertifikate
+  namespace: monitoring
+spec:
+  groups:
+    - name: zertifikate
+      rules:
+        - alert: ZertifikatLaeuftAb
+          expr: |
+            min by (namespace, cn) (traefik_tls_certs_not_after - time()) < 14 * 86400
+          for: 1h
+          labels:
+            severity: warning
+            thema: zertifikat
+          annotations:
+            summary: "Zertifikat {{ $labels.cn }} läuft in {{ $value | humanizeDuration }} ab"
+            description: >-
+              {{ $labels.namespace }} hat die Erneuerung seit über zwei Wochen
+              nicht geschafft. kubectl -n {{ $labels.namespace }} logs
+              deploy/{{ $labels.namespace }} | grep -i acme
+
+        - alert: ZertifikatLaeuftBaldAb
+          expr: |
+            min by (namespace, cn) (traefik_tls_certs_not_after - time()) < 7 * 86400
+          for: 1h
+          labels:
+            severity: critical
+            thema: zertifikat
+          annotations:
+            summary: "Zertifikat {{ $labels.cn }} läuft in {{ $value | humanizeDuration }} ab - dringend"
+            description: >-
+              Danach lehnen Clients {{ $labels.cn }} ab. Ursache in
+              kubectl -n {{ $labels.namespace }} logs deploy/{{ $labels.namespace }}
+              | grep -i acme; zur Not acme.json löschen und neu holen lassen
+              (Rate-Limits beachten).
+
+        # Ohne Metrik wüssten die beiden Regeln oben nichts - der Scrape ist
+        # dann das Problem (NetworkPolicy, PodMonitor, Traefik gestoppt).
+        - alert: ZertifikatsdatenFehlen
+          expr: |
+            absent(traefik_tls_certs_not_after{namespace="traefik-public"})
+            or
+            absent(traefik_tls_certs_not_after{namespace="traefik-internal"})
+          for: 30m
+          labels:
+            severity: warning
+            thema: zertifikat
+          annotations:
+            summary: "Keine Zertifikatslaufzeiten von einem Traefik-Controller"
+            description: >-
+              Prometheus bekommt traefik_tls_certs_not_after nicht mehr - der
+              Ablauf eines Zertifikats bliebe unbemerkt. Target prüfen:
+              podMonitor/monitoring/traefik.
