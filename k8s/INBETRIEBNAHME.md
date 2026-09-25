@@ -62,7 +62,7 @@ vorgelagerten VM, und was dieser Verzicht kostet, steht im
 |---|---|
 | VM-Manager aktiv (Settings → VM Manager → Enable VMs: Yes) | `ssh root@unraid virsh list --all` |
 | Anbindung ans LAN: Bridge `br0` **oder** macvtap auf `bond0`/`ethX` | `ssh root@unraid ip -br link` |
-| Share `domains` vorhanden, ~120 GB frei | `ssh root@unraid df -h /mnt/cache/domains` |
+| Share `domains` auf dem Pool `nvme`, ~320 GB frei | `ssh root@unraid df -h /mnt/nvme/domains` |
 | RAM-Budget, siehe unten — Container zählen mit | `ssh root@unraid free -m` |
 
 **Zum RAM-Budget.** Die Zahl im Konzept — 10 GB für den Node — beschreibt den
@@ -116,25 +116,30 @@ ist ab Werk leer. `vm/talos` legt deshalb selbst einen Verzeichnis-Pool an, der
 auf den Share `domains` zeigt (`manage_pool`, `pool_path`); von Hand ist dafür
 nichts zu tun.
 
-Was dort liegt, sind gewöhnliche qcow2-Dateien — sichtbar in der
-Unraid-Oberfläche und für die Backup-Plugins:
+Was dort liegt, sind gewöhnliche qcow2-Dateien, unverschlüsselt — sichtbar in
+der Unraid-Oberfläche und für die Backup-Plugins:
 
 ```
-/mnt/cache/domains/homelab-cp1.qcow2
+/mnt/nvme/domains/talos-cp1.qcow2
+/mnt/nvme/domains/talos-cp1-data.qcow2
 ```
 
-Der Pfad geht bewusst über `/mnt/cache` und nicht über `/mnt/user`: derselbe
+Pool `nvme` (XFS) statt `cache` (SATA-SSD, btrfs): kein Copy-on-Write unter
+qcow2, und etcd bekommt die schnellere Platte.
+
+Der Pfad geht bewusst über `/mnt/nvme` und nicht über `/mnt/user`: derselbe
 Ort, aber ohne die shfs-FUSE-Schicht dazwischen. Das ist kein Feinschliff. Über
 `/mnt/user` läuft jeder Blockzugriff der VM durch einen Userspace-Daemon, und
 etcd im Talos-Node ruft mehrmals pro Sekunde `fsync` — gemessen rund 40.000
 Kontextwechsel/s und 25–32 % Systemzeit auf dem Host, im Leerlauf, ohne eine
 einzige Anwendung im Cluster.
 
-Voraussetzung ist, dass der Share cache-only ist — sonst kann der Mover die
-Disk aufs Array schieben und `/mnt/cache/domains` zeigt danach ins Leere:
+Voraussetzung ist, dass der Share nur auf dem Pool liegt — sonst kann der
+Mover die Disk aufs Array schieben und `/mnt/nvme/domains` zeigt danach ins
+Leere:
 
 ```bash
-ssh root@unraid grep shareUseCache /boot/config/shares/domains.cfg   # -> "only"
+ssh root@unraid grep -E 'shareUseCache|shareCachePool=' /boot/config/shares/domains.cfg   # -> "only", "nvme"
 ```
 
 Steht dort etwas anderes, gehört `pool_path` auf `/mnt/user/domains` zurück.
