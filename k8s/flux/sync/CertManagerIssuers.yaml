@@ -1,6 +1,4 @@
-# cert-manager-issuers - die eigene CA und was aus ihr ausgestellt wird.
-# `dependsOn: platform`, weil es die CRDs beim Dry-Run sonst noch nicht gibt.
-# `wait: true`, weil `network` fertig ausgestellte Zertifikate braucht.
+# die eigene CA und was aus ihr ausgestellt wird.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -14,6 +12,7 @@ spec:
     kind: GitRepository
     name: flux-system
   dependsOn:
+    # Wegen CRD
     - name: platform
   prune: true
   wait: true

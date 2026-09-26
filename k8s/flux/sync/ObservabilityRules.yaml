@@ -1,12 +1,6 @@
-# observability-rules - eigene Objekte der Operator-CRDs: Alarmregeln
+# eigene Objekte der Operator-CRDs: Alarmregeln
 # (PrometheusRule) und Scrape-Ziele (PodMonitor).
-# Eigene Gruppe, weil kube-prometheus-stack in `observability` die CRD erst
-# mitbringt.
-#
-# `dependsOn` ordnet nur: `observability` ist ohne `wait` fertig, sobald
-# angewendet, die HelmRelease installiert danach noch. Der erste Versuch
-# scheitert deshalb womöglich mit "no matches for kind"; `retryInterval`
-# holt ihn nach, und betroffen ist nur diese Gruppe.
+# Eigene Gruppe, da in `observability` die CRD erst angelegt wird.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:

@@ -1,6 +1,4 @@
-# network - die beiden Ingress-Controller, CrowdSec und die LoadBalancer-IPs.
-# `dependsOn: cert-manager-issuers` wegen CrowdSec: Der Chart templatet
-# `Certificate`-Objekte gegen den ClusterIssuer `homelab-ca`.
+# die beiden Ingress-Controller, CrowdSec und die LoadBalancer-IPs.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -14,6 +12,7 @@ spec:
     kind: GitRepository
     name: flux-system
   dependsOn:
+    # Wegen CrowdSec
     - name: cert-manager-issuers
   prune: true
   timeout: 5m
