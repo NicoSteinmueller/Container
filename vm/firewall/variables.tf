@@ -22,7 +22,7 @@ variable "timezone" {
 variable "alpine_version" {
   description = "Alpine-Release. Releases: https://alpinelinux.org/releases/"
   type        = string
-  default     = "3.24.1"
+  default     = "3.24.2"
 
   validation {
     condition     = can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+$", var.alpine_version))
