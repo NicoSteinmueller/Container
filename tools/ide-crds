@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#
+# Lädt die CRDs, die IntelliJ für die Validierung der Flux-Manifeste braucht,
+# nach `.idea/crds/` (gitignored). Einrichtung in der IDE: k8s/IDE-CRDS.md
+#
+# Die URL-Variante in den IDE-Einstellungen lädt bei uns nichts herunter
+# ("SpecPath does not exist" im idea.log), daher lokale Dateien.
+#
+# Stand ist jeweils `main` bzw. `latest` - erneut ausführen zum Aktualisieren.
+
+set -euo pipefail
+
+dest="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)/.idea/crds"
+mkdir -p "$dest"
+
+while read -r name url; do
+  curl -sfL --max-time 30 -o "$dest/$name.yaml" "$url"
+  echo "ok  $name"
+done <<'EOF'
+flux-kustomizations https://raw.githubusercontent.com/fluxcd/kustomize-controller/main/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml
+flux-helmreleases https://raw.githubusercontent.com/fluxcd/helm-controller/main/config/crd/bases/helm.toolkit.fluxcd.io_helmreleases.yaml
+flux-gitrepositories https://raw.githubusercontent.com/fluxcd/source-controller/main/config/crd/bases/source.toolkit.fluxcd.io_gitrepositories.yaml
+flux-helmrepositories https://raw.githubusercontent.com/fluxcd/source-controller/main/config/crd/bases/source.toolkit.fluxcd.io_helmrepositories.yaml
+flux-ocirepositories https://raw.githubusercontent.com/fluxcd/source-controller/main/config/crd/bases/source.toolkit.fluxcd.io_ocirepositories.yaml
+cilium-networkpolicies https://raw.githubusercontent.com/cilium/cilium/main/pkg/k8s/apis/cilium.io/client/crds/v2/ciliumnetworkpolicies.yaml
+cilium-clusterwidenetworkpolicies https://raw.githubusercontent.com/cilium/cilium/main/pkg/k8s/apis/cilium.io/client/crds/v2/ciliumclusterwidenetworkpolicies.yaml
+cilium-loadbalancerippools https://raw.githubusercontent.com/cilium/cilium/main/pkg/k8s/apis/cilium.io/client/crds/v2/ciliumloadbalancerippools.yaml
+cilium-l2announcementpolicies https://raw.githubusercontent.com/cilium/cilium/main/pkg/k8s/apis/cilium.io/client/crds/v2alpha1/ciliuml2announcementpolicies.yaml
+cert-manager https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.crds.yaml
+prometheus-podmonitors https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml
+prometheus-prometheusrules https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
+cnpg-clusters https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/main/config/crd/bases/postgresql.cnpg.io_clusters.yaml
+EOF
