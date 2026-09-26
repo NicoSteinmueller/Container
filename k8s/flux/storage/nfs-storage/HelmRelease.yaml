@@ -6,22 +6,15 @@
 # Hier steht bewusst keine Egress-Policy: Beide Pods des Treibers laufen auf
 # hostNetwork und haben damit die Identität des Nodes - auf die greift keine
 # NetworkPolicy. Eine Policy hier wäre gültig und täte nichts.
-#
-# Namespace `csi-driver-nfs`
 ---
 apiVersion: source.toolkit.fluxcd.io/v1
-kind: GitRepository
+kind: HelmRepository
 metadata:
   name: csi-driver-nfs
   namespace: flux-system
 spec:
   interval: 1h
-  url: https://github.com/kubernetes-csi/csi-driver-nfs
-  ref:
-    tag: v4.13.4
-  ignore: |
-    /*
-    !/charts/v4.13.4
+  url: https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/charts
 
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -36,10 +29,10 @@ spec:
   storageNamespace: csi-driver-nfs
   chart:
     spec:
-      # Pfad im Repo statt Name im Index
-      chart: ./charts/v4.13.4/csi-driver-nfs
+      chart: csi-driver-nfs
+      version: 4.13.4
       sourceRef:
-        kind: GitRepository
+        kind: HelmRepository
         name: csi-driver-nfs
         namespace: flux-system
   install:
@@ -52,8 +45,7 @@ spec:
     controller:
       replicas: 1
 
-      # Der csi-snapshotter-Sidecar setzt CRDs voraus, die dieser Chart nur mit
-      # externalSnapshotter.enabled mitbringt.
+      # Der csi-snapshotter-Sidecar setzt CRDs voraus
       enableSnapshotter: false
 
       resources:
@@ -91,7 +83,6 @@ spec:
           limits:
             memory: 128Mi
 
-    # Die StorageClass des Charts bleibt aus: Der Server gehört sichtbar in die
-    # StorageClass.yaml, nicht in Chart-Werte.
+    # Der Server ist in StorageClass.yaml.
     storageClass:
       create: false

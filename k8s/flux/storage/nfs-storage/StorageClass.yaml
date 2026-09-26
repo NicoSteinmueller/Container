@@ -1,11 +1,7 @@
-# nfs-storage - StorageClass `nfs-unraid`
+# nfs-unraid
 ---
 # Dynamischer Speicher auf NFS - für Bestände, nicht für Datenbanken.
-# Ausdrücklich nicht die Default-Klasse (das ist local-path); wer sie will,
-# schreibt `storageClassName: nfs-unraid` hin.
-#
-# Was sie dafür kann: ReadWriteMany - mehrere Pods mounten dasselbe Volume
-# schreibend. Lokaler Speicher kann das nicht.
+# Nutzung: `storageClassName: nfs-unraid`
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -13,57 +9,29 @@ metadata:
 provisioner: nfs.csi.k8s.io
 parameters:
   server: 192.168.178.3
-
-  # Ein eigener Share, nicht ein Unterverzeichnis in "data": Was der Cluster
-  # sich anlegt, gehört nicht zwischen die Nutzerdaten.
   share: /mnt/user/k8s
-
-  # Ohne diese Zeile nimmt der Treiber den PV-Namen. So entsteht
-  # /mnt/user/k8s/<namespace>/<pvc-name>.
+  # Ohne nimmt der Treiber den PV-Namen
   subDir: ${pvc.metadata.namespace}/${pvc.metadata.name}
-
-  # Der Treiber rührt das Verzeichnis beim Löschen des PVC nicht an.
+  # Verzeichnis wird nie gelöscht.
   onDelete: retain
 
-# Regelt das PV-Objekt, nicht das Verzeichnis: Das Objekt verschwindet mit dem
-# PVC, die Daten bleiben. Mit `Retain` bliebe ein PV in `Released` liegen.
+# Das Objekt verschwindet mit dem PVC, die Daten bleiben.
 reclaimPolicy: Delete
 allowVolumeExpansion: true
-
-# NFS kennt kein "diesem Node zugeordnet" - der Share ist überall gleich
-# erreichbar, Immediate spart eine Runde Warten.
+# Share ist überall direkt erreichbar
 volumeBindingMode: Immediate
 
 mountOptions:
-  # v4.1 festgenagelt statt ausgehandelt: NFSv3 bräuchte rpcbind und einen
-  # eigenen Lock-Daemon, v4 führt alles über 2049 und lockt im Protokoll.
+  # v4.1 festgelegt, führt alles über 2049 aus und lockt im Protokoll.
   - nfsvers=4.1
-
-  # hard, nicht soft: Bei einer Unterbrechung wiederholt der Client, statt der
-  # Anwendung EIO zu liefern - "soft" wäre stiller Datenverlust.
+  # hard: Bei einer Unterbrechung wiederholt der Client
   - hard
   - noatime
-
-  # Die eigentliche Absicherung dieser Strecke, nötig weil NFS hier ohne
-  # Authentisierung läuft: NFSv4.1 ohne `sec=krb5` heißt AUTH_SYS, der Server
-  # glaubt die UID des Clients. Getragen wird das allein von der Export-Regel
-  # auf dem Unraid-Host, die auf die Node-Adresse begrenzt sein muss - steht
-  # dort ein Netz, ist alles Weitere hinfällig:
-  #
-  #   kubectl -n csi-driver-nfs exec ds/csi-nfs-node -c nfs -- \
-  #     showmount -e 192.168.178.3
-  #
-  # nosuid  Sonst genügt Schreibrecht auf dem Share, um dem Node eine
-  #         setuid-root-Binary unterzuschieben. PSS `restricted` entschärft
-  #         das, aber nicht in den `privileged`-Namespaces.
-  # nodev   Ein mitgebrachtes /dev/sda wäre sonst ein Weg an die Platte des
-  #         Hosts vorbei am Dateisystem.
-  # noexec  Ein Datenspeicher ist kein Ort für Programme. Muss ein Dienst hier
-  #         doch etwas ausführen, diese Zeile bewusst entfernen.
-  #
-  # sec=sys steht da, obwohl es die Voreinstellung ist: Man soll beim Lesen
-  # sehen, dass diese Strecke keine Authentisierung hat.
+  # es dürfen keine setuid-Binaries ausgeführt werden
   - nosuid
+  # es darf keine Geräte geben
   - nodev
+  # es darf nichts ausgeführt werden
   - noexec
+  # Authentisierung ist nicht vorgesehen, der Server vertraut dem Client
   - sec=sys

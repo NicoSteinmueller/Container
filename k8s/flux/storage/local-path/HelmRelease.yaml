@@ -52,19 +52,11 @@ spec:
     storageClass:
       create: true
       name: local-path
-
-      # Die Default-Klasse des Clusters: Ein PVC ohne storageClassName bekommt
-      # lokalen Speicher, nicht NFS.
+      # Default des Clusters
       defaultClass: true
       defaultVolumeType: hostPath
-
-      # Retain gegen den Chart-Default: Ein `kubectl delete pvc` darf keine
-      # Datenbank kosten. Der Preis ist Platz, den niemand aufräumt.
+      # keine automatische Bereinigung, um z.B. Datenbanken nicht zu verlieren
       reclaimPolicy: Retain
-
-      # Das Volume ist ein Verzeichnis auf genau einem Node. Früher gebunden
-      # könnte der Pod woanders landen und käme nie an seine Daten - auf einem
-      # Ein-Node-Cluster unsichtbar, beim zweiten sofort.
       volumeBindingMode: WaitForFirstConsumer
 
     helperImage:
