@@ -29,13 +29,7 @@ spec:
       retries: 3
   timeout: 20m
 
-  # Die ClusterRole des Operators darf ab Werk jedes Secret im Cluster lesen
-  # und schreiben. Das Chart kennt keine namespaced Variante, deshalb fliegt
-  # die Regel hier heraus und kommt als Role in `monitoring` zurück (RBAC.yaml);
-  # `prometheusOperator.namespaces` unten beschränkt die Informer passend.
-  #
-  # `test` vor `remove`: Verschiebt ein Chart-Update die Regel, scheitert das
-  # Rendern laut, statt still eine andere Regel zu löschen.
+  # ClusterRole darf jedes Secret lesen und wird hier entfernt und als Role in `monitoring` wieder angelegt (RBAC.yaml).
   postRenderers:
     - kustomize:
         patches:
@@ -54,11 +48,9 @@ spec:
       enabled: true
       prometheusSpec:
         retention: 30d
-        # Die wichtigere Grenze: `local-path` erzwingt die PVC-Größe nicht.
         retentionSize: 18GiB
 
-        # Ab Werk `true` - dann beachtet Prometheus nur Objekte mit dem
-        # Release-Label dieses Charts und ignoriert fremde stillschweigend.
+        # true: Prometheus beachtet nur Objekte mit dem Release-Label dieses Charts
         serviceMonitorSelectorNilUsesHelmValues: false
         podMonitorSelectorNilUsesHelmValues: false
         ruleSelectorNilUsesHelmValues: false
@@ -72,7 +64,6 @@ spec:
                 - ReadWriteOnce
               resources:
                 requests:
-                  # `local-path`
                   storage: 20Gi
 
         resources:
@@ -97,13 +88,12 @@ spec:
           repeat_interval: 12h
           receiver: "null"
           routes:
-            # Feuert immer - beweist nur, dass die Kette lebt.
+            # beweist, dass die Kette lebt
             - receiver: "null"
               matchers:
                 - alertname = "Watchdog"
 
-            # Dump-Alarme (../../observability-rules/DbBackupRules.yaml) ins
-            # ntfy-Topic `db-backup`.
+            # Dump-Alarme ins ntfy-Topic `db-backup`
             - receiver: ntfy-db-backup
               matchers:
                 - thema = "db-backup"
@@ -111,9 +101,7 @@ spec:
                 - alertname
                 - namespace
 
-            # Zertifikate und blockierter Verkehr
-            # (../../observability-rules/CertificateRules.yaml, DnsBlockRules.yaml)
-            # ins ntfy-Topic `cluster`.
+            # Zertifikate und blockierter Verkehr ins ntfy-Topic `cluster`.
             - receiver: ntfy-cluster
               matchers:
                 - thema =~ "zertifikat|dns"
@@ -122,11 +110,8 @@ spec:
                 - source_namespace
                 - cn
 
-            # Alles Übrige mit Gewicht - die Chart-Regeln (CrashLoop, volle
-            # PVCs, Node-Platte, Target down …) und jede künftige eigene
-            # Regel ohne `thema` - ins ntfy-Topic `alarme`. Steht zuletzt:
-            # die Routen oben greifen zuerst, ihre Alarme kommen nicht doppelt.
-            # `info` und `none` bleiben im `null`-Receiver.
+            # Alles Übrige mit Gewicht und jede künftige eigene
+            # Regel ohne `thema` - ins ntfy-Topic `alarme`
             - receiver: ntfy-alarme
               matchers:
                 - severity =~ "warning|critical"
@@ -137,10 +122,7 @@ spec:
         receivers:
           - name: "null"
 
-          # Direkt an den Service, nicht über ingress-public: kein Umweg über
-          # DNS und das Token erlaubt nur Schreiben in `db-backup`.
-          # `template=alertmanager` ist ntfys eingebaute Vorlage
-          # für diese Webhooks - ohne sie käme das rohe JSON an.
+          # Zugriff auf die ntfy-Topics über den internen Service `ntfy.ntfy.svc.cluster.local`.
           - name: ntfy-db-backup
             webhook_configs:
               - url: http://ntfy.ntfy.svc.cluster.local/db-backup?template=alertmanager
@@ -148,14 +130,7 @@ spec:
                 http_config:
                   authorization:
                     type: Bearer
-                    # Secret ntfy-alertmanager (homelab-secrets), eingehängt
-                    # über `alertmanagerSpec.secrets` - steht so nicht in der
-                    # generierten Konfiguration.
                     credentials_file: /etc/alertmanager/secrets/ntfy-alertmanager/token
-
-          # Gleicher Weg, gleicher Token; der Benutzer `alertmanager` darf in
-          # `db-backup`, `cluster` und `alarme` schreiben (ntfy-auth in
-          # homelab-secrets).
           - name: ntfy-cluster
             webhook_configs:
               - url: http://ntfy.ntfy.svc.cluster.local/cluster?template=alertmanager
@@ -164,7 +139,6 @@ spec:
                   authorization:
                     type: Bearer
                     credentials_file: /etc/alertmanager/secrets/ntfy-alertmanager/token
-
           - name: ntfy-alarme
             webhook_configs:
               - url: http://ntfy.ntfy.svc.cluster.local/alarme?template=alertmanager
@@ -195,10 +169,7 @@ spec:
     prometheusOperator:
       enabled: true
 
-      # Nur `monitoring` beobachten - Gegenstück zur Role in RBAC.yaml. Ein
-      # ServiceMonitor in einem anderen Namespace wird damit nicht mehr
-      # gesehen; er gehört hierher oder sein Namespace unter `additional`
-      # (dann auch dort eine Role).
+      # Nur `monitoring` beobachten
       namespaces:
         releaseNamespace: true
         additional: []
@@ -223,16 +194,13 @@ spec:
       enabled: true
       defaultDashboardsEnabled: true
 
-      # Secret `grafana-admin` mit `admin-user`/`admin-password`
+      # Secret `grafana-admin`
       admin:
         existingSecret: grafana-admin
         userKey: admin-user
         passwordKey: admin-password
 
-      # Ab Werk bekommen die Sidecars eine ClusterRole auf `configmaps` und
-      # `secrets` im ganzen Cluster - und das Token steckt auch im
-      # Grafana-Container.
-      # Stattdessen eine Role nur auf ConfigMaps in `monitoring` (RBAC.yaml);
+      # Sidecars nur auf ConfigMaps in `monitoring` eingeschränkt,
       # alle Dashboards und Datasources liegen ohnehin hier.
       rbac:
         namespaced: true
@@ -240,7 +208,6 @@ spec:
 
       sidecar:
         dashboards:
-          # kube-prometheus-stack setzt ALL
           searchNamespace: monitoring
           resource: configmap
         datasources:
@@ -250,8 +217,6 @@ spec:
         enabled: true
         size: 4Gi
 
-      # Kein Ingress: Die Route `grafana.k8s.nico-steinmueller.de` steht in
-      # network/ingress-internal/DynamicConfig.yaml.
       ingress:
         enabled: false
 
@@ -275,9 +240,7 @@ spec:
           # Deaktiviert das automatische Nachladen der Plugin-Liste von grafana.com.
           preinstall_disabled: true
         security:
-          # Avatare holt Grafana serverseitig von secure.gravatar.com - den
-          # Namen lehnt die DNS-Allowlist ab (core/DefaultDenyEgress.yaml),
-          # und jeder Seitenaufruf löste den Alarm DnsAbfrageBlockiert aus.
+          # Avatare holt Grafana serverseitig von secure.gravatar.com
           disable_gravatar: true
 
       resources:
@@ -288,8 +251,6 @@ spec:
           memory: 768Mi
 
     # Auf Talos nicht scrapebar
-    # etcd steht hinter der Ingress-Firewall, Controller-Manager und Scheduler binden auf
-    # 127.0.0.1. kubeProxy muss aktiv aus - Cilium ersetzt ihn, das Chart nimmt ihn aber an.
     kubeEtcd:
       enabled: false
     kubeControllerManager:
@@ -354,7 +315,6 @@ spec:
         limits:
           memory: 64Mi
 
-    # Enthält `Watchdog` - eine Regel, die immer feuert und damit beweist, dass
-    # die Alarmkette lebt.
+    # Enthält `Watchdog`
     defaultRules:
       create: true

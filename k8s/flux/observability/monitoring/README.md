@@ -1,58 +1,7 @@
 # monitoring
 
 kube-prometheus-stack, Grafana unter `grafana.k8s.nico-steinmueller.de`. Dashboards
-und Regeln kommen gepinnt mit der Chart, eigene Dashboards in
-[`dashboards/`](dashboards/kustomization.yaml), die `monitoring.coreos.com`-CRDs sind da, 
-kein Internet-Egress.
+und Regeln kommen gepinnt mit der Chart, eigene Dashboards in [`dashboards/`](dashboards/kustomization.yaml)
 
-- **`serviceMonitorSelectorNilUsesHelmValues: false`** (und die drei
-  Geschwister) trägt das Ganze: Ab Werk sähe Prometheus nur Objekte dieser Chart
-  und ignorierte alle anderen stillschweigend.
-- **Auf Talos nicht scrapebar** und deshalb aus statt dauerhaft rot: etcd,
-  Controller-Manager, Scheduler (an `127.0.0.1` gebunden), kube-proxy (ersetzt
-  durch Cilium).
-- **Kubelet** über HTTPS, aber ungeprüft (`insecureSkipVerify`, Chart-Default) - wie beim
-  metrics-server, mangels kubelet-csr-approver.
-- **Admission-Webhook** des Operators braucht `monitoring-operator-webhook`
-  (siehe [../../core/README.md](../../core/README.md)). Seine Zertifikate kommen
-  von cert-manager statt aus den Helm-Hook-Jobs der Chart (Fremd-Image mit
-  Cluster-Admin).
-- **Keine clusterweiten Secret-Rechte** ([`RBAC.yaml`](RBAC.yaml)): Grafana
-  liest nur ConfigMaps in `monitoring`, der Operator Secrets nur hier (die
-  Regel nimmt ein `postRenderer` aus seiner ClusterRole), kube-state-metrics
-  ohne Collector `secrets`. **Falle:** Der Operator beobachtet nur
-  `monitoring` - ein ServiceMonitor anderswo wird still ignoriert.
-- **Voraussetzung:** Secret `grafana-admin` (`admin-user`, `admin-password`) in
-  `homelab-secrets`, sonst startet Grafana nicht.
-- **Alarme an ntfy:** Was `thema: db-backup` trägt
-  ([`../../observability-rules/DbBackupRules.yaml`](../../observability-rules/DbBackupRules.yaml),
-  eigene Gruppe wegen der CRD), geht ins Topic `db-backup`,
-  direkt an den ntfy-Service mit einem Token, das nur dort schreiben darf
-  (Secret `ntfy-alertmanager`). Eine neue Alarmgruppe: eigenes `thema`, eigene
-  Route und eigener Empfänger in `HelmRelease.yaml`, dazu Benutzer oder Recht
-  in `ntfy-auth`.
-- **Topic `cluster`:** Zertifikate (`thema: zertifikat`, Laufzeit unter 14 und
-  7 Tagen, fehlende Daten) und blockierte DNS-Abfragen (`thema: dns`). Regeln
-  in `observability-rules/`, Dashboard „DNS-Blockaden“. Dessen Namen kommen
-  aus Loki: Cilium schreibt abgelehnte DNS-Abfragen als Flow ins Agent-Log
-  (`hubble.export` in `vm/talos/values/cilium.yaml.tftpl`).
-- **Cilium und Traefik** werden gescrapt (PodMonitors in
-  `observability-rules/`), beide im Host-Netz bzw. hinter Default-Deny - je
-  Ziel braucht es eine Freigabe in `monitoring-egress` und eine auf der
-  Gegenseite.
-
-- **Topic `alarme`:** alles Übrige mit `severity` `warning` oder `critical` -
-  die Regeln der Chart (CrashLoop, volle PVCs, Node-Platte, Target down …)
-  und eigene Regeln ohne `thema`. Die Route steht zuletzt, die Themen-Routen
-  greifen vorher. `info`, `none` und `Watchdog` enden im `null`-Receiver.
-
-**Offen:** Flux meldet nichts - eine gescheiterte HelmRelease erreicht weder
-Prometheus noch ntfy. Und ein toter Cluster meldet sich nicht - ntfy läuft im
-selben Cluster. Dafür braucht es
-einen Totmann außerhalb ([uptime-kuma/todo.md](../../../../uptime-kuma/todo.md)).
+**Offen:** Totmann außerhalb ([uptime-kuma/todo.md](../../../../uptime-kuma/todo.md)).
 Dazu ein Blick von außen auf den öffentlichen Ingress.
-
-```bash
-kubectl -n monitoring get pods,prometheus,alertmanager,servicemonitor
-kubectl -n kube-system exec ds/cilium -- hubble observe --namespace monitoring --type drop --last 100
-```

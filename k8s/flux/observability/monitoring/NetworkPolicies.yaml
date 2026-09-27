@@ -1,11 +1,8 @@
-# monitoring - Netzwerkregeln im Namespace `monitoring`
+# monitoring - Netzwerkregeln
 ---
-# Prometheus scrapt den eigenen Namespace. `podSelector: {}` unter `from` heißt
-# "alle Pods im selben Namespace", nicht "im Cluster".
+# Prometheus scrapt den eigenen Namespace.
 #
-# Jeder andere Namespace ist eingehend zu (core/DefaultDenyIngress.yaml) und
-# braucht eine eigene Regel für Pods aus `monitoring`, sobald Prometheus ihn
-# scrapen soll.
+# Jeder andere Namespace ist eingehend zu und braucht eine eigene Regel.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -80,18 +77,18 @@ spec:
             - port: "6443"
               protocol: TCP
 
-    # Was auf dem Node lauscht, trägt die Identität `host` und ist über
-    # `toEndpoints` nicht erreichbar: 10250 Kubelet, 9100 node-exporter,
-    # 9962-9965 Cilium (Agent, Operator, Envoy, Hubble). Die andere Hälfte
-    # steht in vm/talos/patches/firewall.yaml.tftpl.
+    # Hostprozesse, die auf dem Node lauschen.
     - toEntities:
         - host
       toPorts:
         - ports:
+            # Kubelet
             - port: "10250"
               protocol: TCP
+            # node-exporter
             - port: "9100"
               protocol: TCP
+            # Cilium
             - port: "9962"
               protocol: TCP
             - port: "9963"
@@ -106,18 +103,14 @@ spec:
 
     # Namespaces mit Scrape-Zielen. Ohne Portangabe - den bestimmt der Exporter.
     # Nur die beiden, die das Default-Deny nicht trifft; jeder andere bräuchte
-    # zusätzlich eine Ingress-Regel für `monitoring` in seiner
-    # NetworkPolicies.yaml. Beides zusammen eintragen, sonst steht das Target
-    # auf DOWN. hostNetwork-Pods (csi-driver-nfs) laufen als `host`, nicht hier.
+    # zusätzlich eine Ingress-Regel für `monitoring` in seiner NetworkPolicies.yaml.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: kube-system
         - matchLabels:
             io.kubernetes.pod.namespace: flux-system
 
-    # Beide Traefik-Controller, nur der Metrik-Port
-    # (observability-rules/TraefikPodMonitors.yaml). Die Gegenseite:
-    # `allow-metrics-from-prometheus` in network/ingress-*/NetworkPolicies.yaml.
+    # Beide Traefik-Controller, nur der Metrik-Port.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: traefik-internal
@@ -131,9 +124,7 @@ spec:
               protocol: TCP
 
 ---
-# Alertmanager -> ntfy (Dump-Alarme, HelmRelease.yaml). Eigene Regel statt eines
-# Blocks in monitoring-egress: Nur Alertmanager darf dorthin, nicht Grafana
-# oder Prometheus.
+# Alertmanager -> ntfy
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:

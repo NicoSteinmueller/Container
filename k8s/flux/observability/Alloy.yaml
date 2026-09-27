@@ -1,5 +1,4 @@
-# Alloy - sammelt die Logs der Pods und schreibt sie nach Loki (Loki.yaml).
-# Namespace `monitoring`
+# Alloy - sammelt die Logs der Pods und schreibt sie nach Loki
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -11,7 +10,6 @@ spec:
   releaseName: alloy
   targetNamespace: monitoring
   storageNamespace: monitoring
-  # kube-prometheus-stack bringt die monitoring.coreos.com-CRDs mit
   dependsOn:
     - name: kube-prometheus-stack
       namespace: flux-system
@@ -34,15 +32,14 @@ spec:
   timeout: 10m
   values:
     alloy:
-      # anonyme Nutzungsstatistik an Grafana Labs
+      # anonyme Nutzungsstatistik
       enableReporting: false
 
       # /var/log als hostPath - der Grund für `privileged` am Namespace.
       mounts:
         varlog: true
 
-      # Für die keep-Regel im Config: Ein DaemonSet-Pod soll nur die Logs
-      # seines Nodes verfolgen. HOSTNAME ist in einem Pod der Pod-Name.
+      # Ein DaemonSet-Pod soll nur die Logs seines Nodes verfolgen.
       extraEnv:
         - name: NODE_NAME
           valueFrom:
@@ -134,12 +131,7 @@ spec:
           }
 
     # Nur, was die Config oben braucht: Pods für discovery.kubernetes, Events
-    # für loki.source.kubernetes_events. Der Chart-Default gäbe zusätzlich
-    # Secrets im ganzen Cluster (für remote.kubernetes.*, hier ungenutzt) und
-    # Node-Endpunkte.
-    #
-    # Auf beide Listen verteilt, weil das Chart sie aneinanderhängt: Eine leere
-    # Liste (`[]`) ergäbe ungültiges YAML. Beide landen in derselben ClusterRole.
+    # für loki.source.kubernetes_events.
     rbac:
       rules:
         - apiGroups:
@@ -176,8 +168,5 @@ spec:
     crds:
       create: false
 
-    # Ab Werk aus. Prometheus nimmt ihn auf, weil
-    # serviceMonitorSelectorNilUsesHelmValues in monitoring/HelmRelease.yaml
-    # `false` ist.
     serviceMonitor:
       enabled: true

@@ -1,33 +1,26 @@
-# Eigene Grafana-Dashboards als ConfigMaps; der Sidecar liest jede in
-# `monitoring` mit dem Label `grafana_dashboard: "1"`.
-#
-# Die kustomization.yaml braucht es für den `configMapGenerator`. Flux nimmt
-# einen Ordner mit eigener kustomization.yaml als Ganzes in die Gruppe
-# `observability` auf und liest hier nur, was unten steht.
+# Eigene Grafana-Dashboards als ConfigMaps
 #
 # Dazunehmen: JSON von grafana.com holen, `${DS_*}` durch die uid ersetzen
-# (`prometheus`/`loki`), unten eintragen. Testen braucht `kubectl kustomize --server-side`.
+# (`prometheus`/`loki`), unten eintragen.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: monitoring
 
 generatorOptions:
-  # Der Sidecar findet die ConfigMaps über das Label, der Name ist ihm gleich.
+  # Der Sidecar findet die ConfigMaps über das Label.
   disableNameSuffixHash: true
   labels:
     grafana_dashboard: "1"
 
 configMapGenerator:
-  # Node Exporter Full (grafana.com ID 1860), bleibt ohne Port 9100 im Egress leer.
+  # Node Exporter Full (grafana.com ID 1860).
   - name: dashboard-node-exporter-full
     files:
       - node-exporter-full.json
 
   # Cilium und Hubble, aus dem Chart von Cilium 1.20.1
-  # (install/kubernetes/cilium/files/*/dashboards). Die Metriken schaltet
-  # vm/talos/values/cilium.yaml.tftpl ein, den Scrape
-  # observability-rules/CiliumPodMonitors.yaml. Beim Cilium-Update mitziehen.
+  # Beim Cilium-Update mitziehen.
   - name: dashboard-cilium-agent
     files:
       - cilium-dashboard.json
@@ -47,8 +40,7 @@ configMapGenerator:
       - hubble-network-overview-namespace.json
 
 
-  # Eigenes Dashboard: blockierte DNS-Abfragen (Alarm dazu in
-  # observability-rules/DnsBlockRules.yaml) und verworfene Pakete.
+  # blockierte DNS-Abfragen und verworfene Pakete.
   - name: dashboard-dns-blockaden
     files:
       - dns-blockaden.json

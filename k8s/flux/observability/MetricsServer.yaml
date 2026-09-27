@@ -1,5 +1,4 @@
-# metrics-server - Quelle für `kubectl top` und die Auslastungsanzeigen in
-# Headlamp.
+# metrics-server - Quelle für `kubectl top` und die Auslastungsanzeigen in Headlamp.
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -36,8 +35,6 @@ spec:
       - --kubelet-preferred-address-types=InternalIP
       - --kubelet-use-node-status-port
       - --metric-resolution=15s
-      # Ein echtes Kubelet-Zertifikat setzte serverTLSBootstrap voraus, das
-      # vm/talos bewusst weglässt.
       - --kubelet-insecure-tls
 
     args: []
@@ -61,11 +58,8 @@ spec:
         memory: 128Mi
 
 ---
-# Ausgehend: kube-system steht unter core/DefaultDenyEgress.yaml (nur CoreDNS
-# ist ausgenommen). metrics-server fragt die Kubelets ab und meldet sich bei
-# der API; DNS braucht er keinen, die Kubelets spricht er über InternalIP an.
-# Der Weg zum Kubelet braucht zusätzlich die Talos-Regel `kubelet`
-# (vm/talos/patches/firewall.yaml.tftpl, pod_subnet).
+# Ausgehend: kube-system
+# metrics-server fragt die Kubelets ab und meldet sich beider API.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:

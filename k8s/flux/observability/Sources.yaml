@@ -1,4 +1,4 @@
-# Chart-Quellen der Gruppe observability.
+# Chart-Quellen
 ---
 # monitoring (kube-prometheus-stack)
 apiVersion: source.toolkit.fluxcd.io/v1

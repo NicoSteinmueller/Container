@@ -1,5 +1,4 @@
-# Loki - Speicher für die Logs; gesammelt werden sie von Alloy (Alloy.yaml).
-# Namespace `monitoring`
+# Loki - Speicher für die Logs
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -8,8 +7,6 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  # Grafanas Datasource-URL (monitoring/HelmRelease.yaml) und Alloy zeigen auf
-  # den Service `loki`, der diesen Namen trägt.
   releaseName: loki
   targetNamespace: monitoring
   storageNamespace: monitoring
@@ -32,7 +29,7 @@ spec:
     deploymentMode: SingleBinary
 
     loki:
-      # Sonst erwartet Loki pro Anfrage einen X-Scope-OrgID-Header
+      # X-Scope-OrgID-Header erwartet
       auth_enabled: false
 
       commonConfig:
@@ -41,7 +38,7 @@ spec:
       storage:
         type: filesystem
 
-      # sonst nimmt das Chart seine Vorgabe mit Object Storage.
+      # sonst Object Storage benötigt
       schemaConfig:
         configs:
           - from: "2026-01-01"
@@ -56,11 +53,11 @@ spec:
         retention_period: 720h     # 30 Tage
 
       compactor:
-        # Ohne diese Zeile sammelt Loki für immer Logs.
+        # Rolling-Index: 30 Tage
         retention_enabled: true
         delete_request_store: filesystem
 
-      # Anonyme Nutzungsstatistik an stats.grafana.org, ab Werk an.
+      # Anonyme Nutzungsstatistik
       analytics:
         reporting_enabled: false
 
@@ -68,8 +65,6 @@ spec:
       replicas: 1
       persistence:
         enabled: true
-        # Storage-Klasse: `local-path`. Die Zeitgrenze oben ist die
-        # eigentliche Bremse - diese Größe wird nicht erzwungen.
         size: 20Gi
       resources:
         requests:
@@ -86,7 +81,7 @@ spec:
     backend:
       replicas: 0
 
-    # memcached ohne Gegenwert bei der Datenmenge
+    # memcached ohne Gegenwert
     chunksCache:
       enabled: false
     resultsCache:
@@ -96,13 +91,13 @@ spec:
     gateway:
       enabled: false
 
-    # Der Canary prüft die Kette mit eigenen Logs.
+    # Der Canary prüft die Kette.
     lokiCanary:
       enabled: false
     test:
       enabled: false
 
-    # Sidecar für Lokis eigenen Ruler. Die Alarme kommen aus Prometheus.
+    # Sidecar für Lokis eigenen Ruler.
     sidecar:
       rules:
         enabled: false
