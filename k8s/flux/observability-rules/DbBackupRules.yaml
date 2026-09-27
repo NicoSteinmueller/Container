@@ -1,14 +1,6 @@
 # Alarme zu den Datenbank-Dumps
 #
-# Erkannt wird ein Dump an seinem CronJob-Namen `<dienst>-db-dump`. Alle Alarme
-# tragen `thema: db-backup` - daran hängt die Route ins ntfy-Topic `db-backup`
-# (../observability/monitoring/HelmRelease.yaml, alertmanager.config).
-#
-# Zwei Regeln, weil sie Verschiedenes fangen:
-#   DbDumpFehlgeschlagen  sofort, wenn ein Lauf scheitert
-#   DbDumpVeraltet        wenn seit 13 h kein Lauf gelungen ist - auch wenn gar
-#                         keiner lief (CronJob angehalten, Node aus, Zeitplan
-#                         kaputt). Das fängt die erste Regel nicht.
+# Erkannt wird ein Dump an seinem CronJob-Namen `<dienst>-db-dump`.
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -19,9 +11,7 @@ spec:
   groups:
     - name: db-backup
       rules:
-        # Ein gescheiterter Job bleibt stehen (failedJobsHistoryLimit), der
-        # Alarm soll es nicht: nur Jobs, die in den letzten 13 h gestartet
-        # sind. `backoffLimit: 2` ist dann schon ausgeschöpft.
+        # sofort, wenn ein Lauf scheitert
         - alert: DbDumpFehlgeschlagen
           expr: |
             (
@@ -40,8 +30,7 @@ spec:
               Job {{ $labels.job_name }} ist fehlgeschlagen. Log:
               kubectl -n {{ $labels.namespace }} logs job/{{ $labels.job_name }}
 
-        # 12 h Zeitplan plus eine Stunde Spielraum. Der zweite Teil fängt einen
-        # CronJob, der noch nie erfolgreich war - dem fehlt die Metrik ganz.
+        # wenn seit 13 h kein Lauf gelungen ist - auch wenn gar keiner lief
         - alert: DbDumpVeraltet
           expr: |
             (time() - kube_cronjob_status_last_successful_time{cronjob=~".+-db-dump"}) > 13 * 3600

@@ -1,16 +1,6 @@
-# observability-rules - Alarm auf blockierte DNS-Abfragen
+# Alarm auf blockierte DNS-Abfragen
 #
-# Cilium lehnt eine Abfrage ab, wenn eine DNS-Regel (`rules.dns` in einer
-# CiliumNetworkPolicy) den Namen nicht erlaubt. Ein Pod, der dann trotzdem
-# fragt, versucht etwas, das nicht vorgesehen ist - ein Fehler in der Liste
-# oder ein übernommener Pod, der einen Rückkanal sucht.
-#
-# Der zweite Zweig (`unless ... offset`) ist nicht doppelt: Die erste
-# Ablehnung aus einem Namespace legt die Zeitreihe erst an, und `increase`
-# sieht an einer neuen Reihe keinen Anstieg. Ohne ihn fiele genau der erste
-# Versuch durch.
-#
-# Solange noch keine Policy DNS-Namen einschränkt, feuert das nie.
+# Cilium lehnt eine Abfrage ab, wenn eine DNS-Regel den Namen nicht erlaubt.
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
