@@ -58,9 +58,11 @@ spec:
               protocol: ANY
           rules:
             dns:
-              # Git: Container-Repo, csi-driver-nfs, local-path-provisioner
+              # Git: Container-Repo, local-path-provisioner
               - matchName: github.com
               - matchName: release-assets.githubusercontent.com
+              # csi-driver-nfs: Index und Charts liegen im Repo selbst
+              - matchName: raw.githubusercontent.com
               # homelab-secrets
               - matchName: git.local.nico-steinmueller.de
               # Helm-Repositories
