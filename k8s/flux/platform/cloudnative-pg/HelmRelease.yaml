@@ -1,10 +1,7 @@
-# CloudNativePG - der Operator, dem die Postgres-Instanzen der migrierten
-# Dienste gehören.
-# Man deklariert einen `Cluster`, kein Passwort - der Operator
-# würfelt es und legt es als Secret `<name>-app` ab
+# Der Operator, dem die Postgres-Instanzen gehören.
 #
-# Zu sichern ist damit nur der Dump - Operator und `Cluster`-CRs stehen in Git.
-# Der Weg zurück: CR anwenden, leere Instanz, Dump einspielen.
+# Man deklariert einen `Cluster`, kein Passwort - der Operator
+# würfelt es und legt es als Secret `<name>-app` ab.
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -40,7 +37,7 @@ spec:
       # Cluster-weit, weil die Instanzen je Dienst in dessen Namespace liegen
       clusterWide: true
 
-    # Fünf Instanzen zu verwalten kostet nichts - der Operator arbeitet nur bei Änderungen
+    # Operator arbeitet nur bei Änderungen
     resources:
       requests:
         cpu: 100m
@@ -51,6 +48,7 @@ spec:
     # Aus, bis der erste Postgres-Dienst umgezogen ist - ein PodMonitor auf
     # null Instanzen beschreibt nichts. Dann braucht es zusätzlich eine
     # Ingress-Regel hier; die Metriken kommen aus Port 9187 der Instanzen.
+    # TODO: Monitoring
     monitoring:
       podMonitorEnabled: false
       grafanaDashboard:

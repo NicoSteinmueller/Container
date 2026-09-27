@@ -1,8 +1,6 @@
 # cloudnative-pg - Netzwerkregeln im Namespace `cnpg-system`
 ---
-# Eingehend ist der Namespace zu (core/DefaultDenyIngress.yaml). Offen nur der
-# Webhook des Operators, den der kube-apiserver anruft - ohne ihn nimmt der
-# Cluster keine `Cluster`-, `Backup`- oder `Pooler`-Objekte an.
+# Webhook des Operators, den der kube-apiserver anruft
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -22,9 +20,8 @@ spec:
               protocol: TCP
 
 ---
-# Ausgehend erlaubt; Sperre und DNS kommen aus core/DefaultDenyEgress.yaml.
-# Eng, weil der Operator die Zugangsdaten jeder Datenbank im Cluster hält und
-# im Heimnetz nichts verloren hat.
+# Ausgehend die API: Der Operator watcht die CNPG-CRDs, legt Pods, PVCs,
+# Services und Secrets an, schreibt Status und Failover.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:

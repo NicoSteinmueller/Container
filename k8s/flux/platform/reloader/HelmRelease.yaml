@@ -1,14 +1,7 @@
 # Reloader - startet neu, was ein geändertes Secret benutzt.
 #
 # Ein `secretKeyRef` in `env` wird genau einmal aufgelöst, beim Start des Pods:
-# Rotiert ein Passwort, schreibt Flux das Secret neu, der laufende Prozess
-# arbeitet aber mit dem alten Wert weiter. Der übliche Helm-Trick greift nicht,
-# weil unsere Secrets aus einem anderen Repo nur referenziert werden - das
-# Pod-Template bleibt byte-gleich, Kubernetes hat keinen Anlass zu handeln.
-#
-# Reloader schreibt bei Änderung eine Annotation ins Pod-Template der
-# Konsumenten. Das ist eine echte Änderung und läuft als gewöhnlicher Rolling
-# Update, mit den Probes und dem Rollback des Dienstes.
+# Der übliche Helm-Trick greift nicht, da die Secrets aus einem anderen Repo referenziert werden.
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -36,25 +29,18 @@ spec:
       retries: 3
   values:
     reloader:
-      # Scoped Mode: watchGlobally aus, dafür die Namespaces einzeln. Das Chart
-      # legt dann Role und RoleBinding je Namespace an und keine ClusterRole.
+      # Beobachtet nicht alle Namespaces.
       watchGlobally: false
-
-      # Die Namespaces, in denen ein laufender Prozess ein Secret aus
-      # homelab-secrets hält - und nur die.
+      # Namespaces, die beobachtet werden sollen.
       namespaces:
         - crowdsec
         - monitoring
         - ntfy
         - traefik-internal
         - traefik-public
-
-      # Innerhalb der Namespaces oben gilt jeder Workload als annotiert.
+      # Reloads alles in den beobachteten Namespaces.
       autoReloadAll: true
-
-      # "annotations" statt der Voreinstellung "default": Die hängt dem
-      # Container eine Umgebungsvariable an und verändert damit die
-      # Container-Spezifikation eines fremden Charts.
+      # Neustart wird durch Annotation ausgelöst.
       reloadStrategy: annotations
 
       deployment:
@@ -65,9 +51,6 @@ spec:
           limits:
             memory: 128Mi
 
-        # Der Pod-Teil steht in den Chart-Defaults, der Container-Teil fehlt:
-        # allowPrivilegeEscalation, capabilities und readOnlyRootFilesystem
-        # gibt es im PodSecurityContext nicht, dort lehnte die API sie ab.
         containerSecurityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
@@ -78,5 +61,6 @@ spec:
       # `true` allein genügt nicht: Der Namespace ist eingehend zu
       # (core/DefaultDenyIngress.yaml) und bräuchte zusätzlich eine
       # Ingress-Regel für Pods aus `monitoring`, sonst steht das Target auf DOWN.
+      # TODO: Monitoring
       serviceMonitor:
         enabled: false

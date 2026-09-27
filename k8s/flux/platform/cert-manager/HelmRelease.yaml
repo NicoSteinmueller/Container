@@ -1,8 +1,4 @@
-# cert-manager - und eine eigene CA für clusterinterne Zertifikate.
-#
-# Der Anlass ist CrowdSec: Der Agent registriert sich beim Start mit seinem
-# Pod-Namen bei der LAPI. Startet der Container neu, ohne dass der Pod neu
-# entsteht, sind die lokalen Zugangsdaten weg und der Name noch da.
+# cert-manager - und eigene CA für clusterinterne Zertifikate.
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -30,8 +26,7 @@ spec:
       retries: 3
   timeout: 10m
   values:
-    # `crds.keep` sorgt dafür, dass ein versehentlich entferntes HelmRelease
-    # nicht jedes Certificate-Objekt im Cluster mitnimmt.
+    # `crds.keep`: Zertifikate werden beim Löschen eines HelmRelease nicht gelöscht, sondern behalten.
     crds:
       enabled: true
       keep: true
@@ -61,5 +56,6 @@ spec:
           memory: 256Mi
 
     # Aus: Die passenden Alarmregeln (Ablauf naht, Ausstellung scheitert)
+    # Todo: Monitoring
     prometheus:
       enabled: false
