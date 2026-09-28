@@ -210,7 +210,7 @@ services:
 
   # Der Sammler: Grafana Alloy
   alloy:
-    image: grafana/alloy:v1.20.0@sha256:f111cce835516c5f99166342be7038496b52ced16667be5a11e19258a3e4cd30 # Version 1.6+ ist aktuell (2026)
+    image: grafana/alloy:v1.20.1@sha256:2aa2099af76c0098d4af7a4d6e48f86cb66dc1a000222ad927a1c67c6542d13f # Version 1.6+ ist aktuell (2026)
     container_name: grafana_alloy
 
     # ------------ Abhängigkeiten & Start -----------
