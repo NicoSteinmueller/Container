@@ -1,15 +1,9 @@
-# namespaces - Stufe `restricted`, der Normalfall.
-#
-# An einem Ort, damit jede Gruppe nur an `core` hängt. Braucht ein Namespace
-# mehr, gehört er nach Privileged.yaml - mit dem Grund am Namespace.
+# Stufe `restricted`, der Normalfall.
 ---
 # Die drei, die Kubernetes selbst anlegt.
 #
 # `default`: ohne `namespace:` angabe und ohne `enforce`-Label alles erlaubt
-# Nebenwirkung: `kubectl run`/`debug` ohne securityContext wird abgelehnt.
-#
-# `prune: disabled`, weil ein gelöschter Namespace alles mitnimmt, was darin liegt.
-#
+# `prune: disabled`, weil ein gelöschter Namespace alles löscht.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -73,8 +67,7 @@ metadata:
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
 ---
-# Der Ingress-Controller fürs Heimnetz; `homelab.io/zone` sagt, welcher
-# Controller einen Namespace bedienen darf.
+# Der Ingress-Controller fürs Heimnetz
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -85,8 +78,7 @@ metadata:
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
 ---
-# Der Ingress-Controller aus dem Internet - der exponierteste Pod des
-# Clusters, unter der strengsten Stufe.
+# Der Ingress-Controller aus dem Internet
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -97,10 +89,7 @@ metadata:
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
 ---
-# Der Testdienst, nur im Heimnetz . Das Label dokumentiert nur.
-#
-# Früher vom whoami-Chart angelegt; `keep`, damit Helm ihn bei der Übergabe
-# nicht löscht.
+# Der Testdienst, nur im Heimnetz.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -124,7 +113,7 @@ metadata:
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
 ---
-# Push-Benachrichtigungen, aus dem Internet erreichbar (ntfy.nico-steinmueller.de).
+# Push-Benachrichtigungen
 apiVersion: v1
 kind: Namespace
 metadata:

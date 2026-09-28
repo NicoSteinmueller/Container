@@ -1,16 +1,11 @@
-# Wer eine Adresse im LAN bekommt. Ein LoadBalancer- oder NodePort-Service ist
-# eine Tür am Node vorbei an Talos' Ingress-Firewall (Cilium bedient beide in
-# eBPF, vm/talos/patches/firewall.yaml.tftpl) - deshalb nur, wo sie gewollt ist.
-#
-# Ausnahme für einen Test (etwa die L2-Gegenprobe in INBETRIEBNAHME.md,
-# Schritt 4): das Binding kurz auf `Warn` stellen, danach zurück.
+# Wer eine Adresse im LAN bekommt.
 #
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
   name: service-freigabe
 spec:
-  # Greift nur, wenn die CEL-Auswertung selbst scheitert.
+  # nur, wenn die CEL-Auswertung selbst scheitert
   failurePolicy: Fail
 
   matchConstraints:
@@ -32,16 +27,14 @@ spec:
       expression: object.spec.?type.orValue("ClusterIP") == "NodePort"
 
   validations:
-    # Ohne das Flag vergibt Kubernetes je Port einen NodePort - auf der
-    # Node-Adresse erreichbar, an der Firewall vorbei.
+    # Ohne das Flag vergibt Kubernetes je Port einen NodePort
     - expression: >-
         !variables.lb ||
         object.spec.?allocateLoadBalancerNodePorts.orValue(true) == false
       message: >-
         LoadBalancer-Services brauchen allocateLoadBalancerNodePorts: false.
 
-    # Das Flag wirkt nur beim Anlegen: nachträglich gesetzt, bleiben vergebene
-    # NodePorts stehen. Diese Regel fängt genau das beim nächsten Update.
+    # wirkt nur beim Anlegen: nachträglich gesetzt, bleiben vergebene NodePorts stehen.
     - expression: >-
         !variables.lb ||
         object.spec.ports.all(p, p.?nodePort.orValue(0) == 0)
@@ -58,8 +51,7 @@ spec:
         Dienst bekommt seine Adresse über eine Route in
         k8s/flux/network/ingress-*/DynamicConfig.yaml.
 
-    # Die Flux-Statusseite (k8s/bootstrap, service_type = NodePort), begrenzt
-    # auf die Verwaltungsrechner per NetworkPolicy.
+    # Die Flux-Statusseite begrenzt auf die Verwaltungsrechner per NetworkPolicy.
     - expression: >-
         !variables.nodePort ||
         (namespaceObject.metadata.name == "flux-system" &&
@@ -69,7 +61,7 @@ spec:
         über die Ingress-Controller.
 
 ---
-# Erst das Binding schaltet die Policy scharf. `matchResources` leer: gilt cluster-weit.
+# Erst das Binding schaltet die Policy scharf.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:

@@ -1,17 +1,12 @@
-# DNS-Allowlist für flux-system - das Gegenstück zu DefaultDenyEgress.yaml.
+# DNS-Allowlist für flux-system
 #
-# Eigene Datei statt Teil der Clusterregel: Fehlt hier ein Name, den der Sync
-# selbst braucht (github.com, Gitea), repariert sich Flux nicht mehr aus Git.
-# Dann diese Policies löschen - `allow-egress` bleibt, DNS ist wieder frei,
-# Flux holt den Fix und legt sie neu an:
+# Fehlt hier ein Name, den der Sync selbst braucht (github.com, Gitea),
+# repariert sich Flux nicht mehr aus Git.
+# Dann diese Policies löschen
 #
 #   kubectl -n flux-system delete cnp flux-dns flux-source-dns flux-operator-dns
-#
-# Achtung: Ohne `allow-egress` (networkPolicy: false) sperrten diese Policies
-# allen Verkehr außer DNS.
 ---
-# Alle Flux-Pods: nur Namen im Cluster (Artefakte vom source-controller,
-# Events an den notification-controller).
+# nur Namen im Cluster
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -33,11 +28,7 @@ spec:
               - matchPattern: "**.cluster.local"
 
 ---
-# source-controller holt alles, was in den GitRepository- und
-# HelmRepository-Objekten steht (`*/Sources.yaml`, sync/). Eine neue Quelle
-# braucht hier ihren Host - sonst NXDOMAIN und Alarm `DnsAbfrageBlockiert`.
-# Charts auf GitHub-Releases leiten nach release-assets.githubusercontent.com
-# um (nachgemessen).
+# alles aus den GitRepository- und HelmRepository-Objekten
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -58,10 +49,10 @@ spec:
               protocol: ANY
           rules:
             dns:
-              # Git: Container-Repo, local-path-provisioner
+              # Git-Repos
               - matchName: github.com
               - matchName: release-assets.githubusercontent.com
-              # csi-driver-nfs: Index und Charts liegen im Repo selbst
+              # csi-driver-nfs
               - matchName: raw.githubusercontent.com
               # homelab-secrets
               - matchName: git.local.nico-steinmueller.de
@@ -76,9 +67,7 @@ spec:
               - matchName: traefik.github.io
 
 ---
-# flux-operator lädt die Flux-Manifeste als OCI-Artefakt
-# (`oci://ghcr.io/controlplaneio-fluxcd/flux-operator-manifests`); die
-# Blobs liegen hinter einer Umleitung auf pkg-containers.githubusercontent.com.
+# Flux-Manifeste als OCI-Artefakt
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -100,4 +89,5 @@ spec:
           rules:
             dns:
               - matchName: ghcr.io
+              # Blobs liegen hinter einer Umleitung auf pkg-containers.githubusercontent.com.
               - matchName: pkg-containers.githubusercontent.com

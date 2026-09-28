@@ -1,8 +1,4 @@
-# namespaces - Stufe `privileged`, die Ausnahmen. Jede mit Grund am Namespace.
-#
-# hostPath verbietet schon `baseline` - deshalb keine Stufe dazwischen.
-# `warn`/`audit` nur, wo sie unter `enforce` liegen; auf `privileged` melden sie
-# nie etwas.
+# Stufe `privileged`. Jede mit Grund am Namespace.
 ---
 # `privileged` wegen des Agenten: Er liest die Container-Logs per hostPath.
 # `warn`/`audit` auf `baseline`, damit auffällt, wenn sonst etwas sie braucht.
@@ -16,9 +12,8 @@ metadata:
     pod-security.kubernetes.io/warn: baseline
     pod-security.kubernetes.io/audit: baseline
 ---
-# storage - `privileged` als Preis für echte Kernel-Mounts: Das NFS-Plugin
+# `privileged` als Preis für echte Kernel-Mounts: Das NFS-Plugin
 # mountet im Host-Namespace, local-path legt Volumes per hostPath an.
-# Eingegrenzt wird über den Inhalt, nicht über die Policy: je ein Treiber.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -33,7 +28,7 @@ metadata:
   labels:
     pod-security.kubernetes.io/enforce: privileged
 ---
-# observability - `privileged` wegen zweier DaemonSets: node-exporter
+# `privileged` wegen zweier DaemonSets: node-exporter
 # (hostNetwork, hostPID, /proc, /sys) und Alloy (/var/log).
 apiVersion: v1
 kind: Namespace

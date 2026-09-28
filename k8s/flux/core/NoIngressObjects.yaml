@@ -1,21 +1,14 @@
-# Keine Routen als Kubernetes-Objekt. Beide Traefik-Controller lesen weder
-# Ingress noch IngressRoute - ihre Routen stehen in
-# ../network/ingress-*/DynamicConfig.yaml. Ein solches Objekt bliebe also still
-# unbedient; die Policy macht daraus eine Fehlermeldung mit dem richtigen Ort.
-#
-# Auch ein Chart, das ab Werk einen Ingress mitbringt, scheitert damit laut:
-# `ingress.enabled: false` setzen und die Route in DynamicConfig.yaml eintragen.
-#
+# Beide Traefik-Controller lesen weder Ingress noch IngressRoute -
+# ihre Routen stehen in ../network/ingress-*/DynamicConfig.yaml
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
   name: keine-ingress-objekte
 spec:
-  # Greift nur, wenn die CEL-Auswertung selbst scheitert.
+  # nur, wenn die CEL-Auswertung selbst scheitert
   failurePolicy: Fail
 
-  # Nur Anlegen: Ein UPDATE auf ein Altobjekt soll dessen Löschung durch Helm
-  # nicht blockieren.
+  # Nur Anlegen
   matchConstraints:
     resourceRules:
       - apiGroups:
@@ -46,7 +39,7 @@ spec:
         `ingress.enabled: false` setzen.
 
 ---
-# Erst das Binding schaltet die Policy scharf. `matchResources` leer: gilt cluster-weit.
+# Erst das Binding schaltet die Policy scharf.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:

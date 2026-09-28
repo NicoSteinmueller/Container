@@ -1,37 +1,19 @@
-# DefaultDenyEgress - ausgehend geschlossen bis auf DNS für Namen im Cluster.
-# Gilt für alle Pods außer CoreDNS und flux-system.
+# ausgehend geschlossen bis auf DNS für Namen im Cluster.
 #
-# Ausgehend ist die gefährlichere Richtung: Ein Pod ohne Egress-Regel erreicht
-# das ganze Heimnetz. Mit dieser Regel ist ein neuer Namespace direkt zu.
-#
-# DNS nur für `**.cluster.local`: Jede Abfrage läuft durch Ciliums DNS-Proxy,
-# und der beantwortet jeden anderen Namen mit NXDOMAIN (`dnsProxy` in
-# vm/talos/values/cilium.yaml.tftpl). `cluster.local` beantwortet CoreDNS
-# selbst, davon geht nichts nach draußen. Weitere Namen gibt es nur zusammen
-# mit einer Verbindung dorthin: als `rules.dns` neben den `toFQDNs` in
-# `<name>-egress` der Komponente. Die Listen addieren sich.
-#
-# Abgelehnte Namen: Dashboard „DNS-Blockaden“, Alarm `DnsAbfrageBlockiert`
-# (ntfy-Topic `cluster`). Fehlt eine Freigabe, hängt die Anwendung sonst in
-# einem Timeout statt einer klaren Fehlermeldung. Nachsehen mit
-#
-#   kubectl -n kube-system exec ds/cilium -- hubble observe --last 200 --type drop
-#   kubectl -n kube-system exec ds/cilium -- hubble observe --protocol DNS --verdict DROPPED
+# cluster.local` beantwortet CoreDNS selbst.
+# Weitere Namen gibt es nur zusammen mit einer Verbindung dorthin: als
+# `rules.dns` neben den `toFQDNs` in `<name>-egress` der Komponente.
 #
 # Ausgenommen:
-#   CoreDNS      ist der Resolver selbst; ein Fehler hier träfe jeden Pod.
-#   flux-system  bekommt dieselbe Liste als eigene Policy (FluxSystemDns.yaml) -
-#                dort lässt sie sich im Notfall allein löschen.
+#   CoreDNS      ist der Resolver selbst.
+#   flux-system  hat dieselbe Liste, damit im Notfall löschbar.
 #
 # Pods mit hostNetwork trifft die Regel nicht.
 apiVersion: cilium.io/v2
 kind: CiliumClusterwideNetworkPolicy
 metadata:
   name: default-deny-egress
-# Zwei Specs mit derselben Regel, weil ein Selektor kein "außer CoreDNS in
-# kube-system" kennt: `k8s-app NotIn [kube-dns]` allein nähme einen so
-# beschrifteten Pod in jedem Namespace aus. `Exists` zuerst, aus demselben
-# Grund wie in DefaultDenyIngress.yaml (cilium-health).
+# Zwei Specs, da ein Selektor kein "außer CoreDNS in kube-system" kennt.
 specs:
   - endpointSelector:
       matchExpressions:

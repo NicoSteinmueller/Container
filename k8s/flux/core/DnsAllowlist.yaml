@@ -1,17 +1,12 @@
-# Hält die DNS-Allowlisten dicht (core/DefaultDenyEgress.yaml).
+# Hält die DNS-Allowlisten dicht
 #
 # Eine einzige Freigabe auf Port 53 ohne `rules.dns` hebt jede Liste des
 # betroffenen Pods auf.
 #
 # Verboten ist deshalb:
-#   - Port 53 (auch benannt oder als Bereich) ohne `rules.dns` - außer zu
-#     festen Adressen außerhalb (`toCIDR`, `toCIDRSet`, `toFQDNs`): Das ist
-#     eine eigene, bewusste Freigabe und berührt den Weg über CoreDNS nicht.
-#   - `matchPattern` nur aus `*` und `.` - das ist keine Liste.
-#   - eine NetworkPolicy mit Port 53 zu anderem als `ipBlock`; sie kennt
-#     keine DNS-Regel.
-#
-# Prüft nur beim Anlegen und Ändern.
+#   - Port 53 ohne `rules.dns` - außer zu festen Adressen außerhalb (`toCIDR`, `toCIDRSet`, `toFQDNs`)
+#   - `matchPattern` nur aus `*` und `.`.
+#   - eine NetworkPolicy mit Port 53 zu anderem als `ipBlock`
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -44,8 +39,8 @@ spec:
   variables:
     - name: cilium
       expression: object.apiVersion.startsWith("cilium.io/")
-    # `spec` und die Liste `specs` in eine Liste; `dyn`, weil beide im Schema
-    # verschiedene Typen sind.
+
+    # `dyn`, weil beide im Schema verschiedene Typen sind.
     - name: specs
       expression: >-
         !variables.cilium ? [] :
