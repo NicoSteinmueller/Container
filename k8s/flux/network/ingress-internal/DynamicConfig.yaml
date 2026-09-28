@@ -1,20 +1,9 @@
-# ingress-internal - Routen und Middlewares für den File-Provider
+# Routen und Middlewares für den File-Provider
 #
-# Gebaut wie ../ingress-public/DynamicConfig.yaml und aus demselben Grund: Ein
-# Kubernetes-Provider startet je beobachtetem Namespace einen Secrets-Informer,
-# und der Controller läse dort alles - in `monitoring` etwa grafana-admin, in
-# jedem migrierten Dienst dessen DB-Zugang. Über den File-Provider braucht er
-# keine API und kein Token (HelmRelease.yaml).
+# ein neuer Dienst braucht einen Router, einen Service und einen
+# `toEndpoints`-Block in NetworkPolicies.yaml.
 #
-# Ein neuer Dienst braucht einen Router, einen Service und einen
-# `toEndpoints`-Block in NetworkPolicies.yaml. Das Wildcard
-# `*.k8s.nico-steinmueller.de` hängt am Entrypoint, ein Router braucht keinen
-# tls-Block.
-#
-# Eine Änderung hier wirkt erst über den Neustart, den Reloader auslöst
-# (Recreate, kurze Unterbrechung): Die Dateien hängen per subPath, und die
-# sehen keine Updates (HelmRelease.yaml). Ein neuer Schlüssel hier braucht
-# dort auch einen neuen Mount.
+# Eine Änderung hier wirkt erst über den Neustart, den Reloader auslöst.
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -43,9 +32,7 @@ data:
             - websecure
           service: whoami
 
-        # Traefiks eigenes Dashboard. Erst Passwort, dann Umleitung - sonst
-        # verrät der Redirect die Existenz. Match nur auf den Host, sonst wäre
-        # die Adresse ohne Pfad ein 404.
+        # Traefiks eigenes Dashboard. Erst Passwort, dann Umleitung
         dashboard:
           rule: Host(`traefik.k8s.nico-steinmueller.de`)
           entryPoints:
@@ -55,8 +42,7 @@ data:
             - traefik-dashboard-auth
             - traefik-dashboard-root
 
-      # Über den Service-Namen statt über Endpoints: Traefik braucht dafür
-      # keine Leserechte im Namespace des Dienstes.
+      # Über den Service-Namen statt über Endpoints
       services:
         headlamp:
           loadBalancer:
@@ -74,9 +60,8 @@ data:
   middlewares.yaml: |
     http:
       middlewares:
-        # Zugangsdaten aus dem Secret traefik-dashboard-auth (homelab-secrets),
-        # als Datei eingehängt (HelmRelease.yaml). `removeHeader`: sonst geht
-        # der Benutzer als Authorization-Header an api@internal weiter.
+        # Zugangsdaten aus dem Secret traefik-dashboard-auth
+        # `removeHeader`: sonst geht der Benutzer als Authorization-Header weiter.
         traefik-dashboard-auth:
           basicAuth:
             usersFile: /traefik-auth/users

@@ -28,10 +28,7 @@ spec:
     remediation:
       retries: 3
 
-  # Das Chart schreibt `automountServiceAccountToken: true` fest ins
-  # Pod-Template. Ohne Kubernetes-Provider braucht der Pod kein Token. `test`
-  # vor `replace`: Ändert ein Chart-Update die Stelle, scheitert das Rendern
-  # laut.
+  # feste `automountServiceAccountToken: true` aus Pod-Template wird entfernt
   postRenderers:
     - kustomize:
         patches:
@@ -52,13 +49,12 @@ spec:
       replicas: 1
 
       additionalVolumes:
-        # Routen und Middlewares (DynamicConfig.yaml)
+        # Routen und Middlewares
         - name: dynamic-config
           configMap:
             name: traefik-internal-dynamic
 
-        # BasicAuth fürs Dashboard: als Datei vom Kubelet eingehängt, nicht
-        # über die API gelesen. Nur der Schlüssel `users`.
+        # BasicAuth fürs Dashboard
         - name: dashboard-auth
           secret:
             secretName: traefik-dashboard-auth
@@ -68,11 +64,7 @@ spec:
             defaultMode: 0400
 
     additionalVolumeMounts:
-      # Jede Datei einzeln per subPath: Ein ganzes ConfigMap-Volume brächte
-      # die versteckten Verzeichnisse `..<zeitstempel>` mit, in die der
-      # File-Provider hineinliest - jede Datei zweimal, und während eines
-      # Updates womöglich die alte Fassung zuerst. subPath-Mounts sehen keine
-      # Änderungen; eine neue Fassung kommt über den Reloader-Neustart.
+      # Jede Datei einzeln per subPath
       - name: dynamic-config
         mountPath: /etc/traefik/dynamic/routes.yaml
         subPath: routes.yaml
@@ -88,12 +80,11 @@ spec:
     additionalArguments:
       - --providers.file.directory=/etc/traefik/dynamic
 
-    # Keine Versionsprüfung: Sie ruft täglich update.traefik.io an - ein Ziel
-    # mehr im Egress (NetworkPolicies.yaml).
+    # Keine Versionsprüfung
     global:
       checkNewVersion: false
 
-    # Recreate wegen acme.json: lego schreibt ohne Sperre
+    # Recreate wegen acme.json
     updateStrategy:
       type: Recreate
       rollingUpdate: null
@@ -102,7 +93,6 @@ spec:
       runAsUser: 65532
       runAsGroup: 65532
       runAsNonRoot: true
-      # Ohne fsGroup gehört das frische PVC-Verzeichnis root.
       fsGroup: 65532
       seccompProfile:
         type: RuntimeDefault
@@ -114,7 +104,7 @@ spec:
         drop:
           - ALL
 
-    # Cilium vergibt die LAN-Adresse (../lb-ipam/) und kündigt sie per L2 an.
+    # Cilium vergibt die LAN-Adresse
     ports:
       web:
         port: 8000
@@ -136,18 +126,17 @@ spec:
         http:
           tls:
             enabled: true
-            # Wildcard am Entrypoint statt je Ingress
+            # Wildcard am Entrypoint
             certResolver: letsencrypt
             domains:
               - main: k8s.nico-steinmueller.de
                 sans:
                   - "*.k8s.nico-steinmueller.de"
         forwardedHeaders:
-          # Kein Proxy davor, ein mitgeschickter X-Forwarded-For wäre erfunden.
           trustedIPs: []
           insecure: false
 
-    # Feste Adresse statt geratener Vergabereihenfolge.
+    # Feste Adresse
     service:
       enabled: true
       annotations:
@@ -155,9 +144,7 @@ spec:
       spec:
         type: LoadBalancer
         externalTrafficPolicy: Local
-
-        # NodePorts bedient Cilium in eBPF, an Talos' Ingress-Firewall vorbei -
-        # sie wären die zweite Tür neben `allow-from-lan`.
+        # NodePort würde Talos-Firewall umgehen.
         allocateLoadBalancerNodePorts: false
 
     # Wildcard von Let's Encrypt per DNS-01 über IONOS. Traefik macht es selbst,
@@ -168,7 +155,6 @@ spec:
           email: nico.steinmueller@gmx.net
           storage: /data/acme.json
           # PRODUKTIV, Staging wäre acme-staging-v02.api.letsencrypt.org.
-          # Dorthin erst testen: fünf Fehlversuche je Stunde und Hostname.
           # Bei jedem Wechsel muss acme.json weg, sie trägt Zertifikat und
           # ACME-Konto.
           caServer: https://acme-v02.api.letsencrypt.org/directory
@@ -181,11 +167,9 @@ spec:
               - 8.8.8.8:53
             propagation:
               delayBeforeChecks: 30s
-              # Keine Prüfung direkt bei IONOS' Nameservern: deren Adressen
-              # stehen nicht im Egress (NetworkPolicies.yaml).
+              # Keine Prüfung direkt bei IONOS' Nameservern
               disableANSChecks: true
 
-    # lego liest den Key nur aus der Umgebung.
     env:
       - name: IONOS_API_KEY
         valueFrom:
@@ -193,7 +177,7 @@ spec:
             name: traefik-ionos
             key: IONOS_API_KEY
 
-    # acme.json muss den Neustart überleben, sonst droht das Rate Limit.
+    # acme.json muss den Neustart überleben
     persistence:
       enabled: true
       name: data
@@ -202,17 +186,13 @@ spec:
       storageClass: local-path
       path: /data
 
-    # Keine Rechte: Der Controller spricht nicht mit der API. Den
-    # ServiceAccount legt das Chart an, gebunden ist er an nichts.
     rbac:
       enabled: false
 
     ingressClass:
       enabled: false
 
-    # Kein Kubernetes-Provider: Jeder startete je beobachtetem Namespace einen
-    # Secrets-Informer, und der Controller läse dort alle Secrets. Die Routen
-    # kommen aus DynamicConfig.yaml (`additionalArguments` oben).
+    # läse alle Secrets im Node-Namespace, Routen in DynamicConfig.yaml
     providers:
       kubernetesIngress:
         enabled: false
@@ -221,8 +201,6 @@ spec:
       kubernetesGateway:
         enabled: false
 
-    # Das Dashboard hängt als Router `dashboard` in DynamicConfig.yaml, mit
-    # BasicAuth - die IngressRoute des Charts läse ohne CRD-Provider niemand.
     ingressRoute:
       dashboard:
         enabled: false

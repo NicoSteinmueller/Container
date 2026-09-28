@@ -1,6 +1,6 @@
 # crowdsec - ServiceAccount
 ---
-# Agent und LAPI laufen unter `default`, sprechen die Kubernetes-API aber nie an.
+# Agent und LAPI sprechen die Kubernetes-API nie an
 apiVersion: v1
 kind: ServiceAccount
 metadata:

@@ -1,9 +1,5 @@
-# ingress-public - Ingress-Controller aus dem Internet
+# Ingress-Controller aus dem Internet
 # Namespace: traefik-public
-#
-# Eigener Controller statt zweitem Entrypoint des internen: eigene Adresse,
-# eigener Zertifikatsspeicher - und kein Zugang zur Kubernetes-API. Die Routen
-# stehen in DynamicConfig.yaml.
 #
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -31,10 +27,7 @@ spec:
     remediation:
       retries: 3
 
-  # Das Chart schreibt `automountServiceAccountToken: true` fest ins
-  # Pod-Template. Ohne Kubernetes-Provider braucht der Pod kein Token - und
-  # ein Token im exponiertesten Pod ist eines zu viel. `test` vor `replace`:
-  # Ändert ein Chart-Update die Stelle, scheitert das Rendern laut.
+  # feste `automountServiceAccountToken: true` aus Pod-Template wird entfernt
   postRenderers:
     - kustomize:
         patches:
@@ -54,16 +47,14 @@ spec:
       kind: Deployment
       replicas: 1
 
-      # Der Schlüssel im Secret crowdsec-bouncer-key (homelab-secrets)
+      # Secret crowdsec-bouncer-key
       additionalVolumes:
         - name: crowdsec-key
           secret:
             secretName: crowdsec-bouncer-key
             defaultMode: 0400
 
-        # Die CA, gegen die das Plugin die LAPI prüft. Das Certificate steht in
-        # ../../cert-manager-issuers/Certificates.yaml; gebraucht wird nur
-        # ca.crt.
+        # Die CA, gegen die das Plugin die LAPI prüft
         - name: crowdsec-ca
           secret:
             secretName: traefik-public-crowdsec-ca
@@ -72,9 +63,7 @@ spec:
                 path: ca.crt
             defaultMode: 0444
 
-        # Routen, Middlewares, TLS-Option (DynamicConfig.yaml). Eigene
-        # ConfigMap statt `providers.file.content`, damit die öffentlichen
-        # Routen in einer Datei für sich stehen.
+        # Routen, Middlewares, TLS-Option (DynamicConfig.yaml)
         - name: dynamic-config
           configMap:
             name: traefik-public-dynamic
@@ -99,19 +88,12 @@ spec:
         drop:
           - ALL
 
-    # Traefik lädt das Plugin beim Start von plugins.traefik.io - Code aus dem
-    # Internet im Anfragepfad, deshalb feste Version und fester Hash.
-    # `abortOnPluginFailure`: fällt der Download aus, startet Traefik nicht
-    # statt ohne Bouncer.
-    #
-    # `hash` ist der SHA-256 des Zip-Archivs. Ohne ihn fragt Traefik die
-    # Registry, ob das Archiv stimmt - dieselbe Stelle, die es geliefert hat.
-    # Mit ihm vergleicht er selbst; ein abweichendes Archiv (neu getaggt,
-    # manipuliert) lässt den Start scheitern. Bei jedem Versionswechsel neu:
+    # Traefik lädt das Plugin beim Start von plugins.traefik.io - C
+    # Hash bei jedem Versionswechsel neu:
     #
     #   curl -sL https://plugins.traefik.io/public/download/<moduleName>/<version> | sha256sum
     #
-    # Renovate sieht diese Stelle nicht - ein Update ist Handarbeit.
+    # TODO: Renovate sieht diese Stelle nicht - ein Update ist Handarbeit.
     experimental:
       abortOnPluginFailure: true
       plugins:
@@ -120,9 +102,6 @@ spec:
           version: v1.6.0
           hash: 207f2cdef1116a436be38839169118bd8f70c32e451be864d9b0ae3b82f96849
 
-    # Keine Versionsprüfung: Sie ruft täglich update.traefik.io an - ein Ziel
-    # mehr im Egress (NetworkPolicies.yaml), für eine Meldung ins Log, die
-    # Renovate ohnehin abdeckt.
     global:
       checkNewVersion: false
 
@@ -133,11 +112,7 @@ spec:
       - name: crowdsec-ca
         mountPath: /crowdsec-ca
         readOnly: true
-      # Jede Datei einzeln per subPath: Ein ganzes ConfigMap-Volume brächte
-      # die versteckten Verzeichnisse `..<zeitstempel>` mit, in die der
-      # File-Provider hineinliest - jede Datei zweimal, und während eines
-      # Updates womöglich die alte Fassung zuerst. subPath-Mounts sehen keine
-      # Änderungen; eine neue Fassung kommt über den Reloader-Neustart.
+      # Jede Datei einzeln per subPath
       - name: dynamic-config
         mountPath: /etc/traefik/dynamic/routes.yaml
         subPath: routes.yaml
@@ -160,7 +135,7 @@ spec:
         exposedPort: 80
         expose:
           default: true
-        # Nur zum Weiterleiten - HSTS kommt erst über HTTPS an.
+        # Nur zum Weiterleiten
         http:
           redirections:
             entryPoint:
@@ -179,51 +154,33 @@ spec:
             - public-chain@file
           tls:
             enabled: true
-            # Zertifikat je Router statt Wildcard
+            # Zertifikat je Router
             certResolver: letsencrypt
 
         forwardedHeaders:
-          # Kein Proxy davor
           trustedIPs: []
           insecure: false
 
-    # .232 aus dem Pool `traefik-public` (../lb-ipam/IPPool.yaml), der nur
-    # diesen Service bedient.
     service:
       enabled: true
       annotations:
         lbipam.cilium.io/ips: "192.168.178.232"
       spec:
         type: LoadBalancer
-        # Ohne `externalTrafficPolicy: Local` ersetzt SNAT die Client-Adresse durch
-        # die des Nodes - CrowdSec sähe die ganze Welt unter einer Quelle.
+        # sonst ersetzt SNAT die Client-Adresse durch die des Nodes
         externalTrafficPolicy: Local
         # die Portfreigabe soll auf eine eigene Adresse zeigen
         allocateLoadBalancerNodePorts: false
 
-    # Let's Encrypt per DNS-01 über IONOS, je Name.
-    #
+    # Let's Encrypt per DNS-01
     # TODO: Auf TLS-ALPN-01 umstellen, sobald die Fritzbox 443 an .232 gibt
-    # (INBETRIEBNAHME.md, Schritt 11) - vorher kommt die Challenge nie hier an.
-    # Grund: Der IONOS-Key soll raus.
-    # TLS-ALPN-01 läuft im Handshake auf 443 und braucht keinen Schlüssel.
-    #   - `dnsChallenge` durch `tlsChallenge: {}` ersetzen, `env` IONOS_API_KEY
-    #     streichen, traefik-ionos-public.sops.yaml aus homelab-secrets löschen
-    #   - in NetworkPolicies.yaml `api.hosting.ionos.com` und den Block zu
-    #     1.1.1.1/8.8.8.8:53 streichen
-    #   - vorher gegen das Staging-Verzeichnis testen, ob `sniStrict` (TLSOption
-    #     in DynamicConfig.yaml) die Challenge durchlässt; acme.json danach weg
-    #   - optional CAA für die öffentlichen Namen: nur letsencrypt.org, eigenes
-    #     Konto (accounturi), validationmethods=tls-alpn-01
     certificatesResolvers:
       letsencrypt:
         acme:
           email: nico.steinmueller@gmx.net
           storage: /data/acme.json
           # PRODUKTIV, Staging wäre acme-staging-v02.api.letsencrypt.org.
-          # Bei jedem Wechsel muss acme.json weg, sie trägt Zertifikat und
-          # ACME-Konto:
-          #
+          # Bei jedem Wechsel muss acme.json weg
           #   kubectl -n traefik-public exec deploy/traefik-public \
           #     -- rm -f /data/acme.json
           #   kubectl -n traefik-public rollout restart deploy/traefik-public
@@ -236,9 +193,7 @@ spec:
               - 8.8.8.8:53
             propagation:
               delayBeforeChecks: 30s
-              # Keine Prüfung direkt bei IONOS' Nameservern: deren Adressen
-              # stehen nicht im Egress (NetworkPolicies.yaml), nur die beiden
-              # Resolver oben.
+              # Keine Prüfung direkt bei IONOS' Nameservern
               disableANSChecks: true
 
     env:
@@ -257,8 +212,7 @@ spec:
       storageClass: local-path
       path: /data
 
-    # Keine Rechte: Der Controller spricht nicht mit der API (siehe
-    # `providers`). Der ServiceAccount aus RBAC.yaml ist an nichts gebunden.
+    # Keine Rechte
     rbac:
       enabled: false
 
@@ -268,11 +222,7 @@ spec:
     ingressClass:
       enabled: false
 
-    # Kein Kubernetes-Provider: Jeder startete je beobachtetem Namespace einen
-    # Secrets-Informer, und der exponierteste Pod läse dort alle Secrets -
-    # bei einem Dienst mit Datenbank auch dessen Zugang. Die Routen kommen aus
-    # DynamicConfig.yaml (`additionalArguments` oben); ein Ingress mit Klasse
-    # `public` bewirkt nichts.
+    # läse alle Secrets im Node-Namespace, Routen in DynamicConfig.yaml
     providers:
       kubernetesIngress:
         enabled: false
@@ -288,8 +238,6 @@ spec:
       healthcheck:
         enabled: false
 
-    # Das Zugriffslog ist die Eingabe für den CrowdSec-Agent - ohne es hätte
-    # der Bouncer nie etwas zu sperren.
     log:
       level: INFO
 
@@ -299,8 +247,21 @@ spec:
       fields:
         general:
           defaultmode: keep
+        names:
+          clientUsername: drop
         headers:
-          defaultmode: drop
+          defaultmode: keep
+          names:
+            user-agent: keep
+            x-forwarded-for: keep
+            x-request-ip: keep
+            cf-connecting-ip: keep
+            referrer: keep
+            content-type: keep
+            accept: keep
+            authorization: redact
+            cookie: redact
+            set-cookie: redact
 
     resources:
       requests:

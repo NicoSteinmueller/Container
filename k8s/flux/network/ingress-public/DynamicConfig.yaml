@@ -1,19 +1,6 @@
-# ingress-public - Routen, Middlewares und TLS-Option für den File-Provider
+# Routen, Middlewares und TLS-Option
 #
-# Der öffentliche Controller liest keine Kubernetes-Objekte mehr, weder
-# Ingress noch IngressRoute. Ein Kubernetes-Provider startet je beobachtetem
-# Namespace einen Secrets-Informer; in einem Dienst-Namespace läse der
-# exponierteste Pod damit auch dessen DB-Zugang. Über den File-Provider
-# braucht er keine API und kein Token (HelmRelease.yaml).
-#
-# `routes.yaml` ist die Sicherheitsgrenze: Was dort nicht steht, ist nicht
-# öffentlich. Ein neuer Dienst braucht einen Router, einen Service und einen
-# `toEndpoints`-Block in NetworkPolicies.yaml.
-#
-# Eine Änderung hier wirkt erst über den Neustart, den Reloader auslöst
-# (Recreate, kurze Unterbrechung): Die Dateien hängen per subPath, und die
-# sehen keine Updates (HelmRelease.yaml). Ein neuer Schlüssel hier braucht
-# dort auch einen neuen Mount.
+# Eine Änderung hier wirkt erst über den Neustart, den Reloader auslöst.
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -21,19 +8,20 @@ metadata:
   name: traefik-public-dynamic
   namespace: traefik-public
 data:
+  # Sicherheitsgrenze: Was hier steht, ist öffentlich.
+  # Ein neuer Dienst braucht Router, Service und `toEndpoints`-Block in NetworkPolicies.yaml.
+  # Service-Namen statt Endpoints: Traefik braucht keine Leserechte im Namespace des Dienstes.
   routes.yaml: |
     http:
       routers:
 
-        # Push-Benachrichtigungen (../../apps/ntfy)
+        # Push-Benachrichtigungen
         ntfy:
           rule: Host(`ntfy.nico-steinmueller.de`)
           entryPoints:
             - websecure
           service: ntfy
-
-      # Über den Service-Namen statt über Endpoints: Traefik braucht dafür
-      # keine Leserechte im Namespace des Dienstes.
+          
       services:
         ntfy:
           loadBalancer:
@@ -43,8 +31,8 @@ data:
   middlewares.yaml: |
     http:
       middlewares:
-        # Der Bouncer fragt vor jeder Anfrage die LAPI. `live` heißt ohne
-        # Cache - eine Sperre wirkt sofort.
+        # Der Bouncer fragt vor jeder Anfrage die LAPI. 
+        # `live` heißt ohne Cache - eine Sperre wirkt sofort.
         crowdsec:
           plugin:
             crowdsec-bouncer:
@@ -53,18 +41,16 @@ data:
               crowdsecLapiScheme: https
               crowdsecLapiHost: crowdsec-service.crowdsec.svc.cluster.local:8080
               crowdsecLapiKeyFile: /crowdsec/traefik_public
-              # CA und Schlüssel als Datei statt im Manifest: cert-manager hält
-              # die CA aktuell, und ohne Vertrauensanker startet das Plugin bei
-              # `https` nicht.
+              # cert-manager hält die CA aktuell
               crowdsecLapiTlsCertificateAuthorityFile: /crowdsec-ca/ca.crt
-              # Das Heimnetz: ein Sync-Client von dort sieht für einen
-              # Scanner-Detektor aus wie ein Scanner.
+              # Das Heimnetz ist vertrauenswürdig
               clientTrustedIPs:
                 - 192.168.178.0/24
               logLevel: INFO
+        
+        # TODO: crowdsec-appsec:
 
-        # HSTS und Antwort-Kopfzeilen. Kein `sslRedirect` - in v3 wirkungslos,
-        # die Umleitung passiert am Entrypoint `web`.
+        # HSTS und Antwort-Kopfzeilen.
         secure-headers:
           headers:
             frameDeny: true
@@ -76,6 +62,8 @@ data:
             stsSeconds: 31536000
             referrerPolicy: strict-origin-when-cross-origin
             customFrameOptionsValue: SAMEORIGIN
+            customResponseHeaders:
+              X-Forwarded-Proto: https
 
         # Ratelimit Stufe 1: gilt für alle
         rate-limit:
@@ -107,8 +95,7 @@ data:
               ipStrategy:
                 depth: 0
 
-        # Hängt am Entrypoint websecure. Reihenfolge: bekannte Angreifer
-        # fliegen raus, dann die Kopfzeilen, dann das Limit.
+        # bekannte Angreifer fliegen raus, dann die Kopfzeilen, dann das Limit
         public-chain:
           chain:
             middlewares:
@@ -117,11 +104,9 @@ data:
               - rate-limit
 
   tls.yaml: |
-    # Zwei Stufen. `default` gilt für jeden Router ohne eigene Angabe und für
-    # jeden unbekannten Namen: nur TLS 1.3. `kompatibel` erlaubt zusätzlich
-    # TLS 1.2 - für Dienste mit alten Clients (Nextcloud-Sync und WebDAV auf
-    # älteren Geräten, Android vor 10). Ein Router bekommt sie so:
-    #
+    # `default` gilt für jeden Router: nur TLS 1.3.
+    # `kompatibel` erlaubt zusätzlich TLS 1.2 - für Dienste mit alten Clients
+    # z.B.
     #   nextcloud:
     #     rule: Host(`cloud.nico-steinmueller.de`)
     #     entryPoints: [websecure]
@@ -131,13 +116,6 @@ data:
     #       # Mit eigenem tls-Block gilt der certResolver des Entrypoints
     #       # nicht mehr von selbst - ausdrücklich nennen.
     #       certResolver: letsencrypt
-    #
-    # Beide mit `sniStrict` ohne Default-Zertifikat: unbekannte Namen enden im
-    # Handshake, nicht in einer Antwort.
-    #
-    # Die Zertifikate sind ECDSA (`keyType: EC256`), für TLS 1.2 zählen also
-    # nur ECDSA-Suiten. TLS 1.3 wählt Go selbst. Keine `curvePreferences`: Go
-    # bietet dann X25519MLKEM768 (Post-Quanten-Schlüsseltausch) und X25519 an.
     tls:
       options:
         default:

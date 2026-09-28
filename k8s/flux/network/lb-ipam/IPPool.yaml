@@ -1,9 +1,4 @@
-# LAN-Adressen des Clusters: Vergabe (IPPool) und Ankündigung (L2Announcement).
-# LoadBalancer statt hostPort, weil der Node nur ein Bein hat - sonst ginge nur
-# ein Ingress auf 443.
-#
-# Die Ankündigung braucht zusätzlich `l2announcements.enabled: true` in
-# vm/talos/values/cilium.yaml.tftpl.
+# LAN-Adressen des Clusters
 #
 # Außerhalb des DHCP-Bereichs und ohne Kollision mit `lan_ip`:
 #
@@ -11,7 +6,6 @@
 #   192.168.178.231  ingress-internal - nur LAN
 #   192.168.178.232  ingress-public   - Internet
 #
-# Ein Pool je Adresse, gebunden an genau einen Service.
 ---
 apiVersion: cilium.io/v2
 kind: CiliumLoadBalancerIPPool

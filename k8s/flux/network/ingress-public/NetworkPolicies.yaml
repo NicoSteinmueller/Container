@@ -1,7 +1,5 @@
-# ingress-public - Netzwerkregeln im Namespace `traefik-public`
+# Netzwerkregeln im Namespace `traefik-public`
 ---
-# Der Namespace ist eingehend zu (core/DefaultDenyIngress.yaml) - sonst wären
-# auch Ping- und Metrik-Port clusterweit erreichbar.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -11,7 +9,7 @@ spec:
   podSelector: {}
   policyTypes:
     - Ingress
-  # Aus aller Welt - hier Absicht. Offen nur die beiden Entrypoint-Ports.
+  # Aus aller Welt - nur die beiden Entrypoint-Ports.
   ingress:
     - ports:
         - protocol: TCP
@@ -20,7 +18,7 @@ spec:
           port: 8443
 
 ---
-# Ausgehend erlaubt; Sperre und DNS kommen aus (core/DefaultDenyEgress.yaml).
+# Ausgehend erlaubt
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -29,8 +27,6 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    # Kein Weg zur API: Der Controller liest keine Kubernetes-Objekte
-    # (DynamicConfig.yaml).
 
     # Die LAPI, die der Bouncer fragt.
     - toEndpoints:
@@ -43,7 +39,7 @@ spec:
             - port: "8080"
               protocol: TCP
 
-    # Die bedienten Dienste, je einer ein Block.
+    # Die bedienten Dienste, je ein Block.
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: ntfy
@@ -53,9 +49,7 @@ spec:
             - port: "8080"
               protocol: TCP
 
-    # DNS für genau die Namen unten - zusätzlich zu `**.cluster.local` aus
-    # core/DefaultDenyEgress.yaml. Über den DNS-Proxy erfährt Cilium auch,
-    # welche Adressen hinter den Namen stehen (`toFQDNs`).
+    # DNS für genau die Namen unten - zusätzlich zu `**.cluster.local`
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: kube-system
@@ -70,10 +64,8 @@ spec:
               - matchName: acme-v02.api.letsencrypt.org
               - matchName: api.hosting.ionos.com
 
-    # Internet nur zu diesen Namen, statt `0.0.0.0/0` - sonst hätte jeder, der
-    # den Pod übernimmt, einen Rückkanal zu beliebigen Zielen. Gemessen mit
-    # einem Traefik 3.7.11 hinter protokollierendem DNS und im lego-Quelltext:
-    #   plugins.traefik.io            CrowdSec-Plugin beim Start (HelmRelease.yaml)
+    # Internet nur zu diesen Namen:
+    #   plugins.traefik.io            CrowdSec-Plugin beim Start
     #   acme-v02.api.letsencrypt.org  ACME
     #   api.hosting.ionos.com         DNS-01 (lego, Provider ionos)
     - toFQDNs:
@@ -86,9 +78,6 @@ spec:
               protocol: TCP
 
     # DNS-01: lego prüft die Propagation über genau diese beiden Resolver
-    # (`dnsChallenge.resolvers` in HelmRelease.yaml). Die Prüfung gegen die
-    # autoritativen Nameserver ist dort abgeschaltet - deren Adressen kennt
-    # hier niemand im Voraus.
     - toCIDR:
         - 1.1.1.1/32
         - 8.8.8.8/32
@@ -100,9 +89,7 @@ spec:
               protocol: TCP
 
 ---
-# Prometheus liest die Metriken (:9100) - vor allem die Laufzeit der
-# Zertifikate (observability-rules/CertificateRules.yaml). Nur Prometheus,
-# nicht ganz `monitoring`.
+# Prometheus liest die Metriken (:9100)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

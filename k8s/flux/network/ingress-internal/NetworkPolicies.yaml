@@ -1,10 +1,6 @@
-# ingress-internal - Netzwerkregeln im Namespace `traefik-internal`
+# Netzwerkregeln im Namespace `traefik-internal`
 ---
-# Der Namespace ist eingehend zu (core/DefaultDenyIngress.yaml) - sonst umginge
-# jeder Pod über die Pod-Adresse die Policies der Anwendungen.
-#
-# ipBlock greift nur, weil der Client als `world` ankommt - das hängt an
-# `externalTrafficPolicy: Local` in HelmRelease.yaml.
+# ipBlock erlaubt nur Heimnetz
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -29,10 +25,7 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    # Kein Weg zur API: Der Controller liest keine Kubernetes-Objekte
-    # (DynamicConfig.yaml).
-
-    # Die bedienten Dienste, passend zu den Services in DynamicConfig.yaml -
+    # Die bedienten Dienste, passend zu DynamicConfig.yaml -
     # fehlt einer, steht die Route und erreicht das Backend nicht.
     - toEndpoints:
         - matchLabels:
@@ -59,8 +52,7 @@ spec:
             - port: "80"
               protocol: TCP
 
-    # DNS für genau die Namen unten, zusätzlich zu `**.cluster.local` aus
-    # core/DefaultDenyEgress.yaml - wie ../ingress-public/NetworkPolicies.yaml.
+    # DNS für genau die Namen unten, zusätzlich zu `**.cluster.local`
     - toEndpoints:
         - matchLabels:
             io.kubernetes.pod.namespace: kube-system
@@ -74,9 +66,7 @@ spec:
               - matchName: acme-v02.api.letsencrypt.org
               - matchName: api.hosting.ionos.com
 
-    # Internet nur für das Wildcard-Zertifikat (DNS-01), statt `0.0.0.0/0`.
-    # Kein Plugin, keine Versionsprüfung (HelmRelease.yaml) - mehr braucht
-    # dieser Controller nicht.
+    # Internet nur für das Wildcard-Zertifikat (DNS-01)
     - toFQDNs:
         - matchName: acme-v02.api.letsencrypt.org
         - matchName: api.hosting.ionos.com
@@ -85,9 +75,7 @@ spec:
             - port: "443"
               protocol: TCP
 
-    # DNS-01: Propagationsprüfung nur über die beiden Resolver aus
-    # HelmRelease.yaml; die Prüfung bei den autoritativen Nameservern ist dort
-    # abgeschaltet.
+    # DNS-01: Propagationsprüfung nur über die beiden Resolver
     - toCIDR:
         - 1.1.1.1/32
         - 8.8.8.8/32
@@ -99,9 +87,7 @@ spec:
               protocol: TCP
 
 ---
-# Prometheus liest die Metriken (:9100) - vor allem die Laufzeit der
-# Zertifikate (observability-rules/CertificateRules.yaml). Nur Prometheus,
-# nicht ganz `monitoring`.
+# Prometheus liest die Metriken (:9100)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

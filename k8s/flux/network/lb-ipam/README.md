@@ -4,22 +4,3 @@
 |---|---|---|
 | **LB-IPAM** (`IPPool.yaml`) | *vergibt* eine Adresse an einen Service | genügt, dass der Pool existiert |
 | **L2-Announcement** (`L2Announcement.yaml`) | *kündigt* sie per ARP im LAN an | `l2announcements.enabled` in [cilium.yaml.tftpl](../../../../vm/talos/values/cilium.yaml.tftpl) |
-
-- **Fehlt die Ankündigung**, steht `EXTERNAL-IP` da und niemand erreicht sie.
-  Gegenprobe ist die Lease, nicht der Service.
-- **Nicht per `kubectl patch cm cilium-config`** einschalten: Das setzt nur das
-  Flag, nicht die RBAC auf Leases (`… is forbidden`).
-- **Welcher Service welche Adresse** bekommt, entscheidet der Pool: je
-  Adresse ein Pool, per `serviceSelector` an Namespace und Name genau eines
-  Service gebunden. Ein anderer LoadBalancer bekommt keine Adresse, auch
-  nicht, wenn `.232` gerade frei ist, weil traefik-public neu angelegt wird.
-  `lbipam.cilium.io/ips` am Service bleibt als zweite Angabe stehen.
-- **Test mit eigenem LoadBalancer** (L2-Gegenprobe, INBETRIEBNAHME.md
-  Schritt 4): braucht neben dem `Warn` an `service-freigabe` einen eigenen,
-  kurzlebigen Pool mit freier Adresse.
-- Die L2-Policy kennt in Cilium 1.20 **kein `v2`** - beim Update prüfen.
-
-```bash
-kubectl -n kube-system get lease | grep l2announce
-kubectl get ciliumloadbalancerippools,ciliuml2announcementpolicies
-```

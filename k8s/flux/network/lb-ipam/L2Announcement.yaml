@@ -7,8 +7,7 @@ kind: CiliumL2AnnouncementPolicy
 metadata:
   name: lan
 spec:
-  # LAN-Anschluss des Nodes, als Regex. Name prüfen mit
-  #   talosctl -n 192.168.178.230 get links
+  # LAN-Anschluss des Nodes, als Regex.
   interfaces:
     - ^enp1s0$
   loadBalancerIPs: true

@@ -1,9 +1,6 @@
 # ingress-public - ServiceAccount, bewusst ohne Rechte
 ---
-# Eigener ServiceAccount, weil das Chart nur bei leerem `serviceAccount.name`
-# einen anlegt. An nichts gebunden: Der Controller liest keine
-# Kubernetes-Objekte (HelmRelease.yaml, `providers`), und das Token nimmt der
-# postRenderer dort aus dem Pod.
+# An nichts gebunden: Der Controller liest keine Kubernetes-Objekte
 apiVersion: v1
 kind: ServiceAccount
 metadata:

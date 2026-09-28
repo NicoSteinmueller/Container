@@ -1,8 +1,5 @@
-# crowdsec - Netzwerkregeln im Namespace `crowdsec`
+# Netzwerkregeln im Namespace `crowdsec`
 ---
-# Der Namespace ist eingehend zu (core/DefaultDenyIngress.yaml): Die LAPI hat
-# außer dem Bouncer-Schlüssel keine Authentifizierung.
-#
 # Erlaubt sind nur der Bouncer aus traefik-public und der Agent nebenan.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -11,8 +8,6 @@ metadata:
   namespace: crowdsec
 spec:
   podSelector:
-    # `k8s-app`, nicht `app.kubernetes.io/name` - das Chart setzt die alte
-    # Schreibweise. Danebengegriffen ist die LAPI unerreichbar.
     matchLabels:
       k8s-app: crowdsec
       type: lapi
@@ -31,19 +26,11 @@ spec:
           port: 8080
 
 ---
-# Ausgehend - Sperre und `**.cluster.local` kommen aus
-# core/DefaultDenyEgress.yaml. Je Rolle nur die Namen, die sie braucht, und
-# nur dorthin eine Verbindung: Der Agent verarbeitet mit den Zugriffslogs
-# Eingaben von außen und ist damit der wahrscheinlichste Einstieg.
+# Je Rolle nur die Namen, die sie braucht, und nur dorthin eine Verbindung.
 #
-# Gemessen (Logs, Hub-Index-Zeitstempel, Hubble):
-#   hub-data.crowdsec.net  Hub-Index und -Inhalte, beide Rollen beim Start
-#   version.crowdsec.net   `cscli hub update` wählt damit den Hub-Zweig;
-#                          ohne startet der Agent nicht (CrashLoop, gemessen)
-#   api.crowdsec.net       Central API (Anmeldung, Community-Blocklist,
-#                          Metriken) - nur die LAPI
-# Nicht eingetragen, weil nicht genutzt: papi.api.crowdsec.net (erst mit
-# Console-Anmeldung), cti.api.crowdsec.net (CTI-Schlüssel).
+#   hub-data.crowdsec.net  Hub-Index und -Inhalte
+#   version.crowdsec.net   `cscli hub update` wählt damit den Hub-Zweig
+#   api.crowdsec.net       Central API (Anmeldung, Community-Blocklist, Metriken)
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -61,11 +48,8 @@ spec:
               protocol: TCP
 
 ---
-# Agent -> LAPI, derselbe Selektor wie im Ingress oben. Dazu Reverse-DNS:
 # Die Postoverflows `rdns` und `seo-bots-whitelist` fragen den PTR-Namen der
-# Angreifer-IP - ohne ihn würden echte Suchmaschinen-Crawler gesperrt. Nur
-# IPv4 und genau vier Labels; ein Rückkanal darüber bräuchte eine eigene
-# Reverse-Zone.
+# Angreifer-IP - ohne ihn würden echte Suchmaschinen-Crawler gesperrt.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:

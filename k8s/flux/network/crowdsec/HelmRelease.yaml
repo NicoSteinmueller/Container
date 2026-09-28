@@ -1,7 +1,7 @@
-# CrowdSec: LAPI und Agent. Der Agent wertet die Zugriffslogs von
-# ingress-public aus, der Bouncer im dortigen Traefik fragt die LAPI.
-#
-# TODO: AppSec, Console-Registrierung bei crowdsec.net, Metabase-Dashboard.
+# CrowdSec: Der Agent wertet die Zugriffslogs von ingress-public aus.
+# https://docs.crowdsec.net/u/getting_started/installation/kubernetes/
+# https://docs.crowdsec.net/docs/next/configuration/values_parameters/
+# TODO: AppSec, Metabase-Dashboard.
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -24,9 +24,7 @@ spec:
   install:
     remediation:
       retries: 3
-  # Kein Rollback: Er schriebe die local_api_credentials.yaml wieder mit
-  # Passwort statt Zertifikat.
-  # Preis: Ein kaputtes Upgrade heilt sich hier nicht selbst.
+  # Kein Rollback
   upgrade:
     remediation:
       retries: 0
@@ -42,16 +40,14 @@ spec:
     tls:
       enabled: true
 
-      # ClusterIssuer statt des chart-eigenen Issuers, damit traefik-public
-      # dieselbe CA bekommt, ohne Secrets zwischen Namespaces zu kopieren.
+      # ClusterIssuer, damit traefik-public dieselbe CA bekommt.
       certManager:
         enabled: true
         issuerRef:
           name: homelab-ca
           kind: ClusterIssuer
 
-        # secretTemplate:` wird immer ausgegeben, ohne Labels aber leer
-        # und einen leeren Schlüssel lehnt das CRD-Schema ab.
+        # secretTemplate: wird immer ausgegeben, ohne Schlüssel abgelehnt
         secretTemplate:
           labels:
             app.kubernetes.io/part-of: crowdsec
@@ -63,22 +59,32 @@ spec:
       replicas: 1
 
       env:
-        # Schlüssel des Bouncers; das Chart registriert ihn beim Start selbst.
+        # Schlüssel des Bouncers
         - name: BOUNCER_KEY_traefik_public
           valueFrom:
             secretKeyRef:
               name: crowdsec-bouncer-key
               key: traefik_public
 
-        # Das Chart stellt die Zertifikate mit diesen OUs aus, setzt die
-        # Variablen aber nicht - die LAPI lehnte sonst ihren eigenen Agent ab.
+        # Das Chart stellt die Zertifikate mit diesen OUs aus
         - name: AGENTS_ALLOWED_OU
           value: agent-ou
         - name: BOUNCERS_ALLOWED_OU
           value: bouncer-ou
 
-      # `data`: SQLite mit Entscheidungen und Alarmen, sonst überlebt keine
-      # Sperre den Pod-Wechsel. `config`: Zugangsdaten und Bouncer-Schlüssel.
+        # Registrierung bei app.crowdsec.net läuft bei jedem Start.
+        # Schon registriert: nur Warnung. Schlüssel ungültig oder CAPI nicht
+        # erreichbar: Der Start bricht ab (`set -e` im Entrypoint).
+        - name: ENROLL_KEY
+          valueFrom:
+            secretKeyRef:
+              name: crowdsec-enroll-key
+              key: enroll_key
+        - name: ENROLL_INSTANCE_NAME
+          value: talos-cp1
+
+      # TODO: auf Postgres umstellen
+      # SQLite mit Entscheidungen und Alarmen
       persistentVolume:
         data:
           enabled: true
@@ -94,11 +100,11 @@ spec:
           size: 128Mi
 
       strategy:
-        # Recreate: Zwei Pods dürften dieselbe SQLite-Datei mounten.
+        # SQLite-Datei darf nicht doppelt gemountet werden
         type: Recreate
 
-      # Der Chart-Default lässt alle Capabilities stehen. Kein `runAsNonRoot`,
-      # weil die LAPI in ihre PVCs schreibt.
+      # Der Chart-Default lässt alle Capabilities stehen.
+      # Kein `runAsNonRoot`, weil die LAPI in ihre PVCs schreibt.
       securityContext:
         allowPrivilegeEscalation: false
         privileged: false
@@ -117,8 +123,9 @@ spec:
 
     agent:
       env:
-        # `traefik` bringt die Parser fürs Zugriffslog, ohne sie sieht der
-        # Agent Zeilen, aber keine Ereignisse.
+        # TODO: Parser fürs Zugriffslog
+        # Prüfen für neue Anwendung: https://app.crowdsec.net/hub/conecllections
+        # COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules crowdsecurity/appsec-crs crowdsecurity/appsec-crs-exclusion-plugin-nextcloud crowdsecurity/sshd crowdsecurity/linux crowdsecurity/iptables crowdsecurity/base-http-scenarios crowdsecurity/http-dos crowdsecurity/whitelist-good-actors crowdsecurity/nextcloud gauth-fr/immich"
         - name: COLLECTIONS
           value: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/base-http-scenarios"
 
@@ -132,8 +139,6 @@ spec:
             type: containerd
             program: traefik
 
-      # Der Chart-Default hängt das ganze /var/log ein, samt apid.log, etcd.log
-      # und Audit-Log. Gebraucht werden nur die beiden Mounts unten.
       hostVarLog: false
 
       extraVolumes:
@@ -152,8 +157,7 @@ spec:
           mountPath: /var/log/pods
           readOnly: true
 
-      # Kein `runAsNonRoot`: Die Container-Logs sind root:root, als Nicht-Root
-      # käme der Agent lautlos nicht mehr an sie heran.
+      # Die Container-Logs sind root:root.
       securityContext:
         allowPrivilegeEscalation: false
         privileged: false
@@ -170,6 +174,6 @@ spec:
         limits:
           memory: 384Mi
 
-    # Siehe TODO im Kopf der Datei.
+    # TODO: Monitoring
     dashboard:
       enabled: false
