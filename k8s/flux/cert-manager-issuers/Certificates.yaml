@@ -22,8 +22,7 @@ spec:
     group: cert-manager.io
 
 ---
-# CA-Kopie für diesen Namespace: Das Plugin muss der LAPI vertrauen, darf aber
-# keine Secrets aus `cert-manager` lesen. Genutzt wird nur ca.crt.
+# CA-Kopie für den Traefik-Public-Namespace.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
