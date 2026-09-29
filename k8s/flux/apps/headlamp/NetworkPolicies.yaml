@@ -1,7 +1,6 @@
-# headlamp - Netzwerkregeln im Namespace `headlamp`
+# Netzwerkregeln im Namespace `headlamp`
 ---
-# Eingehend nur von ingress-internal; alles andere hält
-# core/DefaultDenyIngress.yaml ab.
+# Eingehend nur von ingress-internal
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -21,8 +20,7 @@ spec:
           port: 4466
 
 ---
-# Ausgehend nur die API; Sperre und DNS kommen aus core/DefaultDenyEgress.yaml.
-# Heimnetz und übrige Pods hat Headlamp nicht zu erreichen.
+# Ausgehend nur die API
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:

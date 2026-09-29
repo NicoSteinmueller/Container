@@ -16,10 +16,7 @@ spec:
       sourceRef:
         kind: GitRepository
         name: flux-system
-      # `Revision` statt der Voreinstellung `ChartVersion`: Das Chart liegt im
-      # selben Repo und ändert sich, ohne dass `version` in Chart.yaml steigt.
-      # Sonst bleibt jede Änderung lautlos wirkungslos und Flux meldet weiter
-      # Ready - nachzusehen an der HelmChart, nicht an der HelmRelease.
+      # `Revision`, da sich das Chart ändert, ohne dass `version` in Chart.yaml steigt.
       reconcileStrategy: Revision
       valuesFiles:
         - k8s/whoami/chart/values.yaml

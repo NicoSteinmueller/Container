@@ -25,28 +25,24 @@ spec:
     remediation:
       retries: 3
   values:
-    # Headlamp spricht mit der API als Identität des eingegebenen Tokens, nicht
-    # als die des Pods:
+    # Headlamp spricht mit der API als Identität des eingegebenen Tokens:
     #
     #   Lesen:  kubectl -n headlamp create token headlamp --duration=8h
     #   Ändern: kubectl -n headlamp create token headlamp-admin --duration=1h
-    #
-    # unsafeUseServiceAccountToken bleibt false, sonst wäre jeder Aufrufer der
-    # ServiceAccount des Pods.
     config:
       inCluster: true
       inClusterContextName: talos-cp1
+      # sonst jeder Aufrufer ServiceAccount des Pods
       unsafeUseServiceAccountToken: false
       sessionTTL: 28800
 
       oidc:
-        # Das Chart legt sonst ein leeres Secret "oidc" an, das niemand
-        # einbindet. Kommt zurück, wenn hier Keycloak angebunden wird.
+        # Das Chart legt sonst ein leeres Secret "oidc" an.
+        # TODO: OIDC-Login mit Keycloak einrichten
         secret:
           create: false
 
-    # ServiceAccount und Rechte aus RBAC.yaml - die Voreinstellung
-    # des Charts ist cluster-admin.
+    # ServiceAccount und Rechte aus RBAC.yaml
     serviceAccount:
       create: false
       name: headlamp
@@ -74,14 +70,10 @@ spec:
         drop:
           - ALL
 
-    # ClusterIP statt NodePort: Der Weg über ingress-internal ist verschlüsselt,
-    # das eingefügte Token geht nicht im Klartext durchs LAN.
     service:
       type: ClusterIP
       port: 80
 
-    # Kein Ingress: Die Route `dashboard.k8s.nico-steinmueller.de` steht in
-    # network/ingress-internal/DynamicConfig.yaml.
     ingress:
       enabled: false
 

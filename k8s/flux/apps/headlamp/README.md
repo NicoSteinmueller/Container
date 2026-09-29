@@ -1,9 +1,5 @@
 # headlamp
 
-Nur über `traefik-internal` erreichbar - das Token beim Login soll nicht im
-Klartext durchs LAN. RBAC eigen in `RBAC.yaml`, weil das Chart ab Werk an
-`cluster-admin` bindet:
-
 | ServiceAccount | Rechte |
 |---|---|
 | `headlamp` | Pod und Lese-Token. Kein Schreiben, keine Secrets. |

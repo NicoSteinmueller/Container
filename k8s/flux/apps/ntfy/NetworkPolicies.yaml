@@ -1,7 +1,6 @@
-# ntfy - Netzwerkregeln im Namespace `ntfy`
+# Netzwerkregeln im Namespace `ntfy`
 ---
-# Eingehend nur der öffentliche Controller - auch die Clients im LAN kommen
-# über ihn, nicht direkt.
+# Eingehend nur der öffentliche Controller
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -23,9 +22,7 @@ spec:
           port: 8080
 
 ---
-# Alertmanager schickt die Dump-Alarme direkt an den Service, nicht über den
-# Ingress (observability/monitoring/HelmRelease.yaml). Nur er, nicht ganz
-# `monitoring`.
+# Alertmanager schickt die Dump-Alarme direkt an den Service
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -48,6 +45,3 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-
-# Ausgehend keine Regel: ntfy braucht nichts außer DNS (core/DefaultDenyEgress.yaml)
-# - kein Firebase, kein SMTP, kein Upstream.
