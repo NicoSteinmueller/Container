@@ -32,6 +32,12 @@ data:
             - websecure
           service: whoami
 
+        it-tools:
+          rule: Host(`it-tools.k8s.nico-steinmueller.de`)
+          entryPoints:
+            - websecure
+          service: it-tools
+
         # Traefiks eigenes Dashboard. Erst Passwort, dann Umleitung
         dashboard:
           rule: Host(`traefik.k8s.nico-steinmueller.de`)
@@ -56,6 +62,10 @@ data:
           loadBalancer:
             servers:
               - url: http://whoami.whoami.svc.cluster.local:80
+        it-tools:
+          loadBalancer:
+            servers:
+              - url: http://it-tools.it-tools.svc.cluster.local:80
 
   middlewares.yaml: |
     http:

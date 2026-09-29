@@ -52,6 +52,15 @@ spec:
             - port: "80"
               protocol: TCP
 
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: it-tools
+            app.kubernetes.io/name: it-tools
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
     # DNS für genau die Namen unten, zusätzlich zu `**.cluster.local`
     - toEndpoints:
         - matchLabels:

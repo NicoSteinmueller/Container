@@ -9,7 +9,7 @@
 | [`network`](Network.yaml) | [`../network`](../network) | Ingress-Controller, CrowdSec, LB-IPAM |
 | [`observability`](Observability.yaml) | [`../observability`](../observability) | Prometheus, Loki/Alloy, metrics-server, eigene Dashboards |
 | [`observability-rules`](ObservabilityRules.yaml) | [`../observability-rules`](../observability-rules) | eigene Alarmregeln und Scrape-Ziele (`PrometheusRule`, `PodMonitor`) |
-| [`apps`](Apps.yaml) | [`../apps`](../apps) | Headlamp, ntfy, whoami, die umgezogenen Dienste |
+| [`apps`](Apps.yaml) | [`../apps`](../apps) | Headlamp, it-tools, ntfy, whoami, die umgezogenen Dienste |
 | [`homelab-secrets`](Secrets.yaml) | eigenes Repo im Gitea | SOPS-verschlüsselte Secrets |
 
 ```
