@@ -38,6 +38,12 @@ data:
             - websecure
           service: it-tools
 
+        navidrome:
+          rule: Host(`music.k8s.nico-steinmueller.de`)
+          entryPoints:
+            - websecure
+          service: navidrome
+
         # Traefiks eigenes Dashboard. Erst Passwort, dann Umleitung
         dashboard:
           rule: Host(`traefik.k8s.nico-steinmueller.de`)
@@ -66,6 +72,10 @@ data:
           loadBalancer:
             servers:
               - url: http://it-tools.it-tools.svc.cluster.local:80
+        navidrome:
+          loadBalancer:
+            servers:
+              - url: http://navidrome.navidrome.svc.cluster.local:80
 
   middlewares.yaml: |
     http:

@@ -1,0 +1,193 @@
+# Musik-Streaming
+#
+---
+# navidrome.db und Cache
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: navidrome-data
+  namespace: navidrome
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi
+
+---
+# Die tägliche Kopie von navidrome.db
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: navidrome-backup
+  namespace: navidrome
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-unraid
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# Die Musik-Sammlung
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: navidrome-music
+  namespace: navidrome
+spec:
+  accessModes:
+    - ReadOnlyMany
+  storageClassName: nfs-unraid
+  resources:
+    requests:
+      storage: 200Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: navidrome
+  namespace: navidrome
+spec:
+  selector:
+    app.kubernetes.io/name: navidrome
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: navidrome
+  namespace: navidrome
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  # wegen SQLite-Volume nur ein Pod
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: navidrome
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: navidrome
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 99
+        runAsGroup: 100
+        # Für navidrome-backup
+        fsGroup: 100
+        # Nur umbesitzen, wenn das Wurzelverzeichnis nicht passt
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: navidrome
+          image: deluan/navidrome:0.63.2@sha256:9012939114fbb1bb641b81cf96dec5ded15f0aafefe8d47a511d7cb919658e40
+          ports:
+            - name: http
+              containerPort: 4533
+          env:
+            - name: TZ
+              value: "Europe/Berlin"
+            - name: ND_BASEURL
+              value: "https://music.k8s.nico-steinmueller.de"
+            - name: ND_LOGLEVEL
+              value: "info"
+            - name: ND_ENABLEEXTERNALSERVICES
+              value: "false"
+            - name: ND_ENABLEINSIGHTSCOLLECTOR
+              value: "false"
+            - name: ND_DEEZER_LANGUAGE
+              value: "de"
+            - name: ND_LASTFM_LANGUAGE
+              value: "de"
+            - name: ND_DEFAULTLANGUAGE
+              value: "de"
+            - name: ND_DEFAULTSHAREEXPIRATION
+              value: "24h"
+            - name: ND_ENABLEARTWORKUPLOAD
+              value: "false"
+            - name: ND_INSPECT_ENABLED
+              value: "false"
+            # TODO: Monitoring unter /metrics
+            - name: ND_PROMETHEUS_ENABLED
+              value: "false"
+            - name: ND_DATAFOLDER
+              value: "/data"
+            - name: ND_MUSICFOLDER
+              value: "/music"
+            - name: ND_BACKUP_PATH
+              value: "/backup"
+            - name: ND_BACKUP_SCHEDULE
+              value: "0 0 * * *"
+            - name: ND_BACKUP_COUNT
+              value: "7"
+            # inotify sieht auf NFS nicht, was der Host ändert
+            - name: ND_SCANNER_WATCHERWAIT
+              value: "0"
+            - name: ND_SCANNER_SCHEDULE
+              value: "0 * * * *"
+            # NICHT ÄNDERN - sonst sind alle gespeicherten Passwörter unlesbar.
+            - name: ND_PASSWORDENCRYPTIONKEY
+              valueFrom:
+                secretKeyRef:
+                  name: navidrome
+                  key: ND_PASSWORDENCRYPTIONKEY
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: backup
+              mountPath: /backup
+            - name: music
+              mountPath: /music
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: navidrome-data
+        - name: backup
+          persistentVolumeClaim:
+            claimName: navidrome-backup
+        # readOnly am Volume, nicht nur am Mount
+        - name: music
+          persistentVolumeClaim:
+            claimName: navidrome-music
+            readOnly: true
+        - name: tmp
+          emptyDir:
+            sizeLimit: 150Mi

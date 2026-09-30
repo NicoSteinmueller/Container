@@ -61,6 +61,15 @@ spec:
             - port: "8080"
               protocol: TCP
 
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: navidrome
+            app.kubernetes.io/name: navidrome
+      toPorts:
+        - ports:
+            - port: "4533"
+              protocol: TCP
+
     # DNS für genau die Namen unten, zusätzlich zu `**.cluster.local`
     - toEndpoints:
         - matchLabels:
