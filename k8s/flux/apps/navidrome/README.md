@@ -22,7 +22,7 @@ Backups, sonst sind die gespeicherten Passwörter unlesbar.
    Abgleich zurück:
 
    ```bash
-   flux suspend kustomization apps
+   kubectl -n flux-system patch kustomization apps --type=merge -p '{"spec":{"suspend":true}}'
    kubectl -n navidrome scale deploy/navidrome --replicas=0
    ```
 
@@ -75,5 +75,6 @@ Backups, sonst sind die gespeicherten Passwörter unlesbar.
 3. Wieder anlaufen lassen. `resume` setzt auch die Replikas zurück:
 
    ```bash
-   flux resume kustomization apps
+   kubectl -n flux-system patch kustomization apps --type=merge -p '{"spec":{"suspend":false}}'
+   kubectl -n flux-system annotate --overwrite kustomization apps reconcile.fluxcd.io/requestedAt="$(date +%s)"
    ```
