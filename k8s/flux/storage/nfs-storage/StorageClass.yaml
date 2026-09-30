@@ -6,9 +6,13 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: nfs-unraid
+  annotations:
+  # Storage Class wird neu angelegt
+    kustomize.toolkit.fluxcd.io/force: enabled
 provisioner: nfs.csi.k8s.io
 parameters:
-  server: 192.168.178.3
+  # Der Export steht nur auf der Tunnel-Adresse des Nodes.
+  server: 10.253.0.1
   share: /mnt/user/k8s
   # Ohne nimmt der Treiber den PV-Namen
   subDir: ${pvc.metadata.namespace}/${pvc.metadata.name}
@@ -33,5 +37,6 @@ mountOptions:
   - nodev
   # es darf nichts ausgeführt werden
   - noexec
-  # Authentisierung ist nicht vorgesehen, der Server vertraut dem Client
+  # NFS selbst meldet sich nicht an, der Server vertraut der Quelladresse.
+  # Dass sie echt ist, garantiert der WireGuard-Tunnel darunter.
   - sec=sys

@@ -38,6 +38,14 @@ terraform {
       source  = "hashicorp/local"
       version = "~> 2.5"
     }
+    #
+    # Nur für das Schlüsselpaar des NFS-Tunnels. Der private Teil entsteht im
+    # State und steht damit nirgends sonst.
+    #
+    wireguard = {
+      source  = "ojford/wireguard"
+      version = "0.4.1"
+    }
   }
 }
 
@@ -106,6 +114,22 @@ locals {
   # k8s/flux/storage/local-path/HelmRelease.yaml uebereinstimmen.
   #
   local_path_volume = "local-path"
+
+  #
+  # Der Tunnel ist optional (nfs_tunnel = null im lokalen Testlauf). Eine
+  # Liste statt eines leeren Patches, den der Provider ablehnen würde.
+  #
+  nfs_tunnel_patches = var.nfs_tunnel == null ? [] : [
+    templatefile("${path.module}/patches/nfs-tunnel.yaml.tftpl", {
+      private_key     = wireguard_asymmetric_key.nfs_tunnel[0].private_key
+      node_port       = var.nfs_tunnel.node_port
+      node_address    = var.nfs_tunnel.node_address
+      host_public_key = var.nfs_tunnel.host_public_key
+      host_endpoint   = var.nfs_tunnel.host_endpoint
+      host_address    = var.nfs_tunnel.host_address
+      host_ip         = split(":", var.nfs_tunnel.host_endpoint)[0]
+    })
+  ]
 
   cilium_values = templatefile("${path.module}/values/cilium.yaml.tftpl", {
     hubble_relay_enabled = var.hubble_relay_enabled
@@ -453,6 +477,19 @@ resource "libvirt_domain" "cp1" {
 }
 
 # =====================================================================
+# NFS-Tunnel
+# =====================================================================
+
+#
+# Schlüsselpaar des Nodes für den WireGuard-Tunnel zum NFS-Server. Der
+# öffentliche Teil geht als Output an den Host, der private nur in die
+# Machine-Config.
+#
+resource "wireguard_asymmetric_key" "nfs_tunnel" {
+  count = var.nfs_tunnel == null ? 0 : 1
+}
+
+# =====================================================================
 # Cluster
 # =====================================================================
 
@@ -474,7 +511,10 @@ data "talos_machine_configuration" "controlplane" {
   talos_version      = var.talos_version
   kubernetes_version = var.kubernetes_version
 
-  config_patches = [
+  #
+  # flatten, weil local.nfs_tunnel_patches eine Liste ist - leer ohne Tunnel.
+  #
+  config_patches = flatten([
     # Installationsziel und Installer-Image mit denselben Extensions wie die ISO.
     yamlencode({
       machine = {
@@ -490,6 +530,7 @@ data "talos_machine_configuration" "controlplane" {
       node_name   = local.node_name
       node_mac    = var.node_mac
       lan_ip      = var.lan_ip
+      lan_cidr    = var.lan_cidr
       lan_prefix  = local.lan_prefix
       lan_gateway = var.lan_gateway
       dns_servers = var.dns_servers
@@ -514,6 +555,7 @@ data "talos_machine_configuration" "controlplane" {
     templatefile("${path.module}/patches/cluster.yaml.tftpl", {
       pod_subnet     = var.pod_subnet
       service_subnet = var.service_subnet
+      lan_cidr       = var.lan_cidr
     }),
 
     #
@@ -535,6 +577,9 @@ data "talos_machine_configuration" "controlplane" {
       lan_cidr      = var.lan_cidr
     }),
 
+    # WireGuard zum NFS-Server
+    local.nfs_tunnel_patches,
+
     # Cilium. Muss der letzte Patch sein - nicht technisch, sondern damit die
     # lesbaren Patches oben nicht hinter dem gerenderten Chart verschwinden.
     yamlencode({
@@ -547,7 +592,7 @@ data "talos_machine_configuration" "controlplane" {
         ]
       }
     }),
-  ]
+  ])
 }
 
 #

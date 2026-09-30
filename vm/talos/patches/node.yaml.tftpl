@@ -24,6 +24,16 @@ machine:
           - network: 0.0.0.0/0
             gateway: ${lan_gateway}
 
+  #
+  # Mit dem NFS-Tunnel hat der Node zwei Adressen, und ohne Vorgabe nimmt das
+  # Kubelet die Tunnel-Adresse als InternalIP - sie sortiert vor dem LAN. Dann
+  # zeigen `kubernetes.default`, Metriken und Cilium-Health auf den Tunnel.
+  #
+  kubelet:
+    nodeIP:
+      validSubnets:
+        - ${lan_cidr}
+
   time:
     disabled: false
     servers:

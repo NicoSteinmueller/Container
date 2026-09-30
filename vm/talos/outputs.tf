@@ -44,3 +44,8 @@ output "talosconfig" {
   value       = data.talos_client_configuration.this.talos_config
   sensitive   = true
 }
+
+output "nfs_tunnel_public_key" {
+  description = "Öffentlicher WireGuard-Schlüssel des Nodes - gehört auf dem NFS-Server in den Peer. null ohne nfs_tunnel."
+  value       = one(wireguard_asymmetric_key.nfs_tunnel[*].public_key)
+}

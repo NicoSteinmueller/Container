@@ -270,6 +270,59 @@ variable "admin_sources" {
 }
 
 #
+# NFS über WireGuard
+#
+variable "nfs_tunnel" {
+  description = <<-EOT
+    WireGuard-Tunnel zum NFS-Server. NFS selbst kennt mit `sec=sys` keine
+    Anmeldung, der Export vertraut der Quelladresse. Durch den Tunnel steht
+    der Export auf node_address, und ein Paket von dort nimmt der Host nur an,
+    wenn es mit dem Schlüssel des Nodes signiert ist.
+
+    Das Schlüsselpaar des Nodes erzeugt dieses Modul (Output
+    `nfs_tunnel_public_key`); der private Teil liegt nur im State. Die Werte
+    des Hosts kommen aus dessen WireGuard-Konfiguration:
+
+      host_public_key  öffentlicher Schlüssel des Tunnels auf dem Host
+      host_endpoint    <LAN-Adresse>:<Port>, auf dem der Host lauscht
+      host_address     Tunnel-Adresse des Hosts - `server` der StorageClass
+      node_address     Tunnel-Adresse des Nodes mit Präfix - auf sie gehört
+                       der Export
+      node_port        UDP-Port des Nodes, damit der Host auch von sich aus
+                       verbinden kann
+
+    null: kein Tunnel, etwa für den lokalen Testlauf.
+  EOT
+  type = object({
+    host_public_key = string
+    host_endpoint   = string
+    host_address    = string
+    node_address    = string
+    node_port       = optional(number, 51820)
+  })
+  default = null
+
+  validation {
+    condition     = var.nfs_tunnel == null || can(regex("^[A-Za-z0-9+/]{43}=$", var.nfs_tunnel.host_public_key))
+    error_message = "host_public_key muss ein WireGuard-Schlüssel sein (44 Zeichen Base64, endet auf =)."
+  }
+
+  validation {
+    condition     = var.nfs_tunnel == null || can(regex("^[0-9.]+:[0-9]+$", var.nfs_tunnel.host_endpoint))
+    error_message = "host_endpoint muss <IPv4>:<Port> sein, z. B. 192.168.1.3:51821."
+  }
+
+  validation {
+    condition = var.nfs_tunnel == null || (
+      can(cidrhost("${var.nfs_tunnel.host_address}/32", 0)) &&
+      can(cidrhost(var.nfs_tunnel.node_address, 0)) &&
+      length(split("/", var.nfs_tunnel.node_address)) == 2
+    )
+    error_message = "host_address ist eine Adresse ohne Präfix, node_address eine mit, z. B. 10.253.0.1 und 10.253.0.2/24."
+  }
+}
+
+#
 # Cluster-Netz
 #
 variable "pod_subnet" {

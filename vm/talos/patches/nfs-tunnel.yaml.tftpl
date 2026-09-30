@@ -1,0 +1,36 @@
+# WireGuard-Tunnel zum NFS-Server.
+#
+# Der Export auf dem Host steht auf ${node_address}, und Pakete von dort nimmt der
+# Host nur an, wenn sie mit dem Schlüssel dieses Nodes signiert sind.
+#
+apiVersion: v1alpha1
+kind: WireguardConfig
+name: wg-nfs
+privateKey: ${private_key}
+listenPort: ${node_port}
+peers:
+  - publicKey: ${host_public_key}
+    endpoint: ${host_endpoint}
+    # Nur der Host - der Tunnel ist kein Weg ins LAN.
+    allowedIPs:
+      - ${host_address}/32
+    # hält den Conntrack-Eintrag frisch und merkt einen Host-Neustart
+    persistentKeepaliveInterval: 25s
+# Standard für WireGuard ist 1420
+mtu: 1420
+addresses:
+  - address: ${node_address}
+
+---
+#
+# Der Listen-Port, nur für den Host.
+#
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: wireguard-nfs
+portSelector:
+  ports:
+    - ${node_port}
+  protocol: udp
+ingress:
+  - subnet: ${host_ip}/32

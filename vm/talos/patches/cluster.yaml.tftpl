@@ -5,6 +5,12 @@ cluster:
   #
   allowSchedulingOnControlPlanes: true
 
+  # Aus demselben Grund wie machine.kubelet.nodeIP in node.yaml.tftpl: etcd
+  # soll sich nicht unter der Tunnel-Adresse ankündigen.
+  etcd:
+    advertisedSubnets:
+      - ${lan_cidr}
+
   network:
     podSubnets:
       - ${pod_subnet}

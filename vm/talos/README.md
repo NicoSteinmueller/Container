@@ -14,7 +14,7 @@ Konkrete Werte — Host, Adressen, Interface, Pool — stehen in
 | Netz | macvtap auf `lan_macvtap_dev` |
 | Image | Image Factory, Talos + `qemu-guest-agent` |
 | CNI | Cilium, als Inline-Manifest in der Machine-Config — kein kube-proxy |
-| Speicher | `local-path` auf `vdb` als Default, NFS zum Unraid-Host daneben |
+| Speicher | `local-path` auf `vdb` als Default, NFS zum Unraid-Host daneben — durch WireGuard |
 
 Versionen und Größen sind in [variables.tf](variables.tf) gepinnt, damit ein
 Neuaufbau dieselbe Version ergibt wie der laufende Cluster.
@@ -459,6 +459,55 @@ Für später vorgesehen:
 
 Bewusst nicht vorgesehen: **Die Platten der VM werden nicht verschlüsselt.**
 
+## NFS über WireGuard
+
+NFS mit `sec=sys` kennt keine Anmeldung: Der Export vertraut der
+Quelladresse. Deshalb läuft NFS durch einen WireGuard-Tunnel, und 
+der Export steht auf der Tunnel-Adresse des Nodes.
+
+| | Unraid | Node |
+|---|---|---|
+| Tunnel-Adresse | `10.253.0.1` — `server` der StorageClass | `10.253.0.2/24` — Ziel der Export-Regel |
+| UDP-Port | wie Unraid ihn vorgibt | Port `51820` |
+| Schlüssel | erzeugt Unraid | erzeugt dieses Modul, privat nur im State |
+
+### Einrichten
+
+1. **eigener Tunnel in Unraid:** *Settings → VPN Manager → Add Tunnel*
+2. **tfvars:** den Block `nfs_tunnel` befüllen
+3. **Node:** zuerst nur den Schlüssel, dann alles. In einem einzigen Lauf
+   bricht der Talos-Provider mit `Provider produced inconsistent final plan`
+   ab: Er rechnet den Hash der Machine-Config voraus, bevor der Schlüssel
+   existiert. Harmlos - ein zweiter Lauf geht durch.
+
+   ```bash
+   tf apply -target='wireguard_asymmetric_key.nfs_tunnel[0]'
+   tf apply
+   tf output -raw nfs_tunnel_public_key
+   ```
+
+4. **Peer in Unraid** im Tunnel aus Schritt 1: Typ *Server to server access*,
+   Peer-Adresse, Endpoint `192.168.178.230:51820`, als
+   öffentlichen Schlüssel den aus Schritt 3 — keinen erzeugen lassen, das
+   Feld für den privaten Schlüssel bleibt leer. Tunnel aktivieren,
+   *Autostart* an.
+5. **Prüfen:**
+
+   ```bash
+   kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg status | grep KubeProxyReplacement
+   ```
+
+   Steht in der letzten Zeile auch `wg-nfs`, hängt Cilium seine
+   BPF-Programme mit daran.
+
+6. **Export:** *Shares → k8s → NFS Security* die Regel
+   `10.253.0.2(sec=sys,rw,no_root_squash)`
+
+
+
+Ein neues Schlüsselpaar (`tf apply -replace='wireguard_asymmetric_key.nfs_tunnel[0]'`)
+heißt: Peer in Unraid nachziehen.
+
 ## macvtap: wer wen erreicht
 
 Ist auf dem Host Bridging abgeschaltet — `ip -br link` zeigt dann kein `br0` —,
@@ -502,7 +551,8 @@ kubectl run t --rm -i --restart=Never --image=busybox:1.36 \
 Damit sind NFS-Exporte des Hypervisors aus dem Cluster erreichbar — der
 Speicher in
 [k8s/flux/storage/nfs-storage/](../../k8s/flux/storage/nfs-storage/)
-steht auf genau diesem Befund.
+steht auf genau diesem Befund. Der WireGuard-Tunnel ändert daran nichts:
+Seine UDP-Pakete nehmen denselben Weg.
 
 Er ist allerdings geliehen: Er hängt an einer Unraid-Einstellung, die nichts
 mit diesem Repo zu tun hat und die niemand hier bemerkt, wenn sie jemand

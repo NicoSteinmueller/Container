@@ -1,7 +1,8 @@
 # NFS zum Host - der Weg an die Dateien
 #
 # Es mountet das kubelet, nicht der Pod: Die Exporte auf dem Host stehen
-# deshalb auf der Node-Adresse, nicht auf dem Pod-CIDR.
+# deshalb auf der Tunnel-Adresse des Nodes (WireGuard, vm/talos), nicht auf
+# dem Pod-CIDR.
 #
 # Hier steht bewusst keine Egress-Policy: Beide Pods des Treibers laufen auf
 # hostNetwork und haben damit die Identität des Nodes - auf die greift keine
