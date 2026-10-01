@@ -219,8 +219,7 @@ services:
       - "traefik.http.routers.kopia-${INSTANCE}.entrypoints=websecure"
       - "traefik.http.routers.kopia-${INSTANCE}.middlewares=local-only"
       - "traefik.http.services.kopia-${INSTANCE}.loadbalancer.server.port=51515"
-<UTC-Zeit>:
-  dump:
+
 networks:
   proxy:
     external: true
