@@ -1,57 +1,26 @@
 cluster:
-  #
-  # Ein-Node-Cluster: Sonst trägt Talos den NoSchedule-Taint auf die Control
-  # Plane, und kein Workload hätte einen Node. Mit Workern gehört das weg.
-  #
-  allowSchedulingOnControlPlanes: true
-
-  # Aus demselben Grund wie machine.kubelet.nodeIP in node.yaml.tftpl: etcd
+  # Aus demselben Grund wie nodeIP im KubeNodeConfig (node.yaml.tftpl): etcd
   # soll sich nicht unter der Tunnel-Adresse ankündigen.
   etcd:
     advertisedSubnets:
       - ${lan_cidr}
-
-  network:
-    podSubnets:
-      - ${pod_subnet}
-    serviceSubnets:
-      - ${service_subnet}
-
-    #
-    # Kein Flannel: Cilium kommt als Inline-Manifest in die Machine-Config
-    # (siehe main.tf). Bis Talos die Manifeste ausgerollt hat, bleibt der Node
-    # NotReady - genau darauf wartet der Health-Check am Ende des Applys.
-    #
-    cni:
-      name: none
-
-  #
-  # Kein kube-proxy. Cilium übernimmt Services im eBPF-Datapath
-  # (kubeProxyReplacement in values/cilium.yaml.tftpl) - beides gehört
-  # zusammen, sonst behandeln zwei Datapfade dieselben Services.
-  #
-  proxy:
-    disabled: true
-
-  #
-  # Discovery komplett aus. Beide Registries scheiden aus:
-  #
-  #   service    - meldet Cluster-ID, Node-IPs und Talos-Version an den
-  #                öffentlichen discovery.talos.dev.
-  #
-  #   kubernetes - deprecated und "not compatible with Kubernetes 1.32+"
-  #
-  # Nötig ist Discovery nicht, Nodes treten über ihre Machine-Config bei; es
-  # entfallen nur `talosctl get members` und KubeSpan.
-  #
-  # Das globale enabled:false allein stoppt den KubernetesPullController nicht,
-  # die Registries müssen einzeln aus.
-  #
-  discovery:
-    enabled: false
-
-    registries:
-      kubernetes:
-        disabled: true
-      service:
-        disabled: true
+---
+apiVersion: v1alpha1
+kind: KubeNetworkConfig
+podSubnets:
+  - ${pod_subnet}
+serviceSubnets:
+  - ${service_subnet}
+---
+#
+# Kein kube-proxy. Cilium übernimmt Services im eBPF-Datapath
+# (kubeProxyReplacement in values/cilium.yaml.tftpl) - beides gehört
+# zusammen, sonst behandeln zwei Datapfade dieselben Services.
+#
+apiVersion: v1alpha1
+kind: KubeProxyConfig
+enabled: false
+#
+# Kein Flannel und keine Discovery: beides sind Dokumente, die Talos selbst
+# anlegt, und sie zu entfernen steht in defaults.yaml.
+#

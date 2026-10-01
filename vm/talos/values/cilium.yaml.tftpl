@@ -44,7 +44,7 @@ securityContext:
 
 #
 # kube-proxy-Replacement. Talos startet den Cluster deshalb ohne kube-proxy
-# (cluster.proxy.disabled in patches/cluster.yaml.tftpl) - beides gehört
+# (KubeProxyConfig in patches/cluster.yaml.tftpl) - beides gehört
 # zusammen, sonst behandeln zwei Datapfade dieselben Services.
 #
 # Nebeneffekt, auf den später ein Ingress-Controller baut: Ohne kube-proxy
@@ -54,7 +54,7 @@ kubeProxyReplacement: true
 
 #
 # KubePrism: der clusterinterne Endpoint der Kubernetes-API auf localhost
-# (machine.features.kubePrism in patches/node.yaml.tftpl). Bewusst statt der
+# (KubePrismConfig, von Talos in der Voreinstellung angelegt). Bewusst statt der
 # Node-IP - so hängt Cilium nicht an einer Adresse, die sich mit dem Netz
 # ändert, und der Weg zur API verlässt den Node nicht.
 #

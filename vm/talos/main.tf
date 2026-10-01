@@ -541,14 +541,22 @@ data "talos_machine_configuration" "controlplane" {
   # flatten, weil local.nfs_tunnel_patches eine Liste ist - leer ohne Tunnel.
   #
   config_patches = flatten([
+    # Was Talos selbst erzeugt und hier nicht passt. Muss vor node.yaml.tftpl
+    # und cluster.yaml.tftpl kommen, die zwei der Dokumente neu anlegen.
+    file("${path.module}/patches/defaults.yaml"),
+
     # Installationsziel und Installer-Image mit denselben Extensions wie die ISO.
     yamlencode({
-      machine = {
-        install = {
-          disk  = var.install_disk
-          image = data.talos_image_factory_urls.this.urls.installer
-          wipe  = false
+      apiVersion = "v1alpha1"
+      kind       = "UnattendedInstallConfig"
+      installer = {
+        image = data.talos_image_factory_urls.this.urls.installer
+      }
+      provisioning = {
+        diskSelector = {
+          match = "disk.dev_path == \"${var.install_disk}\""
         }
+        wipe = false
       }
     }),
 
@@ -562,10 +570,6 @@ data "talos_machine_configuration" "controlplane" {
       dns_servers = var.dns_servers
       ntp_servers = var.ntp_servers
     }),
-
-    # Muss nach node.yaml.tftpl kommen: räumt das von Talos erzeugte
-    # HostnameConfig-Dokument weg, das mit dem dortigen Hostnamen kollidiert.
-    file("${path.module}/patches/hostname.yaml"),
 
     #
     # Die zweite Disk als User-Volume. Eigenes Dokument, kein Merge in
@@ -609,14 +613,10 @@ data "talos_machine_configuration" "controlplane" {
     # Cilium. Muss der letzte Patch sein - nicht technisch, sondern damit die
     # lesbaren Patches oben nicht hinter dem gerenderten Chart verschwinden.
     yamlencode({
-      cluster = {
-        inlineManifests = [
-          {
-            name     = "cilium"
-            contents = data.helm_template.cilium.manifest
-          }
-        ]
-      }
+      apiVersion = "v1alpha1"
+      kind       = "KubeInlineManifestConfig"
+      name       = "cilium"
+      manifest   = data.helm_template.cilium.manifest
     }),
   ])
 }

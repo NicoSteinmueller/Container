@@ -201,7 +201,7 @@ virsh -c "$libvirt_uri" console talos-cp1
 ## Cilium
 
 Das Chart wird beim `apply` lokal mit `helm template` gerendert und als
-`cluster.inlineManifests` in die Machine-Config gelegt — Werte in
+`KubeInlineManifestConfig` in die Machine-Config gelegt — Werte in
 [values/cilium.yaml.tftpl](values/cilium.yaml.tftpl).
 
 Der Grund ist die Reihenfolge: Ohne CNI bleibt der Node `NotReady`, und ein
@@ -212,7 +212,7 @@ Erfolg. Als Teil der Machine-Config gehört das CNI zur Maschine.
 Was daran hängt:
 
 - **kein kube-proxy** — Cilium macht Services im eBPF-Datapath
-  (`kubeProxyReplacement`), passend dazu `cluster.proxy.disabled` in
+  (`kubeProxyReplacement`), passend dazu `KubeProxyConfig` mit `enabled: false` in
   [patches/cluster.yaml.tftpl](patches/cluster.yaml.tftpl). Beides gehört
   zusammen.
 - **API über KubePrism** (`localhost:7445`) statt über die Node-Adresse — der
@@ -461,9 +461,19 @@ Apply noch auf der alten Version.
   VM in Ruhe (siehe `lifecycle` an `libvirt_volume.talos_iso`); er schreibt
   nur die Machine-Config mit dem neuen Installer-Image.
 - **`machine_config_contract` bleibt stehen.** Er legt das Format der
-  Machine-Config fest, nicht die Version auf dem Node. Ab 1.14 kollidiert das
-  neue Format mit den v1alpha1-Patches unter [patches/](patches/) — heben erst,
-  wenn die umgezogen sind.
+  Machine-Config fest, nicht die Version auf dem Node, und hebt sich nicht mit
+  `talos_version`. Ein neuer Vertrag hat schon einmal das Format umgebaut
+  (1.14: eigene Dokumente statt v1alpha1-Feldern) und bringt neue
+  Voreinstellungen mit. Heben ist eine eigene Aufgabe: Patches anpassen, neue
+  Voreinstellungen gegen [patches/defaults.yaml](patches/defaults.yaml) prüfen,
+  vorher `talosctl apply-config --dry-run` gegen den Node. Auch wenn der
+  Dry-Run „without a reboot“ meldet: Der kube-apiserver startet neu, und
+  Controller-Manager, Scheduler, Flux und die Operatoren laufen danach einige
+  Minuten in den CrashLoop-Backoff (1.13 → 1.14: etwa zwei Minuten bis alles
+  grün). Eine Flux-Kustomization, die in dieser Zeit am Webhook eines
+  Operators scheitert, wartet bis zu ihrem Intervall - anstoßen mit
+  `kubectl -n flux-system annotate --overwrite kustomization <name>
+  reconcile.fluxcd.io/requestedAt="$(date +%s)"`.
 
 Cilium wird nicht mit `helm upgrade` aktualisiert, sondern über
 `cilium_version` in [variables.tf](variables.tf) und ein `tf apply` — das

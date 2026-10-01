@@ -3,58 +3,84 @@
 # ist zugleich Kubernetes-API-Endpoint und steht in kubeconfig wie talosconfig
 # - eine geliehene Adresse wäre dort falsch, sobald ein Lease ausbleibt.
 #
-# Zugeordnet über die MAC statt über den Interface-Namen, der an der
-# PCI-Reihenfolge hängt. Dieselbe MAC steht in der libvirt-Domain.
+# Was vom v1alpha1-Dokument übrig bleibt. Für die beiden Schalter gibt es noch
+# kein eigenes Dokument.
 #
 machine:
-  network:
-    hostname: ${node_name}
-
-    nameservers:
-%{ for ns in dns_servers ~}
-      - ${ns}
-%{ endfor ~}
-
-    interfaces:
-      - deviceSelector:
-          hardwareAddr: "${node_mac}"
-        addresses:
-          - ${lan_ip}/${lan_prefix}
-        routes:
-          - network: 0.0.0.0/0
-            gateway: ${lan_gateway}
-
-  #
-  # Mit dem NFS-Tunnel hat der Node zwei Adressen, und ohne Vorgabe nimmt das
-  # Kubelet die Tunnel-Adresse als InternalIP - sie sortiert vor dem LAN. Dann
-  # zeigen `kubernetes.default`, Metriken und Cilium-Health auf den Tunnel.
-  #
-  kubelet:
-    nodeIP:
-      validSubnets:
-        - ${lan_cidr}
-
-  time:
-    disabled: false
-    servers:
-%{ for ntp in ntp_servers ~}
-      - ${ntp}
-%{ endfor ~}
-
   features:
-    #
-    # Lokaler Endpoint der Kubernetes-API für hostNetwork-Komponenten: Der Weg
-    # verlässt den Node nicht und überlebt einen Adresswechsel.
-    #
-    kubePrism:
-      enabled: true
-      port: 7445
-
     # apid prüft die ExtKeyUsage der Client-Zertifikate; sonst wäre jedes von
     # der Talos-CA signierte Zertifikat auch ein Admin-Zertifikat.
     apidCheckExtKeyUsage: true
 
-    # Kein Weg von einem Pod zur Talos-API. Der Cluster darf die Maschine nicht
-    # konfigurieren, auf der er läuft.
-    kubernetesTalosAPIAccess:
-      enabled: false
+  #
+  # Kein Weg von einem Pod zur Talos-API: Es gibt bewusst kein
+  # KubeTalosAPIAccessConfig-Dokument, und ohne es ist der Zugang zu. Der
+  # Cluster darf die Maschine nicht konfigurieren, auf der er läuft.
+  #
+  # KubePrism (lokaler Endpoint der Kubernetes-API für hostNetwork-
+  # Komponenten, 127.0.0.1:7445) bringt Talos als eigenes Dokument mit, in
+  # der Voreinstellung genau so - hier steht dafür nichts mehr.
+  #
+---
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: ${node_name}
+---
+#
+# Zugeordnet über die MAC statt über den Interface-Namen, der an der
+# PCI-Reihenfolge hängt. Dieselbe MAC steht in der libvirt-Domain.
+#
+# permanent_addr statt der aktuellen Adresse: Die ist änderbar, die
+# permanente nicht. virtio meldet beide gleich.
+#
+apiVersion: v1alpha1
+kind: LinkAliasConfig
+name: lan
+selector:
+  match: mac(link.permanent_addr) == "${lower(node_mac)}"
+---
+apiVersion: v1alpha1
+kind: LinkConfig
+name: lan
+addresses:
+  - address: ${lan_ip}/${lan_prefix}
+routes:
+  - gateway: ${lan_gateway}
+---
+apiVersion: v1alpha1
+kind: ResolverConfig
+nameservers:
+%{ for ns in dns_servers ~}
+  - address: ${ns}
+%{ endfor ~}
+---
+apiVersion: v1alpha1
+kind: TimeSyncConfig
+ntp:
+  servers:
+%{ for ntp in ntp_servers ~}
+    - ${ntp}
+%{ endfor ~}
+---
+#
+# Ersetzt das von Talos erzeugte Dokument (entfernt in defaults.yaml). Die
+# beiden Labels sind dieselben, die Talos setzt.
+#
+apiVersion: v1alpha1
+kind: KubeNodeConfig
+#
+# Mit dem NFS-Tunnel hat der Node zwei Adressen, und ohne Vorgabe nimmt das
+# Kubelet die Tunnel-Adresse als InternalIP - sie sortiert vor dem LAN. Dann
+# zeigen `kubernetes.default`, Metriken und Cilium-Health auf den Tunnel.
+#
+nodeIP:
+  validSubnets:
+    - ${lan_cidr}
+labels:
+  node-role.kubernetes.io/control-plane: ""
+  node.kubernetes.io/exclude-from-external-load-balancers: ""
+#
+# Ein-Node-Cluster: ohne `taints`. Talos setzt sonst den NoSchedule-Taint auf
+# die Control Plane, und kein Workload hätte einen Node. Mit Workern gehört er
+# wieder her.
+#

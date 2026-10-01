@@ -1,0 +1,70 @@
+#
+# Was Talos bei der Config-Erzeugung selbst anlegt und hier nicht passt.
+#
+# Muss vor den übrigen Patches kommen: Zwei der Dokumente legen node.yaml.tftpl
+# und cluster.yaml.tftpl danach neu an. Talos führt einen Patch in ein
+# vorhandenes Dokument zusammen - aus `auto: stable` plus `hostname` würde ein
+# ungültiges HostnameConfig, und ein Eintrag in den Taints des KubeNodeConfig
+# lässt sich per Merge nicht entfernen. Deshalb erst weg, dann neu.
+#
+
+#
+# HostnameConfig mit `auto: stable` - der feste Hostname steht in
+# node.yaml.tftpl. Er wird zum Kubernetes-Node-Namen und geht in die
+# Kubelet-Zertifikate und in etcd ein.
+#
+apiVersion: v1alpha1
+kind: HostnameConfig
+$patch: delete
+---
+#
+# KubeNodeConfig trägt den NoSchedule-Taint der Control Plane. Ersatz ohne
+# Taint in node.yaml.tftpl.
+#
+apiVersion: v1alpha1
+kind: KubeNodeConfig
+$patch: delete
+---
+#
+# Kein Flannel: Cilium kommt als Inline-Manifest (main.tf). Ohne dieses
+# Dokument rollt Talos keinen CNI aus - das frühere `cni: name: none`.
+#
+apiVersion: v1alpha1
+kind: KubeFlannelCNIConfig
+$patch: delete
+---
+#
+# Discovery aus. Der Dienst meldet Cluster-ID, Node-IPs und Talos-Version an
+# den öffentlichen discovery.talos.dev. Nötig ist er nicht, Nodes treten über
+# ihre Machine-Config bei; es entfallen nur `talosctl get members` und
+# KubeSpan. Die Kubernetes-Registry gibt es im neuen Format nicht mehr.
+#
+apiVersion: v1alpha1
+kind: DiscoveryServiceConfig
+name: default
+$patch: delete
+---
+#
+# Die folgenden drei sind neue Voreinstellungen des 1.14-Formats, die der
+# Cluster bisher nicht hatte. Der Umzug ins neue Format soll nichts am
+# Verhalten ändern - einschalten ist jeweils eine eigene Entscheidung:
+#
+#   FilesystemTrimConfig    wöchentliches fstrim; auf den qcow2-Disks gäbe das
+#                           Platz im Pool zurück
+#   workloadIsolation       Container-Plane in einem eigenen Namespace -
+#                           ungetestet mit Cilium und hostPath
+#   EPHEMERAL secure        nosuid,nodev auf /var, braucht einen Reboot
+#
+apiVersion: v1alpha1
+kind: FilesystemTrimConfig
+$patch: delete
+---
+apiVersion: v1alpha1
+kind: SecurityProfileConfig
+workloadIsolation: false
+---
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+mount:
+  secure: false
