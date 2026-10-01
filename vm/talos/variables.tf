@@ -17,6 +17,20 @@ variable "talos_version" {
   default     = "v1.14.2"
 }
 
+variable "machine_config_contract" {
+  description = <<-EOT
+    Talos-Version, nach deren Format die Machine-Config erzeugt wird - nicht die
+    Version auf dem Node. Ein neuerer Node nimmt Configs älterer Verträge an.
+
+    Bewusst getrennt von talos_version: Ab v1.14 zerlegt Talos die Config in
+    eigene Dokumente (KubeNetworkConfig, KubeProxyConfig, ...), die sich mit
+    den v1alpha1-Patches unter patches/ beißen. Erst heben, wenn die Patches
+    auf die neuen Dokumente umgezogen sind. Renovate fasst den Wert nicht an.
+  EOT
+  type        = string
+  default     = "v1.13"
+}
+
 variable "kubernetes_version" {
   description = "Kubernetes-Version im Cluster."
   type        = string

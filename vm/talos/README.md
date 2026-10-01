@@ -429,22 +429,46 @@ Ohne `-var` läuft der Health-Check in 20 min Timeout, wenn VM aus ist.
 
 ## Updates
 
+Renovate hebt `talos_version` und `kubernetes_version` in
+[variables.tf](variables.tf) gemeinsam mit talosctl in einem PR. Nach dem Merge
+in dieser Reihenfolge — **erst der Node, dann `tf apply`**:
+
 ```bash
-talosctl etcd snapshot db.snapshot                                    # vorher
-talosctl upgrade --preserve --image "$(../../tools/tf output -raw installer_image)"
-talosctl upgrade-k8s --to <kubernetes_version>
+# talosctl auf den neuen Pin bringen (ansible/tools)
+cd vm/talos
+talosctl etcd snapshot db.snapshot
+talosctl -n <node-ip> upgrade --drain=false \
+  --image "factory.talos.dev/metal-installer/$(../../tools/tf output -raw schematic_id):<talos_version>"
+talosctl -n <node-ip> upgrade-k8s --to <kubernetes_version>
+../../tools/tf apply
 ```
+
+Warum diese Reihenfolge: Der Apply schreibt eine Machine-Config, die die neue
+Version voraussetzt. Ein Node auf der alten lehnt sie ab — so geschehen bei
+1.13 → 1.14 (`DiscoveryServiceConfig not registered`). Aus demselben Grund
+kommt das Image nicht aus `tf output installer_image`: Der Output steht bis zum
+Apply noch auf der alten Version.
+
+- **`--drain=false`:** Bei einem Node haben die Pods nirgends hin. Der Drain
+  evakuiert trotzdem alles und bleibt dann am PodDisruptionBudget von CNPG
+  hängen (`keycloak-db-primary`, eine Instanz, 0 erlaubte Unterbrechungen) —
+  zurück bleibt ein abgesperrter Node, auf dem alles `Pending` steht. Ist das
+  passiert: `kubectl uncordon <node>`. `--preserve` ist seit 1.14 nur noch ein
+  Legacy-Flag.
+- **Schematic-ID im Image:** Mit einem nackten `ghcr.io/siderolabs/installer`
+  gehen die System-Extensions verloren.
+- **Der Apply baut die VM nicht neu.** Eine neue `talos_version` lässt ISO und
+  VM in Ruhe (siehe `lifecycle` an `libvirt_volume.talos_iso`); er schreibt
+  nur die Machine-Config mit dem neuen Installer-Image.
+- **`machine_config_contract` bleibt stehen.** Er legt das Format der
+  Machine-Config fest, nicht die Version auf dem Node. Ab 1.14 kollidiert das
+  neue Format mit den v1alpha1-Patches unter [patches/](patches/) — heben erst,
+  wenn die umgezogen sind.
 
 Cilium wird nicht mit `helm upgrade` aktualisiert, sondern über
 `cilium_version` in [variables.tf](variables.tf) und ein `tf apply` — das
 schreibt die Machine-Config neu, Talos rollt das Manifest nach. Renovate
 schlägt die Chart-Version vor.
-
-`--preserve` ist bei einem Single-Node-Cluster Pflicht. Das `installer_image`
-enthält die richtige Schematic-ID — mit einem nackten
-`ghcr.io/siderolabs/installer` gehen die System-Extensions verloren. Danach
-`talos_version` bzw. `kubernetes_version` in [variables.tf](variables.tf)
-nachziehen.
 
 ## Was hier bewusst fehlt
 

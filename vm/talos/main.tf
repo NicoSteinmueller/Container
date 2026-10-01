@@ -261,6 +261,22 @@ resource "libvirt_volume" "talos_iso" {
       url = data.talos_image_factory_urls.this.urls.iso
     }
   }
+
+  #
+  # Eine neue talos_version ändert Name und URL, darf die ISO aber nicht
+  # ersetzen: Über replace_triggered_by in libvirt_domain.cp1 hinge daran die
+  # VM, und ein Talos-Update baute sie neu, statt über `talosctl upgrade` zu
+  # laufen. Gebraucht wird die ISO nur bis zur Installation, danach bootet die
+  # VM von Disk - welche Version sie trägt, ist dann gleich.
+  #
+  # Neu entsteht sie nur, wenn sich die Schematic ändert. Bei einem Neuaufbau
+  # nach destroy gelten Name und URL wie konfiguriert, also mit der aktuellen
+  # talos_version.
+  #
+  lifecycle {
+    ignore_changes       = [name, create]
+    replace_triggered_by = [talos_image_factory_schematic.this.id]
+  }
 }
 
 #
@@ -468,8 +484,9 @@ resource "libvirt_domain" "cp1" {
   # Medienwechsel an der laufenden Maschine, der Kernel bleibt der alte, und
   # Extensions wie Kernel-Parameter wirken scheinbar gar nicht.
   #
-  # Talos-Upgrades laufen dagegen über `talosctl upgrade`; hier geht es um eine
-  # geänderte Schematic, bevor der Cluster steht.
+  # Die ISO wechselt nur mit der Schematic (siehe libvirt_volume.talos_iso),
+  # nicht mit talos_version. Talos-Upgrades laufen über `talosctl upgrade`;
+  # hier geht es um eine geänderte Schematic, bevor der Cluster steht.
   #
   lifecycle {
     replace_triggered_by = [libvirt_volume.talos_iso]
@@ -501,6 +518,15 @@ resource "wireguard_asymmetric_key" "nfs_tunnel" {
 #
 resource "talos_machine_secrets" "this" {
   talos_version = var.talos_version
+
+  #
+  # Die Version zählt nur beim Erzeugen. Danach würde ein Wechsel - jedenfalls
+  # ein Downgrade, nachgemessen mit plan - die Secrets *ersetzen*: neue CAs,
+  # neuer Bootstrap-Token, der laufende Cluster spräche mit niemandem mehr.
+  #
+  lifecycle {
+    ignore_changes = [talos_version]
+  }
 }
 
 data "talos_machine_configuration" "controlplane" {
@@ -508,7 +534,7 @@ data "talos_machine_configuration" "controlplane" {
   cluster_endpoint   = local.cluster_endpoint
   machine_type       = "controlplane"
   machine_secrets    = talos_machine_secrets.this.machine_secrets
-  talos_version      = var.talos_version
+  talos_version      = var.machine_config_contract
   kubernetes_version = var.kubernetes_version
 
   #
