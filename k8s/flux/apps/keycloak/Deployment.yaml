@@ -1,0 +1,229 @@
+# Single Sign-On
+#
+# Zwei Hostnamen:
+#   keycloak.nico-steinmueller.de      öffentlich, nur Realms und Ressourcen
+#   keycloak.k8s.nico-steinmueller.de  Heimnetz, die Admin-Konsole
+#
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: keycloak
+spec:
+  selector:
+    app.kubernetes.io/name: keycloak
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: keycloak
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak
+        homelab.io/db-client: keycloak-db
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      # `kc.sh build` schreibt nach /opt/keycloak/lib/quarkus. Damit das
+      # Root-Dateisystem nur lesbar bleibt, liegt das Verzeichnis auf einem
+      # emptyDir: erst der Stand aus dem Image hinein - kc.sh braucht ihn, um
+      # überhaupt zu starten -, dann der Build mit den Optionen unten.
+      initContainers:
+        - name: quarkus-kopie
+          image: quay.io/keycloak/keycloak:26.7.5@sha256:37dbaf6f0722c9ec246335f36e1ef8b2e6cb960f7c27e0d8c615121a3d475a85
+          command: [/bin/bash, -c]
+          args:
+            - cp -R /opt/keycloak/lib/quarkus/. /quarkus/
+          securityContext: &containerSecurity
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          volumeMounts:
+            - name: quarkus
+              mountPath: /quarkus
+
+        - name: build
+          image: quay.io/keycloak/keycloak:26.7.5@sha256:37dbaf6f0722c9ec246335f36e1ef8b2e6cb960f7c27e0d8c615121a3d475a85
+          args:
+            - build
+          env:
+            - name: KC_DB
+              value: "postgres"
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+            - name: KC_METRICS_ENABLED
+              value: "true"
+          securityContext: *containerSecurity
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: quarkus
+              mountPath: /opt/keycloak/lib/quarkus
+            - name: data
+              mountPath: /opt/keycloak/data
+            - name: tmp
+              mountPath: /tmp
+
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.7.5@sha256:37dbaf6f0722c9ec246335f36e1ef8b2e6cb960f7c27e0d8c615121a3d475a85
+          args:
+            - start
+            - --optimized
+          ports:
+            - name: http
+              containerPort: 8080
+            # Health und Metriken, nie über einen Ingress
+            - name: management
+              containerPort: 9000
+          env:
+            - name: TZ
+              value: "Europe/Berlin"
+            # Ein Pod - kein Infinispan-Cluster, keine JGroups-Suche
+            - name: KC_CACHE
+              value: "local"
+
+            # Die Issuer-URL steckt in jedem Token und in jedem Client
+            - name: KC_HOSTNAME
+              value: "https://keycloak.nico-steinmueller.de"
+            # Die Admin-Konsole spricht die API über diese Adresse an
+            - name: KC_HOSTNAME_ADMIN
+              value: "https://keycloak.k8s.nico-steinmueller.de"
+
+            # TLS endet an Traefik. X-Forwarded-* nur von Pods
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_PROXY_HEADERS
+              value: "xforwarded"
+            - name: KC_PROXY_TRUSTED_ADDRESSES
+              value: "10.244.0.0/16"
+
+            # Datenbank aus dem Secret, das der CNPG-Operator anlegt.
+            - name: KC_DB_URL_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db-app
+                  key: host
+            - name: KC_DB_URL_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db-app
+                  key: port
+            - name: KC_DB_URL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db-app
+                  key: dbname
+            - name: KC_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db-app
+                  key: username
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db-app
+                  key: password
+            # TLS gegen die CA des CNPG-Clusters; das `?` gehört dazu.
+            - name: KC_DB_URL_PROPERTIES
+              value: "?sslmode=verify-full&sslrootcert=/pg-ca/ca.crt"
+
+            # Nur für den allerersten Start auf leerer Datenbank. Steht der
+            # master-Realm schon, ignoriert Keycloak beides.
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: username
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+          securityContext: *containerSecurity
+          startupProbe:
+            httpGet:
+              path: /health/started
+              port: management
+            periodSeconds: 5
+            # Beim ersten Start legt Liquibase das Schema an
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: management
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: management
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              # Keycloak nimmt 70 % davon als Heap
+              memory: 1536Mi
+          volumeMounts:
+            - name: quarkus
+              mountPath: /opt/keycloak/lib/quarkus
+            - name: data
+              mountPath: /opt/keycloak/data
+            - name: tmp
+              mountPath: /tmp
+            - name: pg-ca
+              mountPath: /pg-ca
+              readOnly: true
+      volumes:
+        - name: quarkus
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: data
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        # Nur ca.crt - das Secret enthält auch den Schlüssel der CA.
+        - name: pg-ca
+          secret:
+            secretName: keycloak-db-ca
+            items:
+              - key: ca.crt
+                path: ca.crt

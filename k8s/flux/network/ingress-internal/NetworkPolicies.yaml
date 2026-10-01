@@ -70,6 +70,15 @@ spec:
             - port: "4533"
               protocol: TCP
 
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: keycloak
+            app.kubernetes.io/name: keycloak
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
     # DNS für genau die Namen unten, zusätzlich zu `**.cluster.local`
     - toEndpoints:
         - matchLabels:

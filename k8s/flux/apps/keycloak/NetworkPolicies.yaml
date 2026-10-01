@@ -1,0 +1,78 @@
+# Netzwerkregeln im Namespace `keycloak`
+---
+# Eingehend: öffentlich die Realms, intern die Konsole.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-ingress
+  namespace: keycloak
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik-public
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik-internal
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# eingehend der Operator (5432 Rollen, 8000 Status) und die
+# gekennzeichneten Clients; ausgehend nur die API.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: keycloak-db
+  namespace: keycloak
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: keycloak-db
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: cnpg-system
+            app.kubernetes.io/name: cloudnative-pg
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+            - { port: "8000", protocol: TCP }
+    - fromEndpoints:
+        - matchLabels:
+            homelab.io/db-client: keycloak-db
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - { port: "6443", protocol: TCP }
+
+---
+# Die Gegenrichtung für alle Clients: Keycloak, Dump- und Restore-Job.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: keycloak-db-client
+  namespace: keycloak
+spec:
+  endpointSelector:
+    matchLabels:
+      homelab.io/db-client: keycloak-db
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: keycloak-db
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }

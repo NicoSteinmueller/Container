@@ -44,6 +44,13 @@ data:
             - websecure
           service: navidrome
 
+        # Keycloaks Admin-Konsole (KC_HOSTNAME_ADMIN)
+        keycloak:
+          rule: Host(`keycloak.k8s.nico-steinmueller.de`)
+          entryPoints:
+            - websecure
+          service: keycloak
+
         # Traefiks eigenes Dashboard. Erst Passwort, dann Umleitung
         dashboard:
           rule: Host(`traefik.k8s.nico-steinmueller.de`)
@@ -76,6 +83,10 @@ data:
           loadBalancer:
             servers:
               - url: http://navidrome.navidrome.svc.cluster.local:80
+        keycloak:
+          loadBalancer:
+            servers:
+              - url: http://keycloak.keycloak.svc.cluster.local:80
 
   middlewares.yaml: |
     http:

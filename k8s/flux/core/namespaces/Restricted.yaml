@@ -145,3 +145,14 @@ metadata:
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
+---
+# Single Sign-On. Öffentlich die Realms, die Admin-Konsole nur im Heimnetz.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keycloak
+  labels:
+    homelab.io/zone: public
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted

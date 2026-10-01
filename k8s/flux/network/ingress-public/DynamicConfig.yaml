@@ -21,12 +21,41 @@ data:
           entryPoints:
             - websecure
           service: ntfy
-          
+
+        # Single Sign-On: nur was Clients und Browser brauchen. /admin und der
+        # master-Realm gehen über ingress-internal, ebenso alles andere.
+        keycloak:
+          rule: >-
+            Host(`keycloak.nico-steinmueller.de`) &&
+            (PathPrefix(`/realms/`) || PathPrefix(`/resources/`) || PathPrefix(`/.well-known/`)) &&
+            !PathRegexp(`^/realms/master(/|$)`)
+          entryPoints:
+            - websecure
+          service: keycloak
+
+        # Abgeschickte Anmeldeformulare zusätzlich mit Stufe 2
+        keycloak-login:
+          rule: >-
+            Host(`keycloak.nico-steinmueller.de`) &&
+            PathRegexp(`^/realms/[^/]+/login-actions/`) &&
+            !PathRegexp(`^/realms/master(/|$)`)
+          # Über `keycloak`, der denselben Pfad auch trifft
+          priority: 1000
+          entryPoints:
+            - websecure
+          middlewares:
+            - rate-limit-auth
+          service: keycloak
+
       services:
         ntfy:
           loadBalancer:
             servers:
               - url: http://ntfy.ntfy.svc.cluster.local:80
+        keycloak:
+          loadBalancer:
+            servers:
+              - url: http://keycloak.keycloak.svc.cluster.local:80
 
   middlewares.yaml: |
     http:

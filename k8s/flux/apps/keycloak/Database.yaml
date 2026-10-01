@@ -1,0 +1,116 @@
+# Postgres für Keycloak
+#
+# Kein Passwort in Git: der Operator würfelt es und legt es mit Host, Port und
+# Datenbank als Secret `keycloak-db-app` ab.
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: keycloak-db
+  namespace: keycloak
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:58d19a1edb30d42fc2be3470ac7719caa496a4f3a7f1289472d6c3f6b04c8fd1
+  bootstrap:
+    initdb:
+      database: app
+      owner: app
+      localeCollate: en_US.utf8
+      localeCType: en_US.utf8
+
+  storage:
+    size: 5Gi
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { memory: 512Mi }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dumps
+  namespace: keycloak
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: nfs-unraid
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: keycloak-db-dump
+  namespace: keycloak
+spec:
+  schedule: "0 */12 * * *"
+  timeZone: Europe/Berlin
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            homelab.io/db-client: keycloak-db
+        spec:
+          restartPolicy: OnFailure
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 26
+            runAsGroup: 26
+            fsGroup: 26
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: dump
+              image: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:58d19a1edb30d42fc2be3470ac7719caa496a4f3a7f1289472d6c3f6b04c8fd1
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              env:
+                - { name: PGHOST,     valueFrom: { secretKeyRef: { name: keycloak-db-app, key: host } } }
+                - { name: PGPORT,     valueFrom: { secretKeyRef: { name: keycloak-db-app, key: port } } }
+                - { name: PGUSER,     valueFrom: { secretKeyRef: { name: keycloak-db-app, key: username } } }
+                - { name: PGPASSWORD, valueFrom: { secretKeyRef: { name: keycloak-db-app, key: password } } }
+                - { name: PGDATABASE, valueFrom: { secretKeyRef: { name: keycloak-db-app, key: dbname } } }
+                # TLS gegen die CA, die der Operator für diesen Cluster erzeugt
+                - { name: PGSSLMODE,     value: verify-full }
+                - { name: PGSSLROOTCERT, value: /pg-ca/ca.crt }
+              command: [/bin/bash, -c]
+              args:
+                - |
+                  set -euo pipefail
+                  out="/dumps/keycloak-$(date -u +%Y-%m-%dT%H%MZ).dump"
+
+                  # Kein halber Dump nach einem abgebrochenen Lauf
+                  trap 'rm -f "${out}.part"' EXIT
+
+                  # --compress=0: Kopia dedupliziert und komprimiert selbst
+                  pg_dump --format=custom --compress=0 \
+                          --no-owner --no-privileges --file="${out}.part"
+
+                  # mv ist atomar - Kopia sieht nie einen halben Dump
+                  mv "${out}.part" "${out}"
+
+                  pg_restore --list "${out}" > /dev/null
+
+                  # Lokale Vorhaltung; die Tiefe hat Kopia.
+                  ls -1t /dumps/keycloak-*.dump | tail -n +15 | xargs -r rm --
+              volumeMounts:
+                - { name: dumps, mountPath: /dumps }
+                - { name: pg-ca, mountPath: /pg-ca, readOnly: true }
+                - { name: tmp,   mountPath: /tmp }
+          volumes:
+            - name: dumps
+              persistentVolumeClaim:
+                claimName: dumps
+            - name: pg-ca
+              secret:
+                secretName: keycloak-db-ca
+                items:
+                  - { key: ca.crt, path: ca.crt }
+            - name: tmp
+              emptyDir: {}

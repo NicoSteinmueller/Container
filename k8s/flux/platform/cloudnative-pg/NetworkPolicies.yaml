@@ -40,15 +40,14 @@ spec:
     # Die Namespaces mit Postgres-Instanzen. Der Operator fragt den Instance
     # Manager jedes Pods nach dem Zustand (8000) und spricht für die
     # Rollenverwaltung Postgres selbst an (5432)
-    # Je migriertem Dienst kommt ein `toEndpoints`-Block hinzu:
-    #
-    #   - toEndpoints:
-    #       - matchLabels:
-    #           io.kubernetes.pod.namespace: nextcloud
-    #           cnpg.io/podRole: instance
-    #     toPorts:
-    #       - ports:
-    #           - port: "5432"
-    #             protocol: TCP
-    #           - port: "8000"
-    #             protocol: TCP
+    # Je migriertem Dienst kommt ein `toEndpoints`-Block hinzu.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: keycloak
+            cnpg.io/podRole: instance
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+            - port: "8000"
+              protocol: TCP
