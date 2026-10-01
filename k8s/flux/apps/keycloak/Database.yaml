@@ -79,11 +79,13 @@ spec:
                 # TLS gegen die CA, die der Operator für diesen Cluster erzeugt
                 - { name: PGSSLMODE,     value: verify-full }
                 - { name: PGSSLROOTCERT, value: /pg-ca/ca.crt }
+                # Für den Dateinamen.
+                - { name: TZ, value: Europe/Berlin }
               command: [/bin/bash, -c]
               args:
                 - |
                   set -euo pipefail
-                  out="/dumps/keycloak-$(date -u +%Y-%m-%dT%H%MZ).dump"
+                  out="/dumps/keycloak-$(date +%Y-%m-%dT%H%M%z).dump"
 
                   # Kein halber Dump nach einem abgebrochenen Lauf
                   trap 'rm -f "${out}.part"' EXIT
