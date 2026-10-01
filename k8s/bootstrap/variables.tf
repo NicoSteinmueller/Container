@@ -14,7 +14,7 @@ variable "flux_operator_chart_version" {
   description = "Chart-Version von flux-operator (ghcr.io/controlplaneio-fluxcd/charts)."
   type        = string
   # renovate: datasource=docker depName=ghcr.io/controlplaneio-fluxcd/charts/flux-operator
-  default = "0.57.0"
+  default = "0.61.0"
 }
 
 variable "flux_instance_chart_version" {
@@ -26,7 +26,7 @@ variable "flux_instance_chart_version" {
   EOT
   type        = string
   # renovate: datasource=docker depName=ghcr.io/controlplaneio-fluxcd/charts/flux-instance
-  default = "0.57.0"
+  default = "0.61.0"
 }
 
 variable "flux_version" {
