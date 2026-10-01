@@ -297,7 +297,17 @@
       ],
     },
     {
-      description: 'Traefik Plugins im Cluster: der Hash zieht nicht mit, ohne ihn startet Traefik nicht',
+      // Renovate hebt nur `version`; den `hash` daneben trägt der Workflow
+      // .github/workflows/traefik-plugin-hash.yml in den PR-Branch nach. Ohne
+      // passenden Hash startet Traefik nicht (abortOnPluginFailure).
+      //
+      // Deshalb hier keine ignoreTests: Renovate merged erst, wenn der Check
+      // `plugin-hash` grün ist. Majors bleiben über die Major-Regel beim Review.
+      //
+      // minimumReleaseAge, weil das Plugin jeden öffentlichen Request sieht:
+      // Ein frisches Release - zurückgezogen oder kompromittiert - soll nicht
+      // binnen einer Stunde im Ingress laufen.
+      description: 'Traefik Plugins im Cluster: Hash per Workflow, Automerge erst nach grünem Check',
       matchManagers: [
         'custom.regex',
       ],
@@ -307,10 +317,11 @@
       matchFileNames: [
         'k8s/flux/network/ingress-*/HelmRelease.yaml',
       ],
-      automerge: false,
+      ignoreTests: false,
+      minimumReleaseAge: '3 days',
       prCreation: 'immediate',
       prBodyNotes: [
-        '### 🔌 Traefik Plugin im Cluster - Hash nachtragen!\n\n🛑 **Nicht so mergen.** Renovate hebt nur `version`, der `hash` daneben bleibt alt. Mit `abortOnPluginFailure: true` startet Traefik dann nicht mehr - der öffentliche Ingress ist weg.\n\nVor dem Merge im PR-Branch den Hash ersetzen:\n\n```bash\ncurl -sL https://plugins.traefik.io/public/download/github.com/{{{depName}}}/{{{newVersion}}} | sha256sum\n```',
+        '### 🔌 Traefik Plugin im Cluster\n\nRenovate hebt nur `version`. Den `hash` daneben trägt der Workflow `traefik-plugin-hash` als eigenen Commit nach; erst wenn sein Check grün ist, wird automatisch gemergt. Mit falschem Hash startet Traefik nicht (`abortOnPluginFailure: true`) - der öffentliche Ingress wäre weg.\n\nBleibt der Check rot oder fehlt der Commit, von Hand nachrechnen:\n\n```bash\ncurl -sL https://plugins.traefik.io/public/download/github.com/{{{depName}}}/{{{newVersion}}} | sha256sum\n```',
       ],
     },
     {
@@ -456,6 +467,12 @@
   prConcurrentLimit: 10,
   prHourlyLimit: 0,
   platformAutomerge: false,
+  // Commits dieses Autors gelten nicht als fremde Änderung am Branch -
+  // sonst stellte Renovate Rebase und Automerge ein, sobald der Workflow
+  // traefik-plugin-hash den Hash nachgetragen hat.
+  gitIgnoredAuthors: [
+    '41898282+github-actions[bot]@users.noreply.github.com',
+  ],
   semanticCommits: 'enabled',
   dependencyDashboard: true,
   dependencyDashboardTitle: '🔄 Renovate Dashboard - Docker Updates',

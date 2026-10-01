@@ -1,0 +1,103 @@
+# Trägt in Renovate-PRs den Hash der Traefik-Plugins nach.
+#
+# Renovate hebt im HelmRelease von ingress-public nur `version` des Plugins.
+# Der `hash` daneben pinnt das Archiv von plugins.traefik.io; bleibt er alt,
+# startet Traefik wegen `abortOnPluginFailure: true` nicht mehr. Dieser
+# Workflow rechnet ihn nach und committet ihn in den PR-Branch.
+#
+# Zusammenspiel mit renovate.json5 (Regel "Traefik Plugins im Cluster"):
+#   - dort `ignoreTests: false` - Renovate merged erst, wenn dieser Check grün ist
+#   - `gitIgnoredAuthors` mit github-actions[bot] - sonst hielte Renovate den
+#     Branch für fremd bearbeitet und merged ihn nicht mehr automatisch
+#
+# Ein Push mit GITHUB_TOKEN startet keinen neuen Workflow-Lauf. Den Status für
+# den eigenen Commit setzt der Job deshalb selbst (Kontext `plugin-hash`) -
+# ohne ihn trüge der neue Branch-Kopf gar keinen Check, und Renovate wartete.
+#
+# Baut Renovate den Branch neu (Rebase), fällt der Commit weg; der Push von
+# Renovate löst diesen Workflow erneut aus.
+name: traefik-plugin-hash
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - k8s/flux/network/ingress-*/HelmRelease.yaml
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: plugin-hash-${{ github.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  plugin-hash:
+    # Nur Renovate-Branches aus diesem Repo - ein Fork bekäme ohnehin kein
+    # schreibendes Token, und an fremden Branches gibt es nichts nachzutragen.
+    if: >-
+      startsWith(github.head_ref, 'renovate/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Hash nachrechnen
+        id: hash
+        run: |
+          python3 - <<'EOF'
+          import glob, hashlib, os, re, urllib.request
+
+          # moduleName, version und hash stehen im plugins-Block untereinander.
+          block = re.compile(
+              r'(moduleName:[ \t]*(?P<module>\S+)[ \t]*\n'
+              r'[ \t]*version:[ \t]*"?(?P<version>v[^\s"]+)"?[ \t]*\n'
+              r'[ \t]*hash:[ \t]*)(?P<hash>[0-9a-f]{64})'
+          )
+
+          changed = []
+          for path in sorted(glob.glob('k8s/flux/network/ingress-*/HelmRelease.yaml')):
+              text = open(path).read()
+
+              def fix(m):
+                  url = f"https://plugins.traefik.io/public/download/{m['module']}/{m['version']}"
+                  # Den Standard-User-Agent von urllib weist der Server mit 403 ab.
+                  req = urllib.request.Request(url, headers={
+                      'User-Agent': 'traefik-plugin-hash (+https://github.com/NicoSteinmueller/Container)'})
+                  with urllib.request.urlopen(req, timeout=60) as r:
+                      data = r.read()
+                  # Ein Fehlertext statt des Archivs ergäbe einen gültig
+                  # aussehenden, aber falschen Hash.
+                  if not data.startswith(b'PK'):
+                      raise SystemExit(f'{url}: kein ZIP-Archiv')
+                  new = hashlib.sha256(data).hexdigest()
+                  print(f"{path}: {m['module']} {m['version']} {m['hash'][:12]}… -> {new[:12]}…")
+                  if new != m['hash']:
+                      changed.append(f"{m['module'].split('/')[-1]} {m['version']}")
+                  return m.group(1) + new
+
+              new_text = block.sub(fix, text)
+              if new_text != text:
+                  open(path, 'w').write(new_text)
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f"changed={'true' if changed else 'false'}\n")
+              out.write(f"what={', '.join(changed)}\n")
+          EOF
+
+      - name: Committen und Status setzen
+        if: steps.hash.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WHAT: ${{ steps.hash.outputs.what }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -am "chore(deps): Plugin-Hash nachgetragen ($WHAT)"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/$(git rev-parse HEAD)" \
+            -f state=success -f context=plugin-hash \
+            -f description="Hash passt zu $WHAT"
