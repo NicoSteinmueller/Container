@@ -31,7 +31,8 @@ terraform {
 # aus einer anderen Ressource.
 #
 provider "helm" {
-  kubernetes {
+  # Seit helm 3.x ein Attribut, kein Block mehr.
+  kubernetes = {
     config_path = var.kubeconfig_path
   }
 }
@@ -48,7 +49,7 @@ provider "kubernetes" {
 # Bewusst ohne pod-security enforce: restricted, anders als bei Headlamp -
 # die Controller müssen anwenden dürfen, was im Repo steht.
 #
-resource "kubernetes_namespace" "flux_system" {
+resource "kubernetes_namespace_v1" "flux_system" {
   metadata {
     name = var.namespace
   }
@@ -69,10 +70,10 @@ resource "kubernetes_namespace" "flux_system" {
 # fill_secret). ignore_changes hält diesen Wert - sonst setzt ihn der nächste
 # apply auf die leeren Platzhalter zurück.
 #
-resource "kubernetes_secret" "flux_git_auth" {
+resource "kubernetes_secret_v1" "flux_git_auth" {
   metadata {
     name      = var.git_secret_name
-    namespace = kubernetes_namespace.flux_system.metadata[0].name
+    namespace = kubernetes_namespace_v1.flux_system.metadata[0].name
   }
 
   type = "Opaque"
@@ -92,10 +93,10 @@ resource "kubernetes_secret" "flux_git_auth" {
 # Bauart und gleicher Grund wie oben: leer angelegt, von Hand gefuellt (der
 # Befehl steht im README), ignore_changes haelt den Wert.
 #
-resource "kubernetes_secret" "homelab_secrets_auth" {
+resource "kubernetes_secret_v1" "homelab_secrets_auth" {
   metadata {
     name      = var.secrets_git_secret_name
-    namespace = kubernetes_namespace.flux_system.metadata[0].name
+    namespace = kubernetes_namespace_v1.flux_system.metadata[0].name
   }
 
   type = "Opaque"
@@ -125,10 +126,10 @@ resource "kubernetes_secret" "homelab_secrets_auth" {
 # State-Verschluesselung zu seinem Vorhaengeschloss - eine Abhaengigkeit, die
 # man beim Wechsel der Passphrase mitdenken muesste und dann nicht mitdenkt.
 #
-resource "kubernetes_secret" "sops_age" {
+resource "kubernetes_secret_v1" "sops_age" {
   metadata {
     name      = var.sops_secret_name
-    namespace = kubernetes_namespace.flux_system.metadata[0].name
+    namespace = kubernetes_namespace_v1.flux_system.metadata[0].name
   }
 
   type = "Opaque"
@@ -155,7 +156,7 @@ resource "helm_release" "flux_operator" {
   repository = "oci://ghcr.io/controlplaneio-fluxcd/charts"
   chart      = "flux-operator"
   version    = var.flux_operator_chart_version
-  namespace  = kubernetes_namespace.flux_system.metadata[0].name
+  namespace  = kubernetes_namespace_v1.flux_system.metadata[0].name
 
   create_namespace = false
 
@@ -176,12 +177,12 @@ resource "helm_release" "flux_operator" {
 # Das Chart kennt keinen service.type und legt nur eine ClusterIP-Service an -
 # für NodePort deshalb eine zweite Service mit denselben Selector-Labels.
 #
-resource "kubernetes_service" "flux_web_nodeport" {
+resource "kubernetes_service_v1" "flux_web_nodeport" {
   count = var.service_type == "NodePort" ? 1 : 0
 
   metadata {
     name      = "flux-operator-nodeport"
-    namespace = kubernetes_namespace.flux_system.metadata[0].name
+    namespace = kubernetes_namespace_v1.flux_system.metadata[0].name
   }
 
   spec {
@@ -217,12 +218,12 @@ resource "kubernetes_service" "flux_web_nodeport" {
 # NetworkPolicies verknüpfen sich mit ODER, diese hier kommt also additiv
 # dazu; die Regel des Charts bleibt unangetastet.
 #
-resource "kubernetes_network_policy" "flux_web_nodeport" {
+resource "kubernetes_network_policy_v1" "flux_web_nodeport" {
   count = var.service_type == "NodePort" ? 1 : 0
 
   metadata {
     name      = "flux-operator-web-nodeport"
-    namespace = kubernetes_namespace.flux_system.metadata[0].name
+    namespace = kubernetes_namespace_v1.flux_system.metadata[0].name
   }
 
   spec {
@@ -273,7 +274,7 @@ resource "helm_release" "flux_instance" {
   repository = "oci://ghcr.io/controlplaneio-fluxcd/charts"
   chart      = "flux-instance"
   version    = var.flux_instance_chart_version
-  namespace  = kubernetes_namespace.flux_system.metadata[0].name
+  namespace  = kubernetes_namespace_v1.flux_system.metadata[0].name
 
   create_namespace = false
 
@@ -314,7 +315,7 @@ resource "helm_release" "flux_instance" {
         ref  = "refs/heads/${var.git_branch}"
         path = var.sync_path
 
-        # kubernetes_secret.flux_git_auth oben - leer bis zum kubectl patch.
+        # kubernetes_secret_v1.flux_git_auth oben - leer bis zum kubectl patch.
         pullSecret = var.git_secret_name
       }
     }
@@ -327,8 +328,8 @@ resource "helm_release" "flux_instance" {
   #
   depends_on = [
     helm_release.flux_operator,
-    kubernetes_secret.flux_git_auth,
-    kubernetes_secret.homelab_secrets_auth,
-    kubernetes_secret.sops_age,
+    kubernetes_secret_v1.flux_git_auth,
+    kubernetes_secret_v1.homelab_secrets_auth,
+    kubernetes_secret_v1.sops_age,
   ]
 }

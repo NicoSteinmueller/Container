@@ -1,6 +1,6 @@
 output "namespace" {
   description = "Namespace von Flux Operator und den Flux-Controllern."
-  value       = kubernetes_namespace.flux_system.metadata[0].name
+  value       = kubernetes_namespace_v1.flux_system.metadata[0].name
 }
 
 output "access" {

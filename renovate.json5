@@ -255,6 +255,20 @@
       ],
     },
     {
+      // Gelernt an helm 3.x und kubernetes 3.x: Der Merge ging durch, der
+      // Fehler kam erst beim nächsten plan, als niemand mehr an den PR dachte.
+      description: 'Terraform-Provider Major: vor dem Merge plan auf dem Branch',
+      matchManagers: [
+        'terraform',
+      ],
+      matchUpdateTypes: [
+        'major',
+      ],
+      prBodyNotes: [
+        '### 🧱 Major-Update eines Terraform-Providers\n\n⚠️ **Vor dem Merge `tf plan` auf diesem Branch.** Ein Provider-Major ändert oft Syntax oder Ressourcentypen - der Merge zeigt das nicht, der Fehler kommt erst beim nächsten `plan` (so geschehen bei helm 3.x: `kubernetes { }` wurde zum Attribut `kubernetes = { }`; kubernetes 3.x: Ressourcen ohne `_v1` deprecated).\n\n```bash\ngit fetch origin\ngit switch --detach origin/{{{branchName}}}\ncd {{{packageFileDir}}}\n../../tools/tf init\n../../tools/tf plan\ngit switch -\n```\n\nDer Plan muss ohne `destroy` auskommen. Benennt der Provider Ressourcentypen um: `moved` geht beim kubernetes-Provider nicht über Typgrenzen (\"Move Resource State Not Supported\") - stattdessen `removed` mit `destroy = false` plus `import`, nach dem `apply` wieder entfernen.',
+      ],
+    },
+    {
       description: 'OctoPrint: IMMER PR mit Review (manuelle Prüfung erforderlich)',
       matchDatasources: [
         'docker',
