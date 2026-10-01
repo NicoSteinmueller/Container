@@ -85,7 +85,7 @@ spec:
               args:
                 - |
                   set -euo pipefail
-                  out="/dumps/keycloak-$(date +%Y-%m-%dT%H%M%z).dump"
+                  out="/dumps/keycloak-$(date +%Y.%m.%d_%H.%M.%S).dump"
 
                   # Kein halber Dump nach einem abgebrochenen Lauf
                   trap 'rm -f "${out}.part"' EXIT

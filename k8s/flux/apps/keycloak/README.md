@@ -22,7 +22,7 @@ Nur auf leerer Datenbank: Benutzer und Passwort aus dem Secret
 
 Der CronJob `keycloak-db-dump` schreibt alle 12 h einen `pg_dump` nach
 `/mnt/user/k8s/keycloak/dumps/keycloak-<Ortszeit>.dump`, etwa
-`keycloak-2026-10-01T1200+0200.dump`. Er hält 14 Stück
+`keycloak-2026.10.01_12.00.00.dump`. Er hält 14 Stück
 vor, die Tiefe liegt bei Kopia. Scheitert ein Lauf oder ist der letzte
 gelungene älter als 13 h, meldet Alertmanager das über ntfy
 ([`DbBackupRules.yaml`](../../observability-rules/DbBackupRules.yaml)).
