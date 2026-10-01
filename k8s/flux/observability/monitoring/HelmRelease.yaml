@@ -30,6 +30,19 @@ spec:
   timeout: 20m
 
   # ClusterRole darf jedes Secret lesen und wird hier entfernt und als Role in `monitoring` wieder angelegt (RBAC.yaml).
+  #
+  # JSON-Patch geht nur über den Index. Der `test` davor hält den Patch an,
+  # sobald das Chart die Regeln umsortiert - sonst fiele still eine andere Regel
+  # weg. So geschehen mit 91.8.2 (finalizers als eigene Regel, Index 4 -> 5):
+  # Das HelmRelease steht dann auf False mit "testing value /rules/N/resources
+  # failed". Neuen Index nachsehen:
+  #
+  #   helm template kube-prometheus-stack kube-prometheus-stack \
+  #     --repo https://prometheus-community.github.io/helm-charts --version <v> \
+  #     --show-only templates/prometheus-operator/clusterrole.yaml \
+  #   | kubectl create --dry-run=client --validate=false -f - \
+  #     -o jsonpath='{range .rules[*]}{.resources}{"\n"}{end}' | awk '{print NR-1": "$0}'
+  #
   postRenderers:
     - kustomize:
         patches:
@@ -38,10 +51,10 @@ spec:
               name: kube-prometheus-stack-operator
             patch: |
               - op: test
-                path: /rules/4/resources
+                path: /rules/5/resources
                 value: [configmaps, secrets]
               - op: remove
-                path: /rules/4
+                path: /rules/5
 
   values:
     prometheus:
