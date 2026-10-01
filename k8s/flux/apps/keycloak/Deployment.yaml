@@ -53,7 +53,7 @@ spec:
       # überhaupt zu starten -, dann der Build mit den Optionen unten.
       initContainers:
         - name: quarkus-kopie
-          image: quay.io/keycloak/keycloak:26.7.5@sha256:37dbaf6f0722c9ec246335f36e1ef8b2e6cb960f7c27e0d8c615121a3d475a85
+          image: quay.io/keycloak/keycloak:26.8.0@sha256:b0f60d489d51c5d113390bdf5461d4c06e6051be026c05549f2e1e10ec352bcc
           command: [/bin/bash, -c]
           args:
             - cp -R /opt/keycloak/lib/quarkus/. /quarkus/
@@ -74,7 +74,7 @@ spec:
               mountPath: /quarkus
 
         - name: build
-          image: quay.io/keycloak/keycloak:26.7.5@sha256:37dbaf6f0722c9ec246335f36e1ef8b2e6cb960f7c27e0d8c615121a3d475a85
+          image: quay.io/keycloak/keycloak:26.8.0@sha256:b0f60d489d51c5d113390bdf5461d4c06e6051be026c05549f2e1e10ec352bcc
           args:
             - build
           env:
@@ -101,7 +101,7 @@ spec:
 
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:26.7.5@sha256:37dbaf6f0722c9ec246335f36e1ef8b2e6cb960f7c27e0d8c615121a3d475a85
+          image: quay.io/keycloak/keycloak:26.8.0@sha256:b0f60d489d51c5d113390bdf5461d4c06e6051be026c05549f2e1e10ec352bcc
           args:
             - start
             - --optimized
@@ -117,6 +117,10 @@ spec:
             # Ein Pod - kein Infinispan-Cluster, keine JGroups-Suche
             - name: KC_CACHE
               value: "local"
+            # Liquibase holt sonst bei jedem Schema-Update config.liquibase.com
+            # und schickt Nutzungsdaten an Scarf - beides blockiert der Egress.
+            - name: LIQUIBASE_ANALYTICS_ENABLED
+              value: "false"
 
             # Die Issuer-URL steckt in jedem Token und in jedem Client
             - name: KC_HOSTNAME
