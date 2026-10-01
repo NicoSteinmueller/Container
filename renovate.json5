@@ -352,23 +352,43 @@
       ],
     },
     {
-      description: 'Cluster-Ausstattung: HelmReleases mit Review, Flux rollt selbst aus',
+      // Automerge wie überall über die Regeln für Non-Major/Major oben: Hier
+      // ist der Merge schon das Ausrollen, es bleibt nichts von Hand zu tun.
+      // Ausnahmen mit Handarbeit (Plugin-Hash, Bootstrap) stehen eigens.
+      description: 'Cluster-Ausstattung: HelmReleases, Flux rollt nach dem Merge selbst aus',
       matchManagers: [
         'flux',
       ],
-      automerge: false,
       prCreation: 'immediate',
       prBodyNotes: [
-        '### 🧩 Update eines HelmRelease\n\n⚠️ Anders als bei den Terraform-Modulen genügt hier der Merge: Flux zieht die neue Chart-Version von selbst nach, ein `apply` gibt es nicht. Der Review ist deshalb die einzige Stelle, an der ein Breaking Change auffallen kann.\n\nNach dem Merge:\n\n```bash\nkubectl -n flux-system get helmrelease\nkubectl -n flux-system get kustomization\n```\n\nHängt eines auf `False`, steht der Grund in `kubectl -n flux-system describe helmrelease <name>`.',
+        '### 🧩 Update eines HelmRelease\n\nAnders als bei den Terraform-Modulen genügt hier der Merge: Flux zieht die neue Version von selbst nach, ein `apply` gibt es nicht. Non-Major-Updates laufen deshalb automatisch durch; bei Major-Updates und Minor-Sprüngen unter 0.x ist der Review die einzige Stelle, an der ein Breaking Change auffallen kann.\n\nNach dem Merge:\n\n```bash\nkubectl -n flux-system get helmrelease\nkubectl -n flux-system get kustomization\n```\n\nHängt eines auf `False`, steht der Grund in `kubectl -n flux-system describe helmrelease <name>`.',
       ],
     },
     {
-      description: 'Kubernetes-Manifeste: wie die HelmReleases nur mit Review, Flux rollt nach dem Merge selbst aus',
+      description: 'Kubernetes-Manifeste: wie die HelmReleases, Flux rollt nach dem Merge selbst aus',
       matchManagers: [
         'kubernetes',
       ],
-      automerge: false,
       prCreation: 'immediate',
+    },
+    {
+      // SemVer: Unter 0.x darf schon ein Minor-Sprung brechen - und genau so
+      // versionieren mehrere Charts hier (cloudnative-pg, crowdsec, headlamp).
+      // Für Renovate ist 0.29 -> 0.30 trotzdem "minor" und fiele unter den
+      // Automerge. Patches unter 0.x laufen weiter automatisch.
+      //
+      // Nur Charts und Git-Quellen (flux-Manager), nicht die Images in den
+      // Manifesten: navidrome etwa ist seit Jahren 0.x, und im Docker-Stack
+      // läuft dasselbe Update ohnehin automatisch.
+      description: 'Cluster: Chart-Minor-Updates unter 0.x mit Review, sie dürfen brechen',
+      matchManagers: [
+        'flux',
+      ],
+      matchUpdateTypes: [
+        'minor',
+      ],
+      matchCurrentVersion: '/^v?0\\./',
+      automerge: false,
     },
     {
       description: 'CNPG-Postgres nicht doppelt: das hebt der eigene Regex-Manager, Instanz und Dump-Job gemeinsam',
@@ -381,7 +401,10 @@
       enabled: false,
     },
     {
-      description: 'CNPG-Postgres: Instanz und Dump-Job gemeinsam, immer mit Review',
+      // Minor und Digest laufen automatisch durch: CNPG startet die Instanz
+      // selbst neu (kurze Downtime, `instances: 1`), zu tun bleibt nichts.
+      // Ein Major bleibt über die Major-Regel oben beim Review.
+      description: 'CNPG-Postgres: Instanz und Dump-Job gemeinsam, Major mit Review',
       matchManagers: [
         'custom.regex',
       ],
@@ -389,10 +412,9 @@
         'ghcr.io/cloudnative-pg/postgresql',
       ],
       groupName: 'cnpg-postgres',
-      automerge: false,
       prCreation: 'immediate',
       prBodyNotes: [
-        '### 🐘 Postgres im Cluster\n\nInstanz und Dump-Job wechseln gemeinsam - `pg_dump` bricht gegen eine neuere Server-Hauptversion ab. Nach dem Merge startet CNPG die Instanz neu (kurze Downtime, `instances: 1`).\n\n**Major-Update:** CNPG macht daraus ein `pg_upgrade` beim Start. Vorher einen frischen Dump ziehen:\n\n```bash\nkubectl -n <ns> create job --from=cronjob/<name>-db-dump dump-vor-upgrade\n```\n\nDanach prüfen: `kubectl -n <ns> get cluster` (healthy) und einen Dump-Job laufen lassen.',
+        '### 🐘 Postgres im Cluster\n\nInstanz und Dump-Job wechseln gemeinsam - `pg_dump` bricht gegen eine neuere Server-Hauptversion ab. Nach dem Merge startet CNPG die Instanz neu (kurze Downtime, `instances: 1`).\n\n**Major-Update (kein Automerge):** CNPG macht daraus ein `pg_upgrade` beim Start. Vorher einen frischen Dump ziehen:\n\n```bash\nkubectl -n <ns> create job --from=cronjob/<name>-db-dump dump-vor-upgrade\n```\n\nDanach prüfen: `kubectl -n <ns> get cluster` (healthy) und einen Dump-Job laufen lassen.',
       ],
     },
     {
