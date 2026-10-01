@@ -32,7 +32,7 @@ terraform {
     #
     helm = {
       source  = "hashicorp/helm"
-      version = "~> 2.17"
+      version = "~> 3.0"
     }
     local = {
       source  = "hashicorp/local"
