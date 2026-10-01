@@ -12,4 +12,4 @@
 # vm/talos/README.md), diese hier ist ein Download.
 #
 # renovate: datasource=github-releases depName=siderolabs/talos
-talosctl_version: v1.13.7
+talosctl_version: v1.14.2
