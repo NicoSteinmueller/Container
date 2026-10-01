@@ -100,8 +100,8 @@ spec:
       plugins:
         crowdsec-bouncer:
           moduleName: github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
-          version: v1.6.0
-          hash: 207f2cdef1116a436be38839169118bd8f70c32e451be864d9b0ae3b82f96849
+          version: v1.7.1
+          hash: 500739fc1600c12a651433b13a81693470cd336dbc7864cb85ee42098c93d884
 
     global:
       checkNewVersion: false
