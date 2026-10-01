@@ -14,7 +14,7 @@ variable "cluster_name" {
 variable "talos_version" {
   description = "Talos-Linux-Version. Releases: https://github.com/siderolabs/talos/releases"
   type        = string
-  default     = "v1.13.7"
+  default     = "v1.14.2"
 }
 
 variable "kubernetes_version" {
