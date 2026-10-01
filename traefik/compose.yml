@@ -186,7 +186,7 @@ services:
       # lädt Traefik das Plugin nicht. Renovate hebt die Version, den Hash
       # trägt .github/workflows/traefik-plugin-hash.yml im PR nach.
       TRAEFIK_EXPERIMENTAL_PLUGINS_CROWDSEC-BOUNCER_MODULENAME: "github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin"
-      TRAEFIK_EXPERIMENTAL_PLUGINS_CROWDSEC-BOUNCER_VERSION: "v1.6.0"
+      TRAEFIK_EXPERIMENTAL_PLUGINS_CROWDSEC-BOUNCER_VERSION: "v1.7.1"
       TRAEFIK_EXPERIMENTAL_PLUGINS_CROWDSEC-BOUNCER_HASH: "207f2cdef1116a436be38839169118bd8f70c32e451be864d9b0ae3b82f96849"
 
     labels:
