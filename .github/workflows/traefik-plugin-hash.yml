@@ -1,8 +1,9 @@
 # Trägt in Renovate-PRs den Hash der Traefik-Plugins nach.
 #
-# Renovate hebt im HelmRelease von ingress-public nur `version` des Plugins.
-# Der `hash` daneben pinnt das Archiv von plugins.traefik.io; bleibt er alt,
-# startet Traefik wegen `abortOnPluginFailure: true` nicht mehr. Dieser
+# Renovate hebt nur die Version des Plugins - im HelmRelease von
+# ingress-public und in traefik/compose.yml. Der Hash daneben pinnt das Archiv
+# von plugins.traefik.io; bleibt er alt, lädt Traefik das Plugin nicht (im
+# Cluster startet es wegen `abortOnPluginFailure: true` gar nicht). Dieser
 # Workflow rechnet ihn nach und committet ihn in den PR-Branch.
 #
 # Zusammenspiel mit renovate.json5 (Regel "Traefik Plugins im Cluster"):
@@ -23,6 +24,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - k8s/flux/network/ingress-*/HelmRelease.yaml
+      - traefik/compose.yml
 
 permissions:
   contents: write
@@ -51,15 +53,23 @@ jobs:
           python3 - <<'EOF'
           import glob, hashlib, os, re, urllib.request
 
-          # moduleName, version und hash stehen im plugins-Block untereinander.
-          block = re.compile(
-              r'(moduleName:[ \t]*(?P<module>\S+)[ \t]*\n'
-              r'[ \t]*version:[ \t]*"?(?P<version>v[^\s"]+)"?[ \t]*\n'
-              r'[ \t]*hash:[ \t]*)(?P<hash>[0-9a-f]{64})'
-          )
+          # Modul, Version und Hash stehen jeweils untereinander - im Cluster
+          # als plugins-Block des HelmRelease, im Docker-Stack als
+          # TRAEFIK_EXPERIMENTAL_PLUGINS_<NAME>_{MODULENAME,VERSION,HASH}.
+          blocks = [
+              re.compile(
+                  r'(moduleName:[ \t]*(?P<module>\S+)[ \t]*\n'
+                  r'[ \t]*version:[ \t]*"?(?P<version>v[^\s"]+)"?[ \t]*\n'
+                  r'[ \t]*hash:[ \t]*)(?P<hash>[0-9a-f]{64})'),
+              re.compile(
+                  r'(TRAEFIK_EXPERIMENTAL_PLUGINS_[A-Z0-9_-]+_MODULENAME:[ \t]*"?(?P<module>[^\s"]+)"?[ \t]*\n'
+                  r'[ \t]*TRAEFIK_EXPERIMENTAL_PLUGINS_[A-Z0-9_-]+_VERSION:[ \t]*"?(?P<version>v[^\s"]+)"?[ \t]*\n'
+                  r'[ \t]*TRAEFIK_EXPERIMENTAL_PLUGINS_[A-Z0-9_-]+_HASH:[ \t]*"?)(?P<hash>[0-9a-f]{64})'),
+          ]
 
           changed = []
-          for path in sorted(glob.glob('k8s/flux/network/ingress-*/HelmRelease.yaml')):
+          files = sorted(glob.glob('k8s/flux/network/ingress-*/HelmRelease.yaml')) + ['traefik/compose.yml']
+          for path in files:
               text = open(path).read()
 
               def fix(m):
@@ -79,7 +89,9 @@ jobs:
                       changed.append(f"{m['module'].split('/')[-1]} {m['version']}")
                   return m.group(1) + new
 
-              new_text = block.sub(fix, text)
+              new_text = text
+              for block in blocks:
+                  new_text = block.sub(fix, new_text)
               if new_text != text:
                   open(path, 'w').write(new_text)
 

@@ -283,31 +283,20 @@
       ],
     },
     {
-      description: 'Traefik Plugins: IMMER PR (manuelle Deployment erforderlich)',
-      matchManagers: [
-        'custom.regex',
-      ],
-      matchFileNames: [
-        'traefik/compose.yml',
-      ],
-      automerge: false,
-      prCreation: 'immediate',
-      prBodyNotes: [
-        '### 🔌 Traefik Plugin Update\n\n⚠️ **WICHTIG: Manuelles Deployment erforderlich!**\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{/each}}{{/if}}',
-      ],
-    },
-    {
-      // Renovate hebt nur `version`; den `hash` daneben trägt der Workflow
+      // Renovate hebt nur die Version; den Hash daneben trägt der Workflow
       // .github/workflows/traefik-plugin-hash.yml in den PR-Branch nach. Ohne
-      // passenden Hash startet Traefik nicht (abortOnPluginFailure).
+      // passenden Hash lädt Traefik das Plugin nicht - im Cluster startet es
+      // wegen abortOnPluginFailure gar nicht.
       //
       // Deshalb hier keine ignoreTests: Renovate merged erst, wenn der Check
       // `plugin-hash` grün ist. Majors bleiben über die Major-Regel beim Review.
+      // Ausgerollt wird nach dem Merge von selbst - im Cluster per Flux, im
+      // Docker-Stack per Portainer-GitOps.
       //
       // minimumReleaseAge, weil das Plugin jeden öffentlichen Request sieht:
       // Ein frisches Release - zurückgezogen oder kompromittiert - soll nicht
       // binnen einer Stunde im Ingress laufen.
-      description: 'Traefik Plugins im Cluster: Hash per Workflow, Automerge erst nach grünem Check',
+      description: 'Traefik Plugins: Hash per Workflow, Automerge erst nach grünem Check',
       matchManagers: [
         'custom.regex',
       ],
@@ -316,12 +305,13 @@
       ],
       matchFileNames: [
         'k8s/flux/network/ingress-*/HelmRelease.yaml',
+        'traefik/compose.yml',
       ],
       ignoreTests: false,
       minimumReleaseAge: '3 days',
       prCreation: 'immediate',
       prBodyNotes: [
-        '### 🔌 Traefik Plugin im Cluster\n\nRenovate hebt nur `version`. Den `hash` daneben trägt der Workflow `traefik-plugin-hash` als eigenen Commit nach; erst wenn sein Check grün ist, wird automatisch gemergt. Mit falschem Hash startet Traefik nicht (`abortOnPluginFailure: true`) - der öffentliche Ingress wäre weg.\n\nBleibt der Check rot oder fehlt der Commit, von Hand nachrechnen:\n\n```bash\ncurl -sL https://plugins.traefik.io/public/download/github.com/{{{depName}}}/{{{newVersion}}} | sha256sum\n```',
+        '### 🔌 Traefik Plugin\n\nRenovate hebt nur die Version. Den Hash daneben trägt der Workflow `traefik-plugin-hash` als eigenen Commit nach; erst wenn sein Check grün ist, wird automatisch gemergt. Mit falschem Hash lädt Traefik das Plugin nicht - im Cluster (`abortOnPluginFailure: true`) startet der öffentliche Ingress dann gar nicht.\n\nBleibt der Check rot oder fehlt der Commit, von Hand nachrechnen:\n\n```bash\ncurl -sL https://plugins.traefik.io/public/download/github.com/{{{depName}}}/{{{newVersion}}} | sha256sum\n```',
       ],
     },
     {
