@@ -20,7 +20,7 @@ variable "talos_version" {
 variable "kubernetes_version" {
   description = "Kubernetes-Version im Cluster."
   type        = string
-  default     = "1.36.3"
+  default     = "1.37.1"
 }
 
 variable "cilium_version" {
