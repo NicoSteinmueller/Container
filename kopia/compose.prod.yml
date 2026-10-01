@@ -202,14 +202,6 @@ services:
         bind:
           create_host_path: false
 
-      # Linkwarden
-      - type: bind
-        source: /mnt/user/data/linkwarden/data
-        target: /data/linkwarden/data
-        read_only: true
-        bind:
-          create_host_path: false
-
 
     labels:
       - "traefik.enable=true"
