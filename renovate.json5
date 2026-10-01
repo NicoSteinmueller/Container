@@ -52,8 +52,10 @@
     },
     {
       // Chart- und Image-Versionen mit `# renovate:`-Kommentar direkt
-      // darüber: die Flux-Charts im Bootstrap (k8s/bootstrap/variables.tf) und
-      // Images in HelmRelease-Values, die als repository/tag getrennt stehen.
+      // darüber: die Flux-Charts im Bootstrap (k8s/bootstrap/variables.tf).
+      // Unter k8s/flux nur für das, was kein anderer Manager sieht - Images in
+      // HelmRelease-Values (`repository`/`tag`) erkennt der flux-Manager
+      // selbst, ein Kommentar dort zählte sie doppelt.
       customType: 'regex',
       managerFilePatterns: [
         '/^k8s\\/bootstrap\\/variables\\.tf$/',

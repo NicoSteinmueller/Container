@@ -11,8 +11,8 @@
 #   - `gitIgnoredAuthors` mit github-actions[bot] - sonst hielte Renovate den
 #     Branch für fremd bearbeitet und merged ihn nicht mehr automatisch
 #
-# Ein Push mit GITHUB_TOKEN startet keinen neuen Workflow-Lauf. Den Status für
-# den eigenen Commit setzt der Job deshalb selbst (Kontext `plugin-hash`) -
+# Der eigene Commit trägt [skip ci], damit er keinen Lauf auslöst (siehe unten).
+# Den Status für ihn setzt der Job deshalb selbst (Kontext `plugin-hash`) -
 # ohne ihn trüge der neue Branch-Kopf gar keinen Check, und Renovate wartete.
 #
 # Baut Renovate den Branch neu (Rebase), fällt der Commit weg; der Push von
@@ -108,7 +108,11 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -am "chore(deps): Plugin-Hash nachgetragen ($WHAT)"
+          # [skip ci]: Entgegen der Doku löst auch ein Push mit GITHUB_TOKEN hier
+          # einen Lauf aus - GitHub parkt ihn als `action_required`, und sein
+          # Check-Run bleibt ewig `in_progress`. Renovate sieht den offenen
+          # Check und merged nie. Ohne Lauf bleibt nur der Status unten.
+          git commit -am "chore(deps): Plugin-Hash nachgetragen ($WHAT) [skip ci]"
           git push origin "HEAD:${GITHUB_HEAD_REF}"
           gh api "repos/${GITHUB_REPOSITORY}/statuses/$(git rev-parse HEAD)" \
             -f state=success -f context=plugin-hash \
