@@ -45,3 +45,27 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+---
+# Flux meldet Fehler (Alert `flux-fehler`, sync/FluxAlerts.yaml)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-flux-notifications
+  namespace: ntfy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ntfy
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: flux-system
+          podSelector:
+            matchLabels:
+              app: notification-controller
+      ports:
+        - protocol: TCP
+          port: 8080

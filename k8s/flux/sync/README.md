@@ -12,6 +12,10 @@
 | [`apps`](Apps.yaml) | [`../apps`](../apps) | Headlamp, it-tools, Navidrome, ntfy, whoami, die umgezogenen Dienste |
 | [`homelab-secrets`](Secrets.yaml) | eigenes Repo im Gitea | SOPS-verschlüsselte Secrets |
 
+Keine Gruppe, sondern direkt hier: [`FluxAlerts.yaml`](FluxAlerts.yaml) meldet
+Fehler von Flux ins ntfy-Topic `cluster`. Es hängt bewusst an keiner Gruppe —
+der Alarm muss auch ankommen, wenn eine davon hängt.
+
 ```
 core ──┬── storage ── observability ── observability-rules
        ├── platform ── cert-manager-issuers ── network

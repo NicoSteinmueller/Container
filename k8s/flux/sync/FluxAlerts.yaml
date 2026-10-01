@@ -1,0 +1,56 @@
+# Fehler von Flux als Push ins ntfy-Topic `cluster`
+#
+# Seit Non-Major-Updates im Cluster automatisch gemergt werden, ist das die
+# Stelle, an der ein kaputtes Update auffällt - ein HelmRelease auf False
+# meldet sich sonst bei niemandem.
+#
+# Bewusst hier in sync/ und nicht in observability-rules: Das hängt an
+# `observability`, und genau wenn dort ein HelmRelease scheitert, käme der
+# Alarm nie an. Die Wurzel-Kustomization `flux-system` hängt an nichts.
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: ntfy
+  namespace: flux-system
+spec:
+  #
+  # `generic` schickt das Event als JSON. ntfy rendert daraus Titel und
+  # Nachricht (`template=yes`, Go-Templates gegen den Body), URL-kodiert:
+  #
+  #   title    Flux: {{.involvedObject.kind}} {{.involvedObject.name}}
+  #   message  {{.reason}}: {{.message}}
+  #
+  type: generic
+  address: http://ntfy.ntfy.svc.cluster.local/cluster?template=yes&title=Flux%3A%20%7B%7B.involvedObject.kind%7D%7D%20%7B%7B.involvedObject.name%7D%7D&message=%7B%7B.reason%7D%7D%3A%20%7B%7B.message%7D%7D&priority=4&tags=warning
+  secretRef:
+    name: ntfy-flux
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: flux-fehler
+  namespace: flux-system
+spec:
+  providerRef:
+    name: ntfy
+  #
+  # Nur Fehler.
+  #
+  # Gleiche Events fasst der notification-controller für einige Minuten
+  # zusammen; ein dauerhaft kaputtes HelmRelease meldet sich deshalb nicht bei
+  # jedem Versuch, eine hängende Kustomization aber mit jedem Intervall neu.
+  # Eine Entwarnung gibt es nicht: Wieder grün ist, was sich nicht mehr meldet.
+  #
+  eventSeverity: error
+  eventSources:
+    - kind: Kustomization
+      name: "*"
+    - kind: HelmRelease
+      name: "*"
+    - kind: HelmChart
+      name: "*"
+    - kind: HelmRepository
+      name: "*"
+    - kind: GitRepository
+      name: "*"
