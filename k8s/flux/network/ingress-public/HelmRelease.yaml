@@ -93,7 +93,8 @@ spec:
     #
     #   curl -sL https://plugins.traefik.io/public/download/<moduleName>/<version> | sha256sum
     #
-    # TODO: Renovate sieht diese Stelle nicht - ein Update ist Handarbeit.
+    # Renovate hebt nur die Version (Regex-Manager in renovate.json5), den Hash
+    # nicht - der PR sagt das und bringt den Befehl mit.
     experimental:
       abortOnPluginFailure: true
       plugins:

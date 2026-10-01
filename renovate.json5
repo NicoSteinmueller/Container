@@ -21,6 +21,14 @@
       '/^k8s\\/flux\\/.+\\.ya?ml$/',
     ],
   },
+  // HelmReleases und GitRepository-Tags unter k8s/flux. Ohne eigenes Muster
+  // sucht der flux-Manager nur nach gotk-components.yaml und findet hier
+  // nichts.
+  flux: {
+    managerFilePatterns: [
+      '/^k8s\\/flux\\/.+\\.ya?ml$/',
+    ],
+  },
   dockerfile: {
     enabled: true,
     managerFilePatterns: [
@@ -29,15 +37,31 @@
   },
   customManagers: [
     {
-      // Traefik-Plugins im Docker-Stack (traefik/config/traefik.yml).
+      // Traefik-Plugins: im Docker-Stack als Umgebungsvariablen
+      // (traefik/compose.yml), im Cluster im plugins-Block des HelmRelease.
       customType: 'regex',
       managerFilePatterns: [
-        '/(^|/)traefik\\.ya?ml$/',
+        '/^traefik\\/compose\\.ya?ml$/',
+        '/^k8s\\/flux\\/network\\/ingress-[^/]+\\/HelmRelease\\.ya?ml$/',
       ],
       matchStrings: [
+        'TRAEFIK_EXPERIMENTAL_PLUGINS_[A-Z0-9_-]+_MODULENAME:\\s*"?github\\.com\\/(?<depName>[^\\/\\s"]+\\/[^\\s"]+)"?\\s+TRAEFIK_EXPERIMENTAL_PLUGINS_[A-Z0-9_-]+_VERSION:\\s*"?(?<currentValue>v[^\\s"]+)"?',
         'moduleName:\\s*github\\.com\\/(?<depName>[^\\/]+\\/[^\\s]+)\\s+version:\\s*(?<currentValue>v[^\\s]+)',
       ],
       datasourceTemplate: 'github-releases',
+    },
+    {
+      // Chart- und Image-Versionen mit `# renovate:`-Kommentar direkt
+      // darüber: die Flux-Charts im Bootstrap (k8s/bootstrap/variables.tf) und
+      // Images in HelmRelease-Values, die als repository/tag getrennt stehen.
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^k8s\\/bootstrap\\/variables\\.tf$/',
+        '/^k8s\\/flux\\/.+\\.ya?ml$/',
+      ],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?(?: extractVersion=(?<extractVersion>\\S+))?\\s+(?:default\\s*=|\\w+:)\\s*"?(?<currentValue>[^"\\s]+)"?',
+      ],
     },
     {
       customType: 'regex',
@@ -250,12 +274,29 @@
         'custom.regex',
       ],
       matchFileNames: [
-        'traefik/config/traefik.yml',
+        'traefik/compose.yml',
       ],
       automerge: false,
       prCreation: 'immediate',
       prBodyNotes: [
         '### 🔌 Traefik Plugin Update\n\n⚠️ **WICHTIG: Manuelles Deployment erforderlich!**\n\n{{#if releases}}{{#each releases}}#### {{#if url}}[{{version}}]({{{url}}}){{else}}Version {{version}}{{/if}}\n{{/each}}{{/if}}',
+      ],
+    },
+    {
+      description: 'Traefik Plugins im Cluster: der Hash zieht nicht mit, ohne ihn startet Traefik nicht',
+      matchManagers: [
+        'custom.regex',
+      ],
+      matchDatasources: [
+        'github-releases',
+      ],
+      matchFileNames: [
+        'k8s/flux/network/ingress-*/HelmRelease.yaml',
+      ],
+      automerge: false,
+      prCreation: 'immediate',
+      prBodyNotes: [
+        '### 🔌 Traefik Plugin im Cluster - Hash nachtragen!\n\n🛑 **Nicht so mergen.** Renovate hebt nur `version`, der `hash` daneben bleibt alt. Mit `abortOnPluginFailure: true` startet Traefik dann nicht mehr - der öffentliche Ingress ist weg.\n\nVor dem Merge im PR-Branch den Hash ersetzen:\n\n```bash\ncurl -sL https://plugins.traefik.io/public/download/github.com/{{{depName}}}/{{{newVersion}}} | sha256sum\n```',
       ],
     },
     {
@@ -270,6 +311,44 @@
       prCreation: 'immediate',
       prBodyNotes: [
         '### ☸️ Update des Talos-Nodes\n\n⚠️ **Ein Merge allein ändert nichts** – und ein `apply` mit neuer `talos_version` baut die VM nicht neu, sondern muss über `talosctl upgrade` laufen. Der Aufruf geht über den Wrapper, weil Werte und State in Gitea liegen:\n\n```bash\ncd vm/talos\ntalosctl etcd snapshot db.snapshot     # vorher, Single-Node\n../../tools/tf apply                   # rendert Config und Installer-Image neu\ntalosctl -n <lan_ip> upgrade --preserve --image $(../../tools/tf output -raw installer_image)\ntalosctl -n <lan_ip> upgrade-k8s --to <version>   # nur bei kubernetes_version\n```\n\nWichtig: mit **derselben Schematic-ID** arbeiten, sonst verschwinden die System-Extensions. `--preserve` ist auf einem Single-Node Pflicht.\n\nDanach prüfen:\n\n```bash\ntalosctl health\nkubectl get nodes -o wide\nkubectl -n kube-system exec ds/cilium -- cilium-dbg status --brief\n```',
+      ],
+    },
+    {
+      // talosctl, der Node, der Terraform-Provider und Kubernetes müssen
+      // zueinander passen: Kubernetes 1.x läuft erst auf einem Talos, das es
+      // kennt, und talosctl soll den Stand des Nodes haben. Einzeln
+      // automatisch gemergt lief talosctl dem Node schon davon.
+      //
+      // additionalBranchPrefix leer, sonst landet jedes Verzeichnis ({{parentDir}})
+      // trotz gleicher Gruppe in einem eigenen Branch.
+      description: 'Talos-Stack: Node, talosctl, Provider und Kubernetes in einem PR, nie automatisch',
+      matchFileNames: [
+        'vm/talos/variables.tf',
+        'vm/talos/main.tf',
+        'ansible/tools/roles/talosctl/defaults/main.yml',
+      ],
+      matchPackageNames: [
+        'siderolabs/talos',
+        'kubernetes/kubernetes',
+      ],
+      groupName: 'talos',
+      additionalBranchPrefix: '',
+      automerge: false,
+      prCreation: 'immediate',
+    },
+    {
+      description: 'Flux-Bootstrap: Operator, Instance und Distribution gemeinsam, wirkt erst mit apply',
+      matchManagers: [
+        'custom.regex',
+      ],
+      matchFileNames: [
+        'k8s/bootstrap/variables.tf',
+      ],
+      groupName: 'flux-bootstrap',
+      automerge: false,
+      prCreation: 'immediate',
+      prBodyNotes: [
+        '### 🔁 Flux selbst\n\n⚠️ **Ein Merge allein ändert nichts** - die Versionen stehen im Bootstrap-Modul, nicht unter `k8s/flux`. Ausgerollt wird mit:\n\n```bash\ncd k8s/bootstrap\n../../tools/tf plan\n../../tools/tf apply\n```\n\nOperator- und Instance-Chart gleich halten. Eine neue `flux_version` braucht einen Operator, der sie kennt - deshalb im selben PR.\n\nDanach prüfen:\n\n```bash\nkubectl -n flux-system get fluxinstance\nkubectl -n flux-system get kustomization\n```',
       ],
     },
     {

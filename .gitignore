@@ -71,3 +71,4 @@ build/
 # Pruefsummen der Provider fest. Ohne sie nimmt `terraform init` auf einem
 # frischen Klon, was die Registry gerade ausliefert - und Constraints wie
 # "~> 2.17" waehlen dabei eine andere Version als die laufende.
+/vm/talos/db.snapshot

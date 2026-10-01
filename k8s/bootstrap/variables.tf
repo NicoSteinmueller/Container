@@ -13,7 +13,8 @@ variable "namespace" {
 variable "flux_operator_chart_version" {
   description = "Chart-Version von flux-operator (ghcr.io/controlplaneio-fluxcd/charts)."
   type        = string
-  default     = "0.57.0"
+  # renovate: datasource=docker depName=ghcr.io/controlplaneio-fluxcd/charts/flux-operator
+  default = "0.57.0"
 }
 
 variable "flux_instance_chart_version" {
@@ -24,7 +25,8 @@ variable "flux_instance_chart_version" {
     demselben Repo, sonst rendert das eine gegen ein fremdes CRD-Schema.
   EOT
   type        = string
-  default     = "0.57.0"
+  # renovate: datasource=docker depName=ghcr.io/controlplaneio-fluxcd/charts/flux-instance
+  default = "0.57.0"
 }
 
 variable "flux_version" {
@@ -34,7 +36,8 @@ variable "flux_version" {
     ebenfalls fest, kein Nachziehen im Hintergrund.
   EOT
   type        = string
-  default     = "2.9.x"
+  # renovate: datasource=github-releases depName=fluxcd/flux2 versioning=npm extractVersion=^v(?<version>.+)$
+  default = "2.9.x"
 }
 
 #

@@ -61,6 +61,7 @@ spec:
 
     helperImage:
       repository: docker.io/library/busybox
+      # renovate: datasource=docker depName=docker.io/library/busybox
       tag: "1.37.0"
 
     resources:
