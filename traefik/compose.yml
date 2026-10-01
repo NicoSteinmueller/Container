@@ -187,7 +187,7 @@ services:
       # trägt .github/workflows/traefik-plugin-hash.yml im PR nach.
       TRAEFIK_EXPERIMENTAL_PLUGINS_CROWDSEC-BOUNCER_MODULENAME: "github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin"
       TRAEFIK_EXPERIMENTAL_PLUGINS_CROWDSEC-BOUNCER_VERSION: "v1.7.1"
-      TRAEFIK_EXPERIMENTAL_PLUGINS_CROWDSEC-BOUNCER_HASH: "207f2cdef1116a436be38839169118bd8f70c32e451be864d9b0ae3b82f96849"
+      TRAEFIK_EXPERIMENTAL_PLUGINS_CROWDSEC-BOUNCER_HASH: "500739fc1600c12a651433b13a81693470cd336dbc7864cb85ee42098c93d884"
 
     labels:
       traefik.enable: true
