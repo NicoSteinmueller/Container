@@ -76,11 +76,12 @@ ist Schritt 8 überhaupt sinnvoll.
 
 ## CrowdSec im Cluster
 
-**Noch nicht dabei:** der AppSec-Listener. Er gehört vor die Portfreigabe
-für Immich oder Nextcloud — an ntfy gibt es wenig, was eine WAF-Regel finden
-könnte, und eine Middleware, die nie auslöst, ist eine, deren Ausfall niemand
-bemerkt. Dazu gehören dann `crowdsecurity/appsec-virtual-patching`,
-`appsec-crs` und die Nextcloud-Exclusion für `/remote.php/*`.
+**AppSec** prüft jede öffentliche Anfrage samt Body, bevor sie den Dienst
+erreicht ([flux/network/crowdsec/](flux/network/crowdsec/README.md)):
+`appsec-virtual-patching` und generische Regeln blocken sofort, `appsec-crs`
+liest mit und bannt bei Wiederholung. Die Nextcloud-Exclusion hält WebDAV
+unter `/remote.php/*` aus CRS heraus. Das Heimnetz (`clientTrustedIPs`)
+geht an CrowdSec und AppSec vorbei.
 
 ### Übergang, solange Dienste auf beiden Seiten laufen
 
@@ -91,7 +92,7 @@ von Docker Proxy.
 
 ## Was danach noch fehlt
 
-- **Die Portfreigabe** samt Übergang (Schritt 11) und AppSec (Schritt 10).
+- **Die Portfreigabe** samt Übergang (Schritt 11).
 - **DNS-Aussetzer.** Talos meldet vereinzelt Timeouts gegen den einzigen
   Resolver `192.168.178.4` (AdGuard), gehäuft zur vollen Stunde:
   `talosctl -n 192.168.178.230 dmesg | grep dns-resolve-cache`.

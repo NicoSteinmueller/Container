@@ -1,0 +1,151 @@
+# Netzwerkregeln im Namespace `nextcloud`
+---
+# Eingehend nur der öffentliche Controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-ingress-public
+  namespace: nextcloud
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: nextcloud
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik-public
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# Ausgehend: Valkey und die wenigen Namen, die Nextcloud selbst braucht.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: nextcloud-egress
+  namespace: nextcloud
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: nextcloud
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: valkey
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP
+
+    # DNS für genau die Namen unten
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: apps.nextcloud.com
+              - matchName: updates.nextcloud.com
+              - matchName: push-notifications.nextcloud.com
+              - matchName: github.com
+              - matchName: objects.githubusercontent.com
+              - matchName: release-assets.githubusercontent.com
+
+    #   apps.nextcloud.com                    App-Store, Verbindungstest
+    #   updates.nextcloud.com                 Hinweis auf neue Versionen
+    #   push-notifications.nextcloud.com      Push an die Mobil-Apps
+    #   github.com, *.githubusercontent.com   dort liegen die App-Archive
+    - toFQDNs:
+        - matchName: apps.nextcloud.com
+        - matchName: updates.nextcloud.com
+        - matchName: push-notifications.nextcloud.com
+        - matchName: github.com
+        - matchName: objects.githubusercontent.com
+        - matchName: release-assets.githubusercontent.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+---
+# Valkey: nur von Nextcloud
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: valkey-from-nextcloud
+  namespace: nextcloud
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: valkey
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: nextcloud
+      ports:
+        - protocol: TCP
+          port: 6379
+
+---
+# Die Datenbank: eingehend der Operator (5432 Rollen, 8000 Status) und die
+# gekennzeichneten Clients; ausgehend nur die API.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: nextcloud-db
+  namespace: nextcloud
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: nextcloud-db
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: cnpg-system
+            app.kubernetes.io/name: cloudnative-pg
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+            - { port: "8000", protocol: TCP }
+    - fromEndpoints:
+        - matchLabels:
+            homelab.io/db-client: nextcloud-db
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - { port: "6443", protocol: TCP }
+
+---
+# Die Gegenrichtung für alle Clients: Nextcloud, Dump- und Restore-Job.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: nextcloud-db-client
+  namespace: nextcloud
+spec:
+  endpointSelector:
+    matchLabels:
+      homelab.io/db-client: nextcloud-db
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: nextcloud-db
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }

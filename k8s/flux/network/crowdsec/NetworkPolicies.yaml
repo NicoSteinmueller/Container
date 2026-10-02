@@ -26,6 +26,29 @@ spec:
           port: 8080
 
 ---
+# AppSec: nur der Bouncer aus traefik-public, mit der ganzen Anfrage.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-appsec-from-ingress-public
+  namespace: crowdsec
+spec:
+  podSelector:
+    matchLabels:
+      k8s-app: crowdsec
+      type: appsec
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik-public
+      ports:
+        - protocol: TCP
+          port: 7422
+
+---
 # Je Rolle nur die Namen, die sie braucht, und nur dorthin eine Verbindung.
 #
 #   hub-data.crowdsec.net  Hub-Index und -Inhalte
@@ -117,3 +140,40 @@ spec:
               - matchName: hub-data.crowdsec.net
               - matchName: version.crowdsec.net
               - matchName: api.crowdsec.net
+
+---
+# AppSec meldet Alarme an die LAPI und prüft dort den Schlüssel des Bouncers.
+# Beim Start holt es seine Collections vom Hub (Verbindung: crowdsec-egress).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: crowdsec-appsec-egress
+  namespace: crowdsec
+spec:
+  endpointSelector:
+    matchLabels:
+      k8s-app: crowdsec
+      type: appsec
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: crowdsec
+            k8s-app: crowdsec
+            type: lapi
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: hub-data.crowdsec.net
+              - matchName: version.crowdsec.net

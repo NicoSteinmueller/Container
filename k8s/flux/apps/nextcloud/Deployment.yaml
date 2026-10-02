@@ -1,0 +1,273 @@
+# Nextcloud unter cloud.nico-steinmueller.de
+#
+# Ein Pod, drei Container:
+#   nextcloud  php-fpm aus dem offiziellen Image; der Entrypoint kopiert den
+#              Code nach /var/www/html und führt nach einem Image-Update
+#              `occ upgrade` aus
+#   nginx      liefert statische Dateien und reicht PHP an fpm weiter
+#   cron       Hintergrundjobs alle 5 Minuten
+#
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nextcloud
+  namespace: nextcloud
+spec:
+  selector:
+    app.kubernetes.io/name: nextcloud
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nextcloud
+  namespace: nextcloud
+spec:
+  replicas: 0
+  revisionHistoryLimit: 2
+  # Code auf local-path, Datei-Sperren nur in Valkey.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nextcloud
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nextcloud
+        homelab.io/db-client: nextcloud-db
+    spec:
+      automountServiceAccountToken: false
+      # Sonst stünden NEXTCLOUD_SERVICE_HOST, NEXTCLOUD_PORT, ... in der
+      # Umgebung - der Entrypoint liest NEXTCLOUD_*-Variablen.
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 99
+        runAsGroup: 100
+        seccompProfile:
+          type: RuntimeDefault
+      # Ein `occ upgrade` nach einem Image-Update nicht abwürgen
+      terminationGracePeriodSeconds: 60
+
+      containers:
+        - name: nextcloud
+          image: docker.io/library/nextcloud:35.0.1-fpm@sha256:97e20437843ebf8735f9e4e75220eaaf6202b1af17ef45335ec1086caa40b35f
+          ports:
+            - name: fpm
+              containerPort: 9000
+          env: &env
+            - name: TZ
+              value: "Europe/Berlin"
+            - name: PHP_MEMORY_LIMIT
+              value: "1G"
+            - name: PHP_UPLOAD_LIMIT
+              value: "16G"
+            # `NC_<schlüssel>` überschreibt das config.php, ohne je hinein
+            # geschrieben zu werden.
+            - name: NC_dbhost
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-db-app
+                  key: host
+            - name: NC_dbport
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-db-app
+                  key: port
+            - name: NC_dbname
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-db-app
+                  key: dbname
+            - name: NC_dbuser
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-db-app
+                  key: username
+            - name: NC_dbpassword
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-db-app
+                  key: password
+            # Die Identität der Installation
+            - name: NC_instanceid
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud
+                  key: instanceid
+            - name: NC_secret
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud
+                  key: secret
+            - name: NC_passwordsalt
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud
+                  key: passwordsalt
+          securityContext: &containerSecurity
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          # Der erste Start kopiert den Code, ein Major-Update migriert die
+          # Datenbank - fpm lauscht erst danach.
+          startupProbe:
+            tcpSocket:
+              port: fpm
+            periodSeconds: 10
+            failureThreshold: 180
+          livenessProbe:
+            tcpSocket:
+              port: fpm
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 3Gi
+          volumeMounts: &phpMounts
+            - name: code
+              mountPath: /var/www/html
+            - name: config
+              mountPath: /var/www/html/config
+            - name: nextcloud-config
+              mountPath: /var/www/html/config/kubernetes.config.php
+              subPath: kubernetes.config.php
+              readOnly: true
+            - name: nextcloud-config
+              mountPath: /usr/local/etc/php-fpm.d/zz-tuning.conf
+              subPath: zz-tuning.conf
+              readOnly: true
+            - name: custom-apps
+              mountPath: /var/www/html/custom_apps
+            - name: data
+              mountPath: /data
+            - name: paperless-consume
+              mountPath: /paperless-consume
+            - name: pg-ca
+              mountPath: /pg-ca
+              readOnly: true
+            # Uploads puffert PHP hier
+            - name: tmp
+              mountPath: /tmp
+
+        - name: nginx
+          image: docker.io/nginxinc/nginx-unprivileged:1.31.6-alpine3.24@sha256:26b0bf6fbf07297983cb341998d79c831508787de26627dd2a112321b9c3a4af
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: NGINX_ENTRYPOINT_QUIET_LOGS
+              value: "1"
+          securityContext: *containerSecurity
+          startupProbe:
+            httpGet:
+              path: /status.php
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: cloud.nico-steinmueller.de
+            periodSeconds: 10
+            failureThreshold: 180
+          readinessProbe:
+            httpGet:
+              path: /status.php
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: cloud.nico-steinmueller.de
+            periodSeconds: 15
+            timeoutSeconds: 5
+          # Nur nginx selbst - ein hängendes PHP soll nicht nginx neu starten
+          livenessProbe:
+            httpGet:
+              path: /robots.txt
+              port: http
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: code
+              mountPath: /var/www/html
+              readOnly: true
+            # CSS, JS und Bilder der App-Store-Apps
+            - name: custom-apps
+              mountPath: /var/www/html/custom_apps
+              readOnly: true
+            - name: nextcloud-nginx
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+              readOnly: true
+            - name: nginx-tmp
+              mountPath: /tmp
+
+        - name: cron
+          image: docker.io/library/nextcloud:35.0.1-fpm@sha256:97e20437843ebf8735f9e4e75220eaaf6202b1af17ef45335ec1086caa40b35f
+          # Am Entrypoint vorbei - der kopierte sonst ein zweites Mal Code.
+          # crond aus dem Image (/cron.sh) braucht root, daher die Schleife.
+          command: [/bin/sh, -c]
+          args:
+            - |
+              trap 'exit 0' TERM INT
+              while true; do
+                sleep 300 & wait $!
+                php -f /var/www/html/cron.php || echo "cron.php: Exit $?"
+              done
+          env: *env
+          securityContext: *containerSecurity
+          resources:
+            requests:
+              cpu: 10m
+              memory: 128Mi
+            limits:
+              memory: 1Gi
+          volumeMounts: *phpMounts
+
+      volumes:
+        - name: code
+          persistentVolumeClaim:
+            claimName: code
+        - name: config
+          persistentVolumeClaim:
+            claimName: config
+        - name: custom-apps
+          persistentVolumeClaim:
+            claimName: custom-apps
+        - name: data
+          persistentVolumeClaim:
+            claimName: data
+        - name: paperless-consume
+          persistentVolumeClaim:
+            claimName: paperless-consume
+        - name: nextcloud-config
+          configMap:
+            name: nextcloud-config
+        - name: nextcloud-nginx
+          configMap:
+            name: nextcloud-nginx
+        # Nur ca.crt - das Secret enthält auch den Schlüssel der CA.
+        - name: pg-ca
+          secret:
+            secretName: nextcloud-db-ca
+            items:
+              - key: ca.crt
+                path: ca.crt
+        - name: tmp
+          emptyDir:
+            sizeLimit: 4Gi
+        - name: nginx-tmp
+          emptyDir:
+            sizeLimit: 256Mi

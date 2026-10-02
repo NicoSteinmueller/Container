@@ -162,6 +162,15 @@ spec:
           trustedIPs: []
           insecure: false
 
+        # Traefik bricht sonst nach 60 s beim Lesen des Bodys ab - ein
+        # Upload-Stück von 100 MB über eine langsame Leitung dauert länger.
+        # Werte wie im Docker-Traefik.
+        transport:
+          respondingTimeouts:
+            readTimeout: 1800s
+            writeTimeout: 1800s
+            idleTimeout: 180s
+
     service:
       enabled: true
       annotations:

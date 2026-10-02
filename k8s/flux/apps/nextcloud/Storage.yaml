@@ -1,0 +1,118 @@
+# Speicher für Nextcloud
+#
+# Alles auf NFS gehört 99:100
+---
+# PHP-Code aus dem Image. Der Entrypoint füllt ihn beim Start, nach einem
+# Verlust kommt er von selbst wieder.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: code
+  namespace: nextcloud
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# config.php: was Nextcloud selbst schreibt - version, installed,
+# maintenance, Werte aus `occ config:system:set`. Die Geheimnisse
+# (instanceid, secret, passwordsalt) stehen nicht darin, sondern im Secret
+# `nextcloud` aus homelab-secrets.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: config
+  namespace: nextcloud
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-unraid
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# Apps aus dem App-Store
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: custom-apps
+  namespace: nextcloud
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-unraid
+  resources:
+    requests:
+      storage: 2Gi
+
+---
+# Die Dateien der Nutzer
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data
+  namespace: nextcloud
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-unraid
+  resources:
+    requests:
+      storage: 2Ti
+
+---
+# Paperless' Eingangsordner, in Nextcloud als externer Speicher. Statisch,
+# weil das Verzeichnis Paperless gehört und nicht diesem Namespace:
+# Paperless im Cluster später über ein eigenes PV auf denselben Pfad.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nextcloud-paperless-consume
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  claimRef:
+    namespace: nextcloud
+    name: paperless-consume
+  # Die StorageClass gilt hier nicht - dieselben Optionen wie in
+  # storage/nfs-storage/StorageClass.yaml
+  mountOptions:
+    - nfsvers=4.1
+    - hard
+    - noatime
+    - nosuid
+    - nodev
+    - noexec
+    - sec=sys
+  csi:
+    driver: nfs.csi.k8s.io
+    # Nur eindeutig; den Pfad nimmt der Treiber aus volumeAttributes
+    volumeHandle: 10.253.0.1#mnt/user/k8s#paperless/consume##
+    volumeAttributes:
+      server: 10.253.0.1
+      share: /mnt/user/k8s
+      subDir: paperless/consume
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: paperless-consume
+  namespace: nextcloud
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""
+  volumeName: nextcloud-paperless-consume
+  resources:
+    requests:
+      storage: 10Gi

@@ -1,7 +1,9 @@
 # CrowdSec: Der Agent wertet die Zugriffslogs von ingress-public aus.
 # https://docs.crowdsec.net/u/getting_started/installation/kubernetes/
 # https://docs.crowdsec.net/docs/next/configuration/values_parameters/
-# TODO: AppSec, Metabase-Dashboard.
+# AppSec: eigener Pod, den der Bouncer vor jeder Anfrage mit der Anfrage
+# selbst fragt (WAF). https://docs.crowdsec.net/docs/next/appsec/intro
+# TODO: Metabase-Dashboard.
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -66,9 +68,10 @@ spec:
               name: crowdsec-bouncer-key
               key: traefik_public
 
-        # Das Chart stellt die Zertifikate mit diesen OUs aus
+        # Das Chart stellt die Zertifikate mit diesen OUs aus. AppSec meldet
+        # sich wie ein Agent an, mit eigener OU.
         - name: AGENTS_ALLOWED_OU
-          value: agent-ou
+          value: agent-ou,appsec-ou
         - name: BOUNCERS_ALLOWED_OU
           value: bouncer-ou
 
@@ -173,6 +176,64 @@ spec:
           memory: 128Mi
         limits:
           memory: 384Mi
+
+    appsec:
+      enabled: true
+
+      # TLS mit dem Zertifikat, das das Chart für den Service ausstellt.
+      # Der Bouncer prüft es gegen dieselbe CA wie die LAPI.
+      acquisitions:
+        - source: appsec
+          listen_addr: 0.0.0.0:7422
+          path: /
+          cert_file: /etc/ssl/crowdsec-appsec-server/tls.crt
+          key_file: /etc/ssl/crowdsec-appsec-server/tls.key
+          appsec_configs:
+            # blockt sofort: Virtual Patching für bekannte CVEs, generische Regeln
+            - crowdsecurity/appsec-default
+            # OWASP CRS, nur mitlesend: Treffer werden Alarme, wiederholte
+            # Treffer über `crowdsec-appsec-outofband` ein Bann
+            - crowdsecurity/crs
+          labels:
+            type: appsec
+
+      env:
+        # appsec-crs-exclusion-plugin-nextcloud: CRS hält sonst WebDAV
+        # (PROPFIND, XML-Bodies unter /remote.php) für Angriffe und bannt die
+        # Sync-Clients. CRS lädt das Plugin aus crs-plugins/ von selbst.
+        - name: COLLECTIONS
+          value: "crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules crowdsecurity/appsec-crs crowdsecurity/appsec-crs-exclusion-plugin-nextcloud"
+
+      securityContext:
+        allowPrivilegeEscalation: false
+        privileged: false
+        capabilities:
+          drop:
+            - ALL
+        seccompProfile:
+          type: RuntimeDefault
+
+      wait_for_lapi:
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop:
+              - ALL
+          seccompProfile:
+            type: RuntimeDefault
+
+      # Chart-Default: 500m fest reserviert und als Limit. Gedrosselt bremste
+      # AppSec jede öffentliche Anfrage - `null` nimmt das Limit heraus.
+      resources:
+        requests:
+          cpu: 50m
+          memory: 192Mi
+        limits:
+          cpu: 2
+          memory: 512Mi
 
     # TODO: Monitoring
     dashboard:

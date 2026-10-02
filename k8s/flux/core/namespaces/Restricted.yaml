@@ -156,3 +156,14 @@ metadata:
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
+---
+# Dateien, Kalender, Kontakte. Öffentlich - auch für die Sync-Clients.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nextcloud
+  labels:
+    homelab.io/zone: public
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted

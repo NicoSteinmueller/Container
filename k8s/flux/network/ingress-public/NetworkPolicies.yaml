@@ -39,6 +39,17 @@ spec:
             - port: "8080"
               protocol: TCP
 
+    # AppSec, das die Anfragen selbst prüft
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: crowdsec
+            k8s-app: crowdsec
+            type: appsec
+      toPorts:
+        - ports:
+            - port: "7422"
+              protocol: TCP
+
     # Die bedienten Dienste, je ein Block.
     - toEndpoints:
         - matchLabels:
@@ -53,6 +64,15 @@ spec:
         - matchLabels:
             io.kubernetes.pod.namespace: keycloak
             app.kubernetes.io/name: keycloak
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: nextcloud
+            app.kubernetes.io/name: nextcloud
       toPorts:
         - ports:
             - port: "8080"
