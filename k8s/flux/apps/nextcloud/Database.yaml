@@ -9,10 +9,18 @@ spec:
   instances: 1
   imageName: ghcr.io/cloudnative-pg/postgresql:18.6-standard-trixie@sha256:f89a40f4d74aa6e0900917eaf6299b125a6382eb02fd4ee5d46f55bcbf7e5726
 
+  # CNPG-Default 128MB; serverinfo (pg.cache_hit_ratio) empfiehlt 256MB.
+  # Änderung startet die Instanz neu - bei einer Instanz kurz Downtime.
+  postgresql:
+    parameters:
+      shared_buffers: "256MB"
+
   storage:
     size: 10Gi
+  # Request mit shared_buffers angehoben: die 256MB sind belegt, sobald der
+  # Cache warm ist.
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
+    requests: { cpu: 100m, memory: 512Mi }
     limits:   { memory: 1Gi }
 ---
 apiVersion: v1
