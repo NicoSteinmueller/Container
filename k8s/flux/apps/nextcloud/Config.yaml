@@ -114,6 +114,18 @@ data:
         root /var/www/html;
         index index.php index.html /index.php$request_uri;
 
+        # Weiterleitungen relativ. Sonst baut nginx sie aus eigenem Schema
+        # und Port: /.well-known/caldav -> http://<host>:8080/remote.php/dav/
+        absolute_redirect off;
+
+        # mime.types im Image kennt .mjs nicht - Browser führen JavaScript-
+        # Module als application/octet-stream nicht aus. `types` hier ersetzt
+        # die Liste aus http{}, darum erst die ganze Liste, dann .mjs dazu.
+        include mime.types;
+        types {
+            text/javascript mjs;
+        }
+
         # Sync-Clients laden in Stücken; der Web-Upload ohne Chunking nicht
         client_max_body_size 16G;
         client_body_timeout 300s;
