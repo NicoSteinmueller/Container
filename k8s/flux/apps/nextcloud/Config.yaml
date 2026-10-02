@@ -61,9 +61,11 @@ data:
       'allowed_admin_ranges' => ['192.168.178.0/24'],
 
       // Der Egress lässt nur die Namen aus NetworkPolicies.yaml hinaus; die
-      // Standardliste (nextcloud.com, startpage.com, ...) meldete sonst
-      // "keine Internetverbindung".
-      'connectivity_check_domains' => ['apps.nextcloud.com'],
+      // Standardliste (connectivity.nextcloud.com, eff.org, edri.org) meldete
+      // sonst "keine Internetverbindung". Mit Schema: ohne versucht Nextcloud
+      // zuerst http:// - Port 80 ist zu, jeder Test liefe 30 s in einen
+      // Timeout und schriebe einen Fehler ins Log.
+      'connectivity_check_domains' => ['https://apps.nextcloud.com'],
 
       // Updates kommen über das Image, nicht über den Web-Updater
       'upgrade.disable-web' => true,
