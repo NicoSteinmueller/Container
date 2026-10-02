@@ -46,6 +46,13 @@ spec:
       # Sonst stünden NEXTCLOUD_SERVICE_HOST, NEXTCLOUD_PORT, ... in der
       # Umgebung - der Entrypoint liest NEXTCLOUD_*-Variablen.
       enableServiceLinks: false
+      # Nextcloud prüft sich selbst über die eigene Adresse (setupchecks,
+      # WebDAV, .well-known, ...). Fest auf ingress-public statt über DNS:
+      # Cilium leitet die LoadBalancer-Adresse im Cluster direkt auf Traefik.
+      hostAliases:
+        - ip: 192.168.178.232
+          hostnames:
+            - cloud.nico-steinmueller.de
       securityContext:
         runAsNonRoot: true
         runAsUser: 99
