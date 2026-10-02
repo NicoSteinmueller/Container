@@ -6,13 +6,18 @@ metadata:
   name: nextcloud-config
   namespace: nextcloud
 data:
-  # Nextcloud liest config.php und danach jede weitere *.config.php - gleiche
-  # Schlüssel gelten von hier. config.php bleibt, wie es aus Docker kommt:
-  # instanceid, secret, passwordsalt, version.
+  # Nextcloud liest config.php, dann diese Datei, und verschmilzt beide mit
+  # array_replace_recursive: Einzelwerte gelten von hier, Listen werden aber
+  # nach Index gemischt - ein längerer alter Eintrag in config.php lebt mit
+  # seinen hinteren Elementen weiter.
+  #
+  # In config.php gehört nur, was Nextcloud selbst führt: version,
+  # installed, maintenance. Geheimnisse kommen als NC_* aus der Umgebung.
   kubernetes.config.php: |
     <?php
     $CONFIG = [
       'dbtype' => 'pgsql',
+      'dbtableprefix' => 'oc_',
       // TLS gegen die CA
       'pgsql_ssl' => [
         'mode' => 'verify-full',
@@ -62,6 +67,12 @@ data:
 
       // Updates kommen über das Image, nicht über den Web-Updater
       'upgrade.disable-web' => true,
+
+      // Hintergrundjobs mit viel Last ab 1 Uhr UTC
+      'maintenance_window_start' => 1,
+      'default_phone_region' => 'DE',
+      // 2 = Warnungen
+      'loglevel' => 2,
     ];
 
   # Das php-Image startet mit pm.max_children = 5 - fünf gleichzeitige
