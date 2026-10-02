@@ -80,14 +80,6 @@ services:
         bind:
           create_host_path: false
 
-      # Keycloak
-      - type: bind
-        source: /mnt/user/data/keycloak/db-backup
-        target: /data/keycloak/db-backup
-        read_only: true
-        bind:
-          create_host_path: false
-
       # Minecraft
       - type: bind
         source: /mnt/user/appdata/minecraft
