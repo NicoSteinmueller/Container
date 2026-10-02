@@ -49,10 +49,14 @@ spec:
           name: homelab-ca
           kind: ClusterIssuer
 
-        # secretTemplate: wird immer ausgegeben, ohne Schlüssel abgelehnt
+        # secretTemplate: wird immer ausgegeben, ohne Schlüssel abgelehnt.
+        # Die AppSec-Zertifikate schreiben auch `annotations:` immer hin -
+        # leer wird daraus `null`, und cert-manager lehnt das Certificate ab.
         secretTemplate:
           labels:
             app.kubernetes.io/part-of: crowdsec
+          annotations:
+            homelab.io/issuer: homelab-ca
 
       agent:
         tlsClientAuth: true
