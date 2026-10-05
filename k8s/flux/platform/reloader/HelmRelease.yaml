@@ -34,6 +34,7 @@ spec:
       # Namespaces, die beobachtet werden sollen.
       namespaces:
         - crowdsec
+        - immich
         - keycloak
         - monitoring
         - navidrome

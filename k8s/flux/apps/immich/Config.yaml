@@ -1,0 +1,48 @@
+# immich - Systemeinstellungen
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: immich-config
+  namespace: immich
+data:
+  # Mit IMMICH_CONFIG_FILE gilt nur noch diese Datei: Die Einstellungen in
+  # der Weboberfläche sind gesperrt, was in der Datenbank stand, ist
+  # wirkungslos. Fehlende Schlüssel nimmt Immich aus seinen Defaults - hier
+  # steht nur, was davon abweicht.
+  immich.yaml: |
+    # Zweite Kopie neben dem CronJob immich-db-dump (Database.yaml), der das
+    # Haupt-Backup ist und Alarme hat. Der Restore-Knopf in der Weboberfläche geht
+    # nicht - `app` darf die Extensions nicht löschen.
+    backup:
+      database:
+        keepLastAmount: 7
+
+    machineLearning:
+      urls:
+        - http://immich-machine-learning:3003
+
+    # Updates kommen über Renovate.
+    newVersionCheck:
+      enabled: false
+
+    # Anmeldung nur über Keycloak
+    oauth:
+      enabled: true
+      issuerUrl: https://keycloak.nico-steinmueller.de/realms/mein-realm
+      clientId: immich
+      buttonText: Login mit Keycloak
+      # GiB für neue Nutzer
+      defaultStorageQuota: 10
+    passwordLogin:
+      enabled: false
+
+    # Für geteilte Links
+    server:
+      externalDomain: https://immich.nico-steinmueller.de
+
+    storageTemplate:
+      enabled: true
+
+    trash:
+      days: 60

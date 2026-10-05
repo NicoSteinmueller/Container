@@ -1,0 +1,205 @@
+# Netzwerkregeln im Namespace `immich`
+---
+# Eingehend nur der öffentliche Controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-ingress-public
+  namespace: immich
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: immich-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik-public
+      ports:
+        - protocol: TCP
+          port: 2283
+
+---
+# Ausgehend: Valkey, Machine Learning und Keycloak.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: immich-server-egress
+  namespace: immich
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: immich-server
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: valkey
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: immich-machine-learning
+      toPorts:
+        - ports:
+            - port: "3003"
+              protocol: TCP
+
+    # Keycloak über ingress-public
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: traefik-public
+            app.kubernetes.io/name: traefik
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
+
+---
+# Machine Learning: nur vom Server
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: machine-learning-from-server
+  namespace: immich
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: immich-machine-learning
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: immich-server
+      ports:
+        - protocol: TCP
+          port: 3003
+
+---
+# Machine Learning: die Modelle von Hugging Face
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: immich-machine-learning-egress
+  namespace: immich
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: immich-machine-learning
+  egress:
+    # DNS für genau die Namen unten
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: huggingface.co
+              - matchName: cdn-lfs.hf.co
+              - matchName: cdn-lfs-us-1.hf.co
+              - matchName: cdn-lfs-eu-1.hf.co
+              - matchName: cas-bridge.xethub.hf.co
+              - matchName: cas-server.xethub.hf.co
+              - matchName: transfer.xethub.hf.co
+
+    #   huggingface.co           Modell-Index, leitet die Dateien weiter
+    #   cdn-lfs*.hf.co           Dateien aus Git LFS
+    #   *.xethub.hf.co           Dateien aus dem Xet-Speicher
+    # Fehlt ein Name, meldet ihn der Alarm `DnsAbfrageBlockiert`.
+    - toFQDNs:
+        - matchName: huggingface.co
+        - matchName: cdn-lfs.hf.co
+        - matchName: cdn-lfs-us-1.hf.co
+        - matchName: cdn-lfs-eu-1.hf.co
+        - matchName: cas-bridge.xethub.hf.co
+        - matchName: cas-server.xethub.hf.co
+        - matchName: transfer.xethub.hf.co
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+
+---
+# Valkey: nur vom Server
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: valkey-from-server
+  namespace: immich
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: valkey
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: immich-server
+      ports:
+        - protocol: TCP
+          port: 6379
+
+---
+# Die Datenbank: eingehend der Operator (5432 Rollen, 8000 Status) und die
+# gekennzeichneten Clients; ausgehend nur die API.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: immich-db
+  namespace: immich
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: immich-db
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: cnpg-system
+            app.kubernetes.io/name: cloudnative-pg
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+            - { port: "8000", protocol: TCP }
+    - fromEndpoints:
+        - matchLabels:
+            homelab.io/db-client: immich-db
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - { port: "6443", protocol: TCP }
+
+---
+# Die Gegenrichtung für alle Clients: Immich, Dump- und Restore-Job.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: immich-db-client
+  namespace: immich
+spec:
+  endpointSelector:
+    matchLabels:
+      homelab.io/db-client: immich-db
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: immich-db
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }

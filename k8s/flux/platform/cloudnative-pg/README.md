@@ -50,14 +50,18 @@ Drei Dinge, die der Dump nicht mitnimmt:
 - **Kollation.** Ohne Angabe legt CNPG die Datenbank mit `C` an. Nextcloud und
   SFTPGo laufen heute auch so; Paperless, Keycloak und Immich auf
   `en_US.utf8`. Dort `bootstrap.initdb.localeCollate` und `localeCType` auf
-  `en_US.utf8` setzen, sonst ändert sich die Sortierung. Nachsehen:
+  `en_US.utf8` setzen, sonst ändert sich die Sortierung - oder bewusst eine
+  andere wählen wie Immich (`de_DE.utf8`); der Restore baut alle Indizes
+  ohnehin neu. Nachsehen:
   `docker exec <c> sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "select datcollate from pg_database where datname = current_database()"'`
 - **Extensions.** Zurückgespielt wird als `app` (`--no-owner`), und der darf
   keine Extensions anlegen, die Superuser verlangen. Nur Immich hat welche
   (`vector`, `vchord`, `cube`, `earthdistance`, `pg_trgm`, `unaccent`,
-  `uuid-ossp`) - dort ein Image mit VectorChord statt `standard` und die
-  Extensions über `bootstrap.initdb.postInitApplicationSQL` vor dem Restore.
-  Die anderen haben nur `plpgsql`.
+  `uuid-ossp`) - dort VectorChord per Image-Volume und die Extensions über
+  ein `Database`-Objekt, das der Operator als Superuser umsetzt
+  ([`apps/immich/Database.yaml`](../../apps/immich/Database.yaml)). Der
+  Restore-Job lässt Extensions aus dem Dump aus. Die anderen haben nur
+  `plpgsql`.
 
 ## Zurückspielen
 

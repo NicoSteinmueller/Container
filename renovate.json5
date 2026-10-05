@@ -170,6 +170,23 @@
       versioningTemplate: 'regex:^(?<major>\\d+)\\.(?<minor>\\d+)-(?<compatibility>[a-z]+-[a-z]+)$',
       autoReplaceStringTemplate: '{{depName}}:{{newValue}}@{{newDigest}}',
     },
+    {
+      // VectorChord für Immichs Postgres (k8s/flux/apps/immich/Database.yaml),
+      // als Image-Volume am CNPG-Cluster. Der Tag `pg18-v1.1.1` hält die
+      // Postgres-Hauptversion fest (compatibility); die Architektur-Tags
+      // (`-amd64`) passen nicht auf das Muster. Die zweite Stelle, `version:`
+      // im Database-Objekt, findet der `# renovate:`-Manager oben.
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^k8s\\/.+\\.ya?ml$/',
+      ],
+      matchStrings: [
+        '(?<depName>ghcr\\.io\\/tensorchord\\/vchord-scratch):(?<currentValue>pg\\d+-v\\d+\\.\\d+\\.\\d+)@(?<currentDigest>sha256:[a-f0-9]{64})',
+      ],
+      datasourceTemplate: 'docker',
+      versioningTemplate: 'regex:^pg(?<compatibility>\\d+)-v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)$',
+      autoReplaceStringTemplate: '{{depName}}:{{newValue}}@{{newDigest}}',
+    },
   ],
   branchPrefix: 'renovate/',
   additionalBranchPrefix: '{{parentDir}}-',
@@ -433,6 +450,46 @@
       prBodyNotes: [
         '### 🐘 Postgres im Cluster\n\nInstanz und Dump-Job wechseln gemeinsam - `pg_dump` bricht gegen eine neuere Server-Hauptversion ab. Nach dem Merge startet CNPG die Instanz neu (kurze Downtime, `instances: 1`).\n\n**Major-Update (kein Automerge):** CNPG macht daraus ein `pg_upgrade` beim Start. Vorher einen frischen Dump ziehen:\n\n```bash\nkubectl -n <ns> create job --from=cronjob/<name>-db-dump dump-vor-upgrade\n```\n\nDanach prüfen: `kubectl -n <ns> get cluster` (healthy) und einen Dump-Job laufen lassen.',
       ],
+    },
+    {
+      // Zwei Stellen, ein PR: das Image am Cluster und `version` im
+      // Database-Objekt. Nach dem Merge startet CNPG die Instanz mit der neuen
+      // Bibliothek, dann führt der Operator ALTER EXTENSION aus.
+      //
+      // Nie automatisch: Die Vektor-Indizes baut niemand neu. Immich täte es
+      // bei einem eigenen Update, hier fehlt ihm dafür das Recht.
+      description: 'VectorChord für Immich: Image und Extension-Version gemeinsam, immer mit Review',
+      matchPackageNames: [
+        'ghcr.io/tensorchord/vchord-scratch',
+      ],
+      groupName: 'immich-vchord',
+      automerge: false,
+      prCreation: 'immediate',
+      prBodyNotes: [
+        '### 🧭 VectorChord für Immich\n\nDas Image am CNPG-Cluster und `version` im `Database`-Objekt wechseln gemeinsam. Nach dem Merge startet CNPG die Instanz neu (kurze Downtime), danach hebt der Operator die Extension (`ALTER EXTENSION vchord UPDATE TO …`). Ein Fehler im Status vor dem Neustart ist normal - der Operator versucht es wieder.\n\n```bash\nkubectl -n immich get database immich-db -o jsonpath=\'{.status.applied}{"\\n"}\'   # true\nkubectl -n immich exec immich-db-1 -c postgres -- psql -d app -Atc "select extversion from pg_extension where extname = \'vchord\'"\n```\n\nDann die Vektor-Indizes neu bauen lassen - wie Immich es bei einem eigenen Update täte:\n\n```bash\nkubectl -n immich exec immich-db-1 -c postgres -- psql -d app -c \'DROP INDEX IF EXISTS clip_index, face_index;\'\nkubectl -n immich rollout restart deploy/immich-server\n```',
+      ],
+    },
+    {
+      // Das `version:`-Feld hat keinen Digest; ohne diese Regel wollte die
+      // Docker-Regel oben einen anheften.
+      description: 'VectorChord-Version im Database-Objekt: kein Digest',
+      matchPackageNames: [
+        'ghcr.io/tensorchord/vchord-scratch',
+      ],
+      matchCurrentValue: '/^\\d+\\.\\d+\\.\\d+$/',
+      pinDigests: false,
+    },
+    {
+      // Server und Machine Learning müssen dieselbe Version haben.
+      description: 'Immich im Cluster: Server und Machine Learning in einem PR',
+      matchManagers: [
+        'kubernetes',
+      ],
+      matchPackageNames: [
+        'ghcr.io/immich-app/immich-server',
+        'ghcr.io/immich-app/immich-machine-learning',
+      ],
+      groupName: 'immich',
     },
     {
       description: 'Tool-Binaries: Der Merge installiert noch nichts',

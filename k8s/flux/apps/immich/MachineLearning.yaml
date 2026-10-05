@@ -1,0 +1,114 @@
+# immich - Machine Learning: Suche (CLIP) und Gesichtserkennung
+#
+# Holt die Modelle beim ersten Bedarf von Hugging Face und entlädt sie nach
+# fünf Minuten ohne Anfrage wieder.
+---
+# Die heruntergeladenen Modelle.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-cache
+  namespace: immich
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: immich-machine-learning
+  namespace: immich
+spec:
+  selector:
+    app.kubernetes.io/name: immich-machine-learning
+  ports:
+    - name: http
+      port: 3003
+      targetPort: http
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-machine-learning
+  namespace: immich
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: immich-machine-learning
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: immich-machine-learning
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 99
+        runAsGroup: 100
+        fsGroup: 100
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: immich-machine-learning
+          image: ghcr.io/immich-app/immich-machine-learning:v3.2.4@sha256:e16c2f166a8174901959fdf85e2e4c7bd1ebc4b37e0b6655de97c41408a260c4
+          ports:
+            - name: http
+              containerPort: 3003
+          env:
+            - name: TZ
+              value: "Europe/Berlin"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 2Gi
+          # Modelle unter /cache, Hugging Face und Bibliotheken legen unter dem Home-Verzeichnis `/` noch eigenes ab.
+          volumeMounts:
+            - name: ml-cache
+              mountPath: /cache
+              subPath: cache
+            - name: ml-cache
+              mountPath: /.cache
+              subPath: dot-cache
+            - name: ml-cache
+              mountPath: /.config
+              subPath: dot-config
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: ml-cache
+          persistentVolumeClaim:
+            claimName: ml-cache
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

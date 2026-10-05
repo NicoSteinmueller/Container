@@ -80,6 +80,28 @@ data:
             options: kompatibel
             certResolver: letsencrypt
 
+        # Fotos und Videos. Ohne Stufe 1 wie Nextcloud: Die Zeitleiste lädt
+        # Vorschaubilder zu Hunderten, die Mobil-Apps sichern Bild für Bild.
+        immich:
+          rule: Host(`immich.nico-steinmueller.de`)
+          entryPoints:
+            - websecure
+          service: immich
+
+        # Anmeldung mit Stufe 2: Passwort (abgeschaltet, bleibt trotzdem
+        # gedrosselt), OAuth, PIN des gesperrten Ordners, Passwort geteilter
+        # Links.
+        immich-login:
+          rule: >-
+            Host(`immich.nico-steinmueller.de`) &&
+            PathRegexp(`^/api/(auth/login|auth/session/unlock|oauth/authorize|oauth/callback|shared-links/login)$`)
+          priority: 1000
+          entryPoints:
+            - websecure
+          middlewares:
+            - rate-limit-auth
+          service: immich
+
       services:
         ntfy:
           loadBalancer:
@@ -93,6 +115,10 @@ data:
           loadBalancer:
             servers:
               - url: http://nextcloud.nextcloud.svc.cluster.local:80
+        immich:
+          loadBalancer:
+            servers:
+              - url: http://immich-server.immich.svc.cluster.local:80
 
   middlewares.yaml: |
     http:

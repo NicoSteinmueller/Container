@@ -1,0 +1,17 @@
+# Speicher für Immich
+---
+# Originale, Uploads, Vorschaubilder, umkodierte Videos.
+# Die Datenbank speichert absolute Pfade unter /data, und
+# Immich prüft beim Start die `.immich`-Marker in jedem Unterordner.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data
+  namespace: immich
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-unraid
+  resources:
+    requests:
+      storage: 2Ti

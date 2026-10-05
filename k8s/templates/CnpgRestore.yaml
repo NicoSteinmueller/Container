@@ -14,6 +14,11 @@
 # Ziel ist die Datenbank aus dem Secret `nextcloud-db-app` - nach einem
 # Neuaufbau eine leere Instanz mit neuem Passwort, die Anwendung liest es per
 # secretKeyRef und merkt davon nichts.
+#
+# Extensions aus dem Dump spielt der Job nie zurück: Die legt der Operator
+# als Superuser an (`Database`-Objekt, siehe apps/immich), und `app` dürfte
+# sie weder löschen (`--clean`) noch anlegen. Was sonst draußen bleiben soll,
+# nennt `EXCLUDE` als Regex auf die Zeilen von `pg_restore --list`.
 ---
 apiVersion: batch/v1
 kind: Job
@@ -45,6 +50,7 @@ spec:
             capabilities: { drop: [ALL] }
           env:
             - { name: DUMP, value: /dumps/nextcloud-JJJJ-MM-TTTHHMMZ.dump }
+            - { name: EXCLUDE, value: "" }
             - { name: PGHOST,     valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: host } } }
             - { name: PGPORT,     valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: port } } }
             - { name: PGUSER,     valueFrom: { secretKeyRef: { name: nextcloud-db-app, key: username } } }
@@ -56,9 +62,15 @@ spec:
           args:
             - |
               set -euo pipefail
+              # Inhaltsverzeichnis ohne Extensions und ohne EXCLUDE
+              pg_restore --list "${DUMP}" |
+                grep -vE "^[0-9]+; [0-9]+ [0-9]+ (EXTENSION|COMMENT - EXTENSION) ${EXCLUDE:+|${EXCLUDE}}" \
+                > /tmp/toc
+
               # --exit-on-error: lieber abbrechen als still halb zurückspielen
               pg_restore --clean --if-exists --no-owner --no-privileges \
-                         --exit-on-error --dbname="${PGDATABASE}" "${DUMP}"
+                         --exit-on-error --use-list=/tmp/toc \
+                         --dbname="${PGDATABASE}" "${DUMP}"
               echo "zurückgespielt: ${DUMP}"
           volumeMounts:
             - { name: dumps, mountPath: /dumps, readOnly: true }

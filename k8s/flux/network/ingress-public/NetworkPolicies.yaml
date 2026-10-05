@@ -78,6 +78,15 @@ spec:
             - port: "8080"
               protocol: TCP
 
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: immich
+            app.kubernetes.io/name: immich-server
+      toPorts:
+        - ports:
+            - port: "2283"
+              protocol: TCP
+
     # DNS für genau die Namen unten - zusätzlich zu `**.cluster.local`
     - toEndpoints:
         - matchLabels:
