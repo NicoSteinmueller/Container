@@ -24,9 +24,7 @@ metadata:
   name: immich-server
   namespace: immich
 spec:
-  # TODO: 0 bis zum Umzug: Ein Start auf leerer Datenbank legte eine neue
-  # Installation an (README.md, Abschnitt Umzug).
-  replicas: 0
+  replicas: 1
   revisionHistoryLimit: 2
   # Job-Sperren in der Datenbank, ein Pod genügt.
   strategy:
