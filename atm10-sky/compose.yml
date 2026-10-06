@@ -1,0 +1,93 @@
+name: atm10-sky
+
+services:
+  atm10-sky:
+    # ------------ Identität ------------------------
+    # Java 21: ATM10 To the Sky läuft auf Minecraft 1.21.1 / NeoForge.
+    image: itzg/minecraft-server:2026.9.2-java21@sha256:edf50d431ddc6f73929368e82f4334a405796874f7b0ae11f1edcbb267d670aa
+    container_name: atm10-sky
+    hostname: atm10-sky
+
+    # ------------ Abhängigkeiten & Start -----------
+    # kein init: PID 1 ist mc-server-runner, der SIGTERM als "stop" an die Konsole weitergibt
+    restart: unless-stopped
+    # muss länger sein als STOP_DURATION, sonst wird vor dem Speichern gekillt
+    stop_grace_period: 2m
+    # Konsole per `docker attach atm10-sky` (Strg+P, Strg+Q zum Lösen); sonst `docker exec atm10-sky rcon-cli`
+    stdin_open: true
+    tty: true
+    healthcheck:
+      test: mc-health
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # erster Start lädt das komplette Modpack herunter
+      start_period: 15m
+      start_interval: 10s
+
+    # ----------- Ressourcen -----------
+    deploy:
+      resources:
+        limits:
+          # Heap (MEMORY) + ~2G für Metaspace, Threads und native Puffer
+          memory: 12G
+          pids: 2048
+        reservations:
+          memory: 10G
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: 3
+
+    # ----------- Sicherheit -----------
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # ----------- Speicher -----------
+    # Geschrieben wird nur nach /data und /tmp.
+    read_only: true
+    tmpfs:
+      # exec ist nötig: Netty entpackt seine nativen Bibliotheken (epoll) nach /tmp und lädt sie von dort
+      - /tmp:rw,exec,nosuid,size=1g
+
+    # ---------- Environment -----------
+    # https://docker-minecraft-server.readthedocs.io/en/latest/variables/
+    environment:
+      TZ: Europe/Berlin
+      EULA: "TRUE"
+
+      # https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/mod-platforms/auto-curseforge/
+      # https://www.curseforge.com/minecraft/modpacks/all-the-mods-10-sky/files
+      TYPE: AUTO_CURSEFORGE
+      CF_SLUG: all-the-mods-10-sky
+      # Pinnt die Pack-Version
+      CF_FILENAME_MATCHER: "2.0.7"
+      # Das Image bringt für Java 17+ einen API-Key mit. Nur falls der Download mit 403 scheitert:
+      # CF_API_KEY als Stack-Variable setzen und hier `CF_API_KEY: ${CF_API_KEY}` eintragen.
+
+      # setzt Xms und Xmx gleich
+      MEMORY: 10G
+      USE_AIKAR_FLAGS: "true"
+      # Sekunden, die mc-server-runner nach "stop" auf das Speichern wartet
+      STOP_DURATION: "90"
+
+      # ---- server.properties (werden bei jedem Start aus der Umgebung gesetzt) ----
+      # Skyblock-Welt über SkyBlock Builder. Wirkt nur beim Erzeugen der Welt.
+      LEVEL_TYPE: skyblockbuilder:skyblock
+      MOTD: "ATM10 To the Sky"
+      DIFFICULTY: normal
+      MAX_PLAYERS: "1"
+      # Jetpacks, Flugringe & Co. würden sonst als Fliegen erkannt und gekickt
+      ALLOW_FLIGHT: "true"
+      # Watchdog aus: modded Lastspitzen (Worldgen, große Maschinen) beenden sonst den Server
+      MAX_TICK_TIME: "-1"
+      ONLINE_MODE: "true"
+      ENABLE_WHITELIST: "true"
+      ENFORCE_WHITELIST: "true"
+      WHITELIST: |-
+        44b03ad5-bdea-4578-b500-7ea9916c611d
+      OPS: |-
+        44b03ad5-bdea-4578-b500-7ea9916c611d

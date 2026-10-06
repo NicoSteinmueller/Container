@@ -1,0 +1,18 @@
+# Einstellungen für die Produktion
+
+services:
+  atm10-sky:
+    user: 99:100
+    ports:
+      - name: minecraft
+        target: 25565
+        published: 55486
+        protocol: tcp
+        mode: host
+    volumes:
+      - type: bind
+        source: /mnt/user/appdata/minecraft/atm10_sky
+        target: /data
+        read_only: false
+        bind:
+          create_host_path: false

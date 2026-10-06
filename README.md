@@ -182,6 +182,7 @@ Domain: `nico-steinmueller.de` — Hostnamen mit `.local.` sind ausschließlich 
 
 | Stack | Zugriff |
 | --- | --- |
+| [atm10-sky/](atm10-sky/) | Minecraft-Server (ATM10 To the Sky), TCP-Port `55486` direkt auf dem Host |
 | [ftb-skies-2/](ftb-skies-2/) | Minecraft-Server, TCP-Port `55485` direkt auf dem Host |
 
 ---

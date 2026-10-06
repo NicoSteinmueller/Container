@@ -1,0 +1,18 @@
+# Einstellungen für Development- und Testumgebungen
+
+services:
+  atm10-sky:
+    user: 1000:1000
+    ports:
+      - name: minecraft
+        target: 25565
+        published: 25565
+        protocol: tcp
+        mode: host
+    volumes:
+      - type: bind
+        source: ./data
+        target: /data
+        read_only: false
+        bind:
+          create_host_path: false
