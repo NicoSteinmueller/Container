@@ -121,7 +121,7 @@ spec:
             - name: DB_URL
               value: "$(DB_APP_URI)?sslmode=verify-full&sslrootcert=/pg-ca/ca.crt"
           securityContext: *containerSecurity
-          # Der erste Start nach dem Umzug baut die Vektor-Indizes neu, ein
+          # Der erste Start nach einem Restore baut die Vektor-Indizes neu, ein
           # Update migriert die Datenbank - Immich lauscht erst danach.
           startupProbe:
             httpGet:
