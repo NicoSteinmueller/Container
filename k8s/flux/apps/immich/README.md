@@ -22,6 +22,15 @@ Damit sind die Einstellungen in der Weboberfläche gesperrt.
 | `oauth.clientSecret`   | `immich`        | SOPS                        |
 | `DB_URL`               | `immich-db-app` | vom CNPG-Operator gewürfelt |
 
+## Verwaltung nur aus dem Heimnetz
+
+Der Router `immich-admin` in
+[`ingress-public/DynamicConfig.yaml`](../../network/ingress-public/DynamicConfig.yaml)
+lässt `/admin` und die Admin-API nur von `192.168.178.0/24` durch, sonst `403`.
+`/admin` allein ist nur eine Route im Browser - gesperrt sind die API-Pfade
+dahinter. Die Liste stammt aus dem Code von v3.2.4 (`admin: true`); bei einem
+Major-Update prüfen, ob neue dazugekommen sind.
+
 ## Datenbank
 
 Anders als bei den übrigen Diensten:

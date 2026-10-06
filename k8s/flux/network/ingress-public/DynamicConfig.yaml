@@ -102,6 +102,24 @@ data:
             - rate-limit-auth
           service: immich
 
+        # Verwaltung nur aus dem Heimnetz. `/admin` ist nur eine Route im
+        # Browser - was die Admin-Seiten tun, läuft über diese API-Pfade (alle
+        # mit `admin: true` im Code von v3.2.4). Ein neuer Admin-Pfad in einer
+        # späteren Version wäre von außen offen.
+        immich-admin:
+          rule: >-
+            Host(`immich.nico-steinmueller.de`) &&
+            (PathRegexp(`^/admin(/|$)`) ||
+             PathRegexp(`^/api/(admin|system-config|system-metadata|jobs|queues|libraries)(/|$)`) ||
+             PathRegexp(`^/api/server/(statistics|license)$`))
+          # Über `immich-login`
+          priority: 1100
+          entryPoints:
+            - websecure
+          middlewares:
+            - nur-heimnetz
+          service: immich
+
       services:
         ntfy:
           loadBalancer:
@@ -197,6 +215,14 @@ data:
             sourceCriterion:
               ipStrategy:
                 depth: 0
+
+        # Nur Quelladressen aus dem Heimnetz, sonst 403. Ohne ipStrategy zählt
+        # die Adresse der Verbindung - X-Forwarded-For nimmt der Entrypoint
+        # ohnehin von niemandem an (`forwardedHeaders.trustedIPs: []`).
+        nur-heimnetz:
+          ipAllowList:
+            sourceRange:
+              - 192.168.178.0/24
 
         # bekannte Angreifer fliegen raus, dann die Kopfzeilen, dann die
         # Obergrenze.
