@@ -73,12 +73,12 @@ services:
           create_host_path: false
 
       # Immich
-      - type: bind
-        source: /mnt/user/data/immich/media
-        target: /data/immich/media
-        read_only: true
-        bind:
-          create_host_path: false
+#      - type: bind
+#        source: /mnt/user/data/immich/media
+#        target: /data/immich/media
+#        read_only: true
+#        bind:
+#          create_host_path: false
 
       # Minecraft
       - type: bind
@@ -95,36 +95,36 @@ services:
           create_host_path: false
 
       # Nextcloud
-      - type: bind
-        source: /mnt/user/appdata/nextcloud/apps
-        target: /data/nextcloud/apps
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: /mnt/user/appdata/nextcloud/config
-        target: /data/nextcloud/config
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: /mnt/user/appdata/nextcloud/themes
-        target: /data/nextcloud/themes
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: /mnt/user/data/nextcloud/data
-        target: /data/nextcloud/data
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: /mnt/user/data/nextcloud/db-backup
-        target: /data/nextcloud/db-backup
-        read_only: true
-        bind:
-          create_host_path: false
+#      - type: bind
+#        source: /mnt/user/appdata/nextcloud/apps
+#        target: /data/nextcloud/apps
+#        read_only: true
+#        bind:
+#          create_host_path: false
+#      - type: bind
+#        source: /mnt/user/appdata/nextcloud/config
+#        target: /data/nextcloud/config
+#        read_only: true
+#        bind:
+#          create_host_path: false
+#      - type: bind
+#        source: /mnt/user/appdata/nextcloud/themes
+#        target: /data/nextcloud/themes
+#        read_only: true
+#        bind:
+#          create_host_path: false
+#      - type: bind
+#        source: /mnt/user/data/nextcloud/data
+#        target: /data/nextcloud/data
+#        read_only: true
+#        bind:
+#          create_host_path: false
+#      - type: bind
+#        source: /mnt/user/data/nextcloud/db-backup
+#        target: /data/nextcloud/db-backup
+#        read_only: true
+#        bind:
+#          create_host_path: false
 
       # Octoprint
       - type: bind
