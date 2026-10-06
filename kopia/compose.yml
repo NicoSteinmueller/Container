@@ -10,7 +10,10 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
     healthcheck:
-      test: ["CMD", "kopia", "repository", "status"]
+      # Nur prüfen, ob der Server antwortet (401 zählt als gesund) -
+      # `kopia repository status` öffnet das Repository neu und läuft unter
+      # Last in den Timeout.
+      test: ["CMD", "curl", "-s", "-o", "/dev/null", "http://127.0.0.1:51515/"]
       interval: 30s
       timeout: 10s
       retries: 3
