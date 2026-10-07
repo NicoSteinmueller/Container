@@ -29,8 +29,7 @@ services:
     deploy:
       resources:
         limits:
-          # Heap (MEMORY) + ~2G für Metaspace, Threads und native Puffer
-          memory: 12G
+          memory: 18G
           pids: 2048
         reservations:
           memory: 10G
