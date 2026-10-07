@@ -256,12 +256,13 @@ spec:
           # Avatare holt Grafana serverseitig von secure.gravatar.com
           disable_gravatar: true
 
+      # Im Leerlauf ~270 MiB RSS, mit offenem Loki-Dashboard ~600 MiB.
       resources:
         requests:
           cpu: 50m
-          memory: 192Mi
+          memory: 384Mi
         limits:
-          memory: 768Mi
+          memory: 1536Mi
 
     # Auf Talos nicht scrapebar
     kubeEtcd:
