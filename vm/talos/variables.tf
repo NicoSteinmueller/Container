@@ -239,6 +239,28 @@ variable "node_mac" {
   default     = "52:54:00:00:00:01"
 }
 
+variable "public_ip" {
+  description = <<-EOT
+    Adresse von ingress-public auf einem eigenen Bein mit eigener MAC
+    (public_mac). Muss gleich der Adresse im Pool `traefik-public` in
+    k8s/flux/network/lb-ipam/IPPool.yaml sein.
+
+    Warum ein eigenes Bein: Die FRITZ!Box führt Geräte nach MAC und gibt keine
+    Ports frei an eine IP, die sich eine MAC mit einer anderen teilt. Über
+    L2-Announcement trüge die Adresse die MAC des Nodes.
+
+    null: kein zweites Bein (lokaler Testlauf).
+  EOT
+  type        = string
+  default     = null
+}
+
+variable "public_mac" {
+  description = "MAC des Beins für public_ip, im QEMU-Bereich 52:54:00 und kollisionsfrei. Wählt wie node_mac in der Machine-Config das Interface aus."
+  type        = string
+  default     = "52:54:00:00:00:02"
+}
+
 variable "maintenance_link" {
   description = <<-EOT
     Interface-Name, wie der Kernel das Bein beim Booten von der ISO benennt.

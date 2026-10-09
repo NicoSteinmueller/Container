@@ -4,7 +4,8 @@
 #
 #   192.168.178.230  Node selbst
 #   192.168.178.231  ingress-internal - nur LAN
-#   192.168.178.232  ingress-public   - Internet
+#   192.168.178.232  ingress-public   - Internet, eigenes Bein mit eigener
+#                                       MAC (public_ip in vm/talos)
 #
 ---
 apiVersion: cilium.io/v2

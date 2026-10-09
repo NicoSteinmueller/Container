@@ -5,14 +5,16 @@ Der Weg von einem leeren Unraid-Host zu Immich und Nextcloud im Internet.
 ## Zielbild
 
 Ein Node, zwei LoadBalancer-Adressen aus dem LAN, vergeben von Cilium per
-LB-IPAM und im Netz angekündigt per L2-Announcement. Kein `hostPort`, kein
-`hostNetwork`, kein Sysctl.
+LB-IPAM. Kein `hostPort`, kein `hostNetwork`.
+
+`.231` kündigt Cilium per L2-Announcement unter der MAC des Nodes an.
+`.232` sitzt auf einem eigenen Bein der VM mit eigener MAC 
 
 | Adresse | Wer lauscht | Erreichbar von |
 |---|---|---|
 | `192.168.178.230` | Node selbst: Talos-API, Kubelet, kube-apiserver | nur `admin_sources`, siehe Schritt 3 |
 | `192.168.178.231` | `ingress-internal` — Headlamp, it-tools, Navidrome, whoami, Paperless | nur LAN |
-| `192.168.178.232` | `ingress-public` — ntfy, später Immich, Nextcloud | Internet (Fritzbox-Freigabe) **und** LAN über Split-DNS |
+| `192.168.178.232` | `ingress-public` — ntfy, Keycloak, Immich, Nextcloud | Internet (Fritzbox-Freigabe auf das Gerät mit MAC `public_mac`) **und** LAN über Split-DNS |
 
 Beide LoadBalancer-Adressen müssen außerhalb des Fritzbox-DHCP-Bereichs liegen
 und dürfen nicht mit `lan_ip` aus [../vm/talos](../vm/talos) kollidieren.

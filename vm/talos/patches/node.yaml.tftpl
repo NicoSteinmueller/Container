@@ -1,5 +1,5 @@
 #
-# Netzwerk und Identität des Nodes. Ein Bein, statisch adressiert: ${lan_ip}
+# Netzwerk und Identität des Nodes. Statisch adressiert: ${lan_ip}
 # ist zugleich Kubernetes-API-Endpoint und steht in kubeconfig wie talosconfig
 # - eine geliehene Adresse wäre dort falsch, sobald ein Lease ausbleibt.
 #
@@ -21,6 +21,25 @@ machine:
   # Komponenten, 127.0.0.1:7445) bringt Talos als eigenes Dokument mit, in
   # der Voreinstellung genau so - hier steht dafür nichts mehr.
   #
+%{ if public_ip != null ~}
+
+  #
+  # Zwei Beine im selben Netz. Ab Werk antwortet Linux auf jedem Bein per ARP
+  # für jede Adresse des Nodes - die FRITZ!Box sähe ${lan_ip} dann auch unter
+  # der MAC des public-Beins, und genau das soll das zweite Bein verhindern.
+  #
+  #   arp_ignore=1    antworten nur für Adressen auf dem Bein, auf dem die
+  #                   Frage ankommt
+  #   arp_announce=2  eigene ARP-Fragen tragen die Adresse des Beins, über
+  #                   das sie hinausgehen
+  #
+  # `all`, nicht je Bein: Der Kernel-Name des public-Beins hängt an der
+  # PCI-Position, und der Kernel nimmt ohnehin das Maximum aus `all` und Bein.
+  #
+  sysctls:
+    net.ipv4.conf.all.arp_ignore: "1"
+    net.ipv4.conf.all.arp_announce: "2"
+%{ endif ~}
 ---
 apiVersion: v1alpha1
 kind: HostnameConfig
@@ -46,6 +65,50 @@ addresses:
   - address: ${lan_ip}/${lan_prefix}
 routes:
   - gateway: ${lan_gateway}
+%{ if public_ip != null ~}
+---
+#
+# Das Bein von ingress-public: ${public_ip} mit eigener MAC, damit die
+# FRITZ!Box die Adresse als eigenes Gerät führt und Ports dorthin freigibt.
+# Die Adresse sitzt auf dem Bein selbst, nicht nur als L2-Announcement: Nur so
+# fragt der Kernel von hier aus mit ihr als Absender nach dem Gateway, und die
+# MAC trägt im LAN genau eine Adresse. Cilium bedient sie trotzdem als
+# LoadBalancer-Adresse - der Service-Lookup im eBPF kommt vor dem Kernel.
+#
+apiVersion: v1alpha1
+kind: LinkAliasConfig
+name: public
+selector:
+  match: mac(link.permanent_addr) == "${lower(public_mac)}"
+---
+#
+# Antworten von ${public_ip} gehen über dieses Bein zurück, nicht über das
+# LAN-Bein: Tabelle 100, gewählt von der Regel unten nach Quelladresse.
+#
+apiVersion: v1alpha1
+kind: LinkConfig
+name: public
+addresses:
+  - address: ${public_ip}/${lan_prefix}
+    # In der Haupttabelle bleibt das LAN-Bein vorn. Ohne Rang stünde die
+    # Netzroute dieses Beins gleichwertig daneben, und Verkehr von ${lan_ip}
+    # könnte hier hinausgehen.
+    routePriority: 2048
+routes:
+  - destination: ${lan_cidr}
+    source: ${public_ip}
+    table: "100"
+  - gateway: ${lan_gateway}
+    source: ${public_ip}
+    table: "100"
+---
+# Vor `main` (32766), nach Ciliums Regeln (9, 100).
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "1000"
+src: ${public_ip}/32
+table: "100"
+%{ endif ~}
 ---
 apiVersion: v1alpha1
 kind: ResolverConfig
@@ -73,9 +136,11 @@ kind: KubeNodeConfig
 # Kubelet die Tunnel-Adresse als InternalIP - sie sortiert vor dem LAN. Dann
 # zeigen `kubernetes.default`, Metriken und Cilium-Health auf den Tunnel.
 #
+# Die eine Adresse statt des Netzes: public_ip liegt im selben Netz.
+#
 nodeIP:
   validSubnets:
-    - ${lan_cidr}
+    - ${lan_ip}/32
 labels:
   node-role.kubernetes.io/control-plane: ""
   node.kubernetes.io/exclude-from-external-load-balancers: ""

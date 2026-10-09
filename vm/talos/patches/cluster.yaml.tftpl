@@ -1,9 +1,9 @@
 cluster:
   # Aus demselben Grund wie nodeIP im KubeNodeConfig (node.yaml.tftpl): etcd
-  # soll sich nicht unter der Tunnel-Adresse ankündigen.
+  # soll sich weder unter der Tunnel-Adresse noch unter public_ip ankündigen
   etcd:
     advertisedSubnets:
-      - ${lan_cidr}
+      - ${lan_ip}/32
 ---
 apiVersion: v1alpha1
 kind: KubeNetworkConfig

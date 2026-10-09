@@ -12,6 +12,7 @@ Konkrete Werte — Host, Adressen, Interface, Pool — stehen in
 | Disks | `vda` System (Talos), `vdb` Daten — lokaler Cluster-Speicher |
 | Adresse | `<node-ip>`, statisch — zugleich Kubernetes-API-Endpoint |
 | Netz | macvtap auf `lan_macvtap_dev` |
+| Zweites Bein | `public_ip` mit eigener MAC `public_mac` — nur ingress-public |
 | Image | Image Factory, Talos + `qemu-guest-agent` |
 | CNI | Cilium, als Inline-Manifest in der Machine-Config — kein kube-proxy |
 | Speicher | `local-path` auf `vdb` als Default, NFS zum Unraid-Host daneben — durch WireGuard |

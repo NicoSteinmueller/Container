@@ -430,13 +430,25 @@ resource "libvirt_domain" "cp1" {
       },
     ]
 
-    interfaces = [
+    #
+    # Das zweite Bein trägt nur public_ip, mit eigener MAC (siehe public_ip).
+    # Der Kernel-Name hängt an der PCI-Position, die libvirt vergibt - nichts
+    # hier verlässt sich darauf: Talos wählt per MAC, Cilium nimmt das Bein
+    # selbst auf, weil es eine Adresse trägt.
+    #
+    interfaces = concat([
       {
         mac    = { address = var.node_mac }
         model  = { type = "virtio" }
         source = local.lan_source
       },
-    ]
+      ], var.public_ip == null ? [] : [
+      {
+        mac    = { address = var.public_mac }
+        model  = { type = "virtio" }
+        source = local.lan_source
+      },
+    ])
 
     # Talos loggt Boot und Installation, neben talosctl der einzige Weg,
     # einem fehlgeschlagenen Boot zuzusehen:
@@ -569,6 +581,8 @@ data "talos_machine_configuration" "controlplane" {
       lan_gateway = var.lan_gateway
       dns_servers = var.dns_servers
       ntp_servers = var.ntp_servers
+      public_ip   = var.public_ip
+      public_mac  = var.public_mac
     }),
 
     #
@@ -585,7 +599,7 @@ data "talos_machine_configuration" "controlplane" {
     templatefile("${path.module}/patches/cluster.yaml.tftpl", {
       pod_subnet     = var.pod_subnet
       service_subnet = var.service_subnet
-      lan_cidr       = var.lan_cidr
+      lan_ip         = var.lan_ip
     }),
 
     #

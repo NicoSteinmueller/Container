@@ -237,6 +237,10 @@ hubble:
 # LB-Adresse dieselbe MAC wie die Node-Adresse. Vorgehen in
 # k8s/INBETRIEBNAHME.md, Schritt 4.
 #
+# Angekündigt wird so nur noch ingress-internal. ingress-public hat ein
+# eigenes Bein mit eigener Adresse (public_ip); Cilium nimmt es von selbst in
+# seine Geräte auf und bedient die Adresse dort als LoadBalancer.
+#
 l2announcements:
   enabled: true
 
