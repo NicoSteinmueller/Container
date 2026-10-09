@@ -69,6 +69,9 @@ spec:
           env:
             - name: TZ
               value: "Europe/Berlin"
+            # ONNX Runtime sendet sonst Telemetrie an mobile.events.data.microsoft.com
+            - name: ORT_DISABLE_TELEMETRY
+              value: "1"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

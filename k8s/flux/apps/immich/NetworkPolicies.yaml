@@ -111,10 +111,15 @@ spec:
               - matchName: cas-bridge.xethub.hf.co
               - matchName: cas-server.xethub.hf.co
               - matchName: transfer.xethub.hf.co
+              - matchPattern: "**.cdn.hf.co"
+              - matchName: www.modelscope.cn
 
     #   huggingface.co           Modell-Index, leitet die Dateien weiter
     #   cdn-lfs*.hf.co           Dateien aus Git LFS
     #   *.xethub.hf.co           Dateien aus dem Xet-Speicher
+    #   **.cdn.hf.co             Xet-Dateien über das CDN (us.aws.cdn.hf.co),
+    #                            `**`, weil `*` nur ein Label abdeckt
+    #   www.modelscope.cn        OCR-Modelle (RapidOCR)
     # Fehlt ein Name, meldet ihn der Alarm `DnsAbfrageBlockiert`.
     - toFQDNs:
         - matchName: huggingface.co
@@ -124,6 +129,8 @@ spec:
         - matchName: cas-bridge.xethub.hf.co
         - matchName: cas-server.xethub.hf.co
         - matchName: transfer.xethub.hf.co
+        - matchPattern: "**.cdn.hf.co"
+        - matchName: www.modelscope.cn
       toPorts:
         - ports:
             - port: "443"
