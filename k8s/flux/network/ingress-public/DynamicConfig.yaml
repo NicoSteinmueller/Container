@@ -91,10 +91,13 @@ data:
         # Anmeldung mit Stufe 2: Passwort (abgeschaltet, bleibt trotzdem
         # gedrosselt), OAuth, PIN des gesperrten Ordners, Passwort geteilter
         # Links.
+        # `(?i)` und `/?`: Immich (Express) nimmt Pfade ohne Rücksicht auf
+        # Groß-/Kleinschreibung und mit Slash am Ende an - `/api/AUTH/login/`
+        # ginge sonst an der Drosselung vorbei. Ebenso bei `immich-admin`.
         immich-login:
           rule: >-
             Host(`immich.nico-steinmueller.de`) &&
-            PathRegexp(`^/api/(auth/login|auth/session/unlock|oauth/authorize|oauth/callback|shared-links/login)$`)
+            PathRegexp(`(?i)^/api/(auth/login|auth/session/unlock|oauth/authorize|oauth/callback|shared-links/login)/?$`)
           priority: 1000
           entryPoints:
             - websecure
@@ -104,14 +107,14 @@ data:
 
         # Verwaltung nur aus dem Heimnetz. `/admin` ist nur eine Route im
         # Browser - was die Admin-Seiten tun, läuft über diese API-Pfade (alle
-        # mit `admin: true` im Code von v3.2.4). Ein neuer Admin-Pfad in einer
+        # mit `admin: true` im Code von v3.3.1). Ein neuer Admin-Pfad in einer
         # späteren Version wäre von außen offen.
         immich-admin:
           rule: >-
             Host(`immich.nico-steinmueller.de`) &&
-            (PathRegexp(`^/admin(/|$)`) ||
-             PathRegexp(`^/api/(admin|system-config|system-metadata|jobs|queues|libraries)(/|$)`) ||
-             PathRegexp(`^/api/server/(statistics|license)$`))
+            (PathRegexp(`(?i)^/admin(/|$)`) ||
+             PathRegexp(`(?i)^/api/(admin|system-config|system-metadata|jobs|queues|libraries)(/|$)`) ||
+             PathRegexp(`(?i)^/api/server/(statistics|license)/?$`))
           # Über `immich-login`
           priority: 1100
           entryPoints:
@@ -171,10 +174,11 @@ data:
               logLevel: INFO
         
         # HSTS und Antwort-Kopfzeilen.
+        # Kein `browserXssFilter`: X-XSS-Protection ist in Browsern abgeschafft.
+        # Kein `frameDeny`: `customFrameOptionsValue` ersetzt es ohnehin - Nextcloud
+        # bettet eigene Seiten per iframe ein.
         secure-headers:
           headers:
-            frameDeny: true
-            browserXssFilter: true
             contentTypeNosniff: true
             forceSTSHeader: true
             stsIncludeSubdomains: true
@@ -182,8 +186,16 @@ data:
             stsSeconds: 31536000
             referrerPolicy: strict-origin-when-cross-origin
             customFrameOptionsValue: SAMEORIGIN
-            customResponseHeaders:
-              X-Forwarded-Proto: https
+
+        # Gleichzeitig offene Anfragen je Adresse. Gegen langsame Uploads, die
+        # mit `readTimeout: 1800s` sonst lange Verbindungen binden. Großzügig:
+        # die Zeitleiste von Immich lädt Vorschaubilder zu Dutzenden parallel.
+        in-flight:
+          inFlightReq:
+            amount: 100
+            sourceCriterion:
+              ipStrategy:
+                depth: 0
 
         # Ratelimit Stufe 1, je Router: alles außer Sync-Diensten
         rate-limit:
@@ -224,12 +236,13 @@ data:
             sourceRange:
               - 192.168.178.0/24
 
-        # bekannte Angreifer fliegen raus, dann die Kopfzeilen, dann die
-        # Obergrenze.
+        # bekannte Angreifer fliegen raus, dann die Zahl offener Anfragen,
+        # die Kopfzeilen, die Obergrenze.
         public-chain:
           chain:
             middlewares:
               - crowdsec
+              - in-flight
               - secure-headers
               - rate-limit-sync
 

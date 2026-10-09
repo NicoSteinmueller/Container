@@ -138,6 +138,7 @@ spec:
           default: true
         # Nur zum Weiterleiten
         http:
+          aliasHeadersStrategy: delete
           redirections:
             entryPoint:
               to: websecure
@@ -150,6 +151,9 @@ spec:
         expose:
           default: true
         http:
+          # `X_Forwarded_For` oder `X.Forwarded.For` lesen PHP und nginx als
+          # X-Forwarded-For - `delete` entfernt solche Kopfzeilen.
+          aliasHeadersStrategy: delete
           # Am Entrypoint, damit kein Ingress die Kette vergessen kann.
           middlewares:
             - public-chain@file
@@ -255,12 +259,11 @@ spec:
       enabled: true
       format: json
       fields:
-        general:
-          defaultmode: keep
+        defaultMode: keep
         names:
           clientUsername: drop
         headers:
-          defaultmode: keep
+          defaultMode: drop
           names:
             user-agent: keep
             x-forwarded-for: keep

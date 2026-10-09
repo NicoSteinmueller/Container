@@ -36,6 +36,13 @@ spec:
     # Talos fährt containerd
     container_runtime: containerd
 
+    # Ausdrücklich statt AppVersion des Charts: Der Init-Container `prestage`
+    # von AppSec muss dasselbe Image haben. Renovate hebt beide Stellen im
+    # selben PR (packageRules `crowdsec-image`).
+    image:
+      repository: crowdsecurity/crowdsec
+      tag: v1.8.1@sha256:0f2523fa61ef507f15d953045cface490cc880670c62f2755ced17524107f71a
+
     # Ohne TLS registriert sich der Agent beim Start mit seinem Pod-Namen bei
     # der LAPI - nach einem Container-Neustart ohne neuen Pod folgt daraus
     # `403: user already exist` und CrashLoopBackOff.
@@ -181,6 +188,23 @@ spec:
         limits:
           memory: 384Mi
 
+      # Wartet per `nc -z` auf die LAPI. Chart-Default ist busybox 1.28 von
+      # 2018 ohne Digest.
+      wait_for_lapi: &waitForLapi
+        image:
+          repository: busybox
+          tag: 1.38.0@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop:
+              - ALL
+          seccompProfile:
+            type: RuntimeDefault
+
     appsec:
       enabled: true
 
@@ -208,26 +232,85 @@ spec:
         - name: COLLECTIONS
           value: "crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules crowdsecurity/appsec-crs crowdsecurity/appsec-crs-exclusion-plugin-nextcloud"
 
+      # AppSec liest jede Anfrage aus dem Internet samt Body - deshalb nicht
+      # als root. Das Startskript schreibt nach /etc/crowdsec und
+      # /var/lib/crowdsec/data; beides liegt auf emptyDirs, die `prestage`
+      # vorher füllt.
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
         allowPrivilegeEscalation: false
         privileged: false
+        readOnlyRootFilesystem: true
         capabilities:
           drop:
             - ALL
         seccompProfile:
           type: RuntimeDefault
 
-      wait_for_lapi:
-        securityContext:
-          allowPrivilegeEscalation: false
-          privileged: false
-          runAsNonRoot: true
-          runAsUser: 65534
-          capabilities:
-            drop:
-              - ALL
-          seccompProfile:
-            type: RuntimeDefault
+      # Die Vorlagen in /staging gehören root mit 0600 - ohne root nicht
+      # lesbar. `prestage` kopiert sie, wie es das Startskript sonst täte, und
+      # übergibt sie an uid 1000. Root nur mit CHOWN, kurz, ohne Netz-Port.
+      # Liegt dann config.yaml schon da, überspringt das Startskript sein
+      # eigenes rsync; sind die Daten kopiert, legt es keine Symlinks auf
+      # die unlesbaren Originale an.
+      extraInitContainers:
+        - name: prestage
+          image: crowdsecurity/crowdsec:v1.8.1@sha256:0f2523fa61ef507f15d953045cface490cc880670c62f2755ced17524107f71a
+          command: [sh, -c]
+          args:
+            - >-
+              rsync -a /staging/etc/crowdsec/ /etc/crowdsec/ &&
+              rsync -a /staging/var/lib/crowdsec/data/ /var/lib/crowdsec/data/ &&
+              chown -R 1000:1000 /etc/crowdsec /var/lib/crowdsec/data
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHOWN
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: appsec-etc
+              mountPath: /etc/crowdsec
+            - name: appsec-data
+              mountPath: /var/lib/crowdsec/data
+
+      extraVolumes:
+        - name: appsec-etc
+          emptyDir:
+            sizeLimit: 64Mi
+        # GeoIP-Datenbanken aus dem Image (~75 MB) und Daten aus dem Hub
+        - name: appsec-data
+          emptyDir:
+            sizeLimit: 512Mi
+        - name: appsec-tmp
+          emptyDir:
+            sizeLimit: 64Mi
+
+      extraVolumeMounts:
+        - name: appsec-etc
+          mountPath: /etc/crowdsec
+        - name: appsec-data
+          mountPath: /var/lib/crowdsec/data
+        - name: appsec-tmp
+          mountPath: /tmp
+
+      wait_for_lapi: *waitForLapi
 
       # Chart-Default: 500m fest reserviert und als Limit. Gedrosselt bremste
       # AppSec jede öffentliche Anfrage - `null` nimmt das Limit heraus.

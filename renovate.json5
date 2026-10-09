@@ -425,6 +425,17 @@
       automerge: false,
     },
     {
+      // Zwei Stellen, ein PR: `image.tag` in den Chart-Values (flux-Manager)
+      // und der Init-Container `prestage` von AppSec (kubernetes-Manager).
+      // Liefen sie auseinander, kopierte `prestage` die Vorlagen einer
+      // anderen Version, als das Startskript erwartet.
+      description: 'CrowdSec-Image: Chart-Values und AppSec-Init gemeinsam',
+      matchPackageNames: [
+        'crowdsecurity/crowdsec',
+      ],
+      groupName: 'crowdsec-image',
+    },
+    {
       description: 'CNPG-Postgres nicht doppelt: das hebt der eigene Regex-Manager, Instanz und Dump-Job gemeinsam',
       matchManagers: [
         'kubernetes',

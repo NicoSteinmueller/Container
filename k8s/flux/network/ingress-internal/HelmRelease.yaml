@@ -112,6 +112,7 @@ spec:
         expose:
           default: true
         http:
+          aliasHeadersStrategy: delete
           redirections:
             entryPoint:
               to: websecure
@@ -124,6 +125,7 @@ spec:
         expose:
           default: true
         http:
+          aliasHeadersStrategy: delete
           tls:
             enabled: true
             # Wildcard am Entrypoint
