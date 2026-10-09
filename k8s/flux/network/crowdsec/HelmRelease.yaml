@@ -142,6 +142,12 @@ spec:
         # COLLECTIONS: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules crowdsecurity/appsec-crs crowdsecurity/appsec-crs-exclusion-plugin-nextcloud crowdsecurity/sshd crowdsecurity/linux crowdsecurity/iptables crowdsecurity/base-http-scenarios crowdsecurity/http-dos crowdsecurity/whitelist-good-actors crowdsecurity/nextcloud gauth-fr/immich"
         - name: COLLECTIONS
           value: "crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/base-http-scenarios"
+        # Nimmt typische Nextcloud-Fehlalarme aus den HTTP-Szenarien: 404 bei
+        # WebDAV (die App prüft so ihre Upload-Ordner), fehlende Vorschauen,
+        # Avatare, Vorschaubilder der Fotos-App. Ohne sie sperrte
+        # `http-probing` nach zehn solchen 404 die ganze Adresse.
+        - name: PARSERS
+          value: "crowdsecurity/nextcloud-whitelist"
 
       # `poll_without_inotify`, weil /var/log/containers/*.log Symlinks sind.
       additionalAcquisition:
