@@ -29,6 +29,7 @@ services:
     deploy:
       resources:
         limits:
+          # Heap (MEMORY) + ~2,7G JVM-Overhead ab Start + Puffer für Wachstum und Page Cache.
           memory: 18G
           pids: 2048
         reservations:
