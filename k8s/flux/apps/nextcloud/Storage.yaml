@@ -67,8 +67,8 @@ spec:
 
 ---
 # Paperless' Eingangsordner, in Nextcloud als externer Speicher. Statisch,
-# weil das Verzeichnis Paperless gehört und nicht diesem Namespace:
-# Paperless im Cluster später über ein eigenes PV auf denselben Pfad.
+# weil das Verzeichnis Paperless gehört und nicht diesem Namespace: Paperless
+# bindet denselben Pfad über sein PVC `consume` (apps/paperless/Storage.yaml).
 apiVersion: v1
 kind: PersistentVolume
 metadata:
