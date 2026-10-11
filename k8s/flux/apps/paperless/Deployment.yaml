@@ -23,8 +23,7 @@ metadata:
   name: paperless
   namespace: paperless
 spec:
-  # TODO: UMZUG
-  replicas: 0
+  replicas: 1
   revisionHistoryLimit: 2
   # data auf local-path, Migrationen mit Sperrdatei darin
   strategy:
