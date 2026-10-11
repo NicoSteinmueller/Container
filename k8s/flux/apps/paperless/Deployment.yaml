@@ -113,10 +113,9 @@ spec:
                 secretKeyRef:
                   name: paperless-db-app
                   key: password
-            - name: PAPERLESS_DBSSLMODE
-              value: "verify-full"
-            - name: PAPERLESS_DBSSLROOTCERT
-              value: "/pg-ca/ca.crt"
+            # key=value mit Komma
+            - name: PAPERLESS_DB_OPTIONS
+              value: "sslmode=verify-full,sslrootcert=/pg-ca/ca.crt"
 
             - name: PAPERLESS_TIKA_ENABLED
               value: "true"
