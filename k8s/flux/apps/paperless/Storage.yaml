@@ -1,0 +1,62 @@
+# Speicher für Paperless
+---
+# Suchindex, Klassifikator, Zeitplan von celery beat, Logs. Alles davon baut
+# Paperless selbst neu: den Index beim Start (`reindex --if-needed`), den
+# Klassifikator stündlich. Deshalb local-path und kein Backup.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data
+  namespace: paperless
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# Originale, Archiv-PDFs, Vorschaubilder.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media
+  namespace: paperless
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-unraid
+  resources:
+    requests:
+      storage: 200Gi
+
+---
+# Eingangsordner. Nutzt Nextcloud als statisches PV `nextcloud-paperless-consume`
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: consume
+  namespace: paperless
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-unraid
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# Ziel von `document_exporter`
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: export
+  namespace: paperless
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-unraid
+  resources:
+    requests:
+      storage: 200Gi

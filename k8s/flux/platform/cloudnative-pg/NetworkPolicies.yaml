@@ -73,3 +73,14 @@ spec:
               protocol: TCP
             - port: "8000"
               protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: paperless
+            cnpg.io/podRole: instance
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+            - port: "8000"
+              protocol: TCP

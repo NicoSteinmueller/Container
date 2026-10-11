@@ -1,0 +1,186 @@
+# Netzwerkregeln im Namespace `paperless`
+---
+# Eingehend nur der interne Controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-ingress-internal
+  namespace: paperless
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: paperless
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik-internal
+      ports:
+        - protocol: TCP
+          port: 8000
+
+---
+# Ausgehend: Valkey, Gotenberg, Tika und Keycloak.
+# Kein Internet - E-Mail-Konten (IMAP) bräuchten hier einen toFQDNs-Block.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: paperless-egress
+  namespace: paperless
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: paperless
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: valkey
+      toPorts:
+        - ports:
+            - port: "6379"
+              protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: gotenberg
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: tika
+      toPorts:
+        - ports:
+            - port: "9998"
+              protocol: TCP
+
+    # Keycloak über ingress-public
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: traefik-public
+            app.kubernetes.io/name: traefik
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
+
+---
+# Valkey, Gotenberg, Tika: nur von Paperless
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: valkey-from-paperless
+  namespace: paperless
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: valkey
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: paperless
+      ports:
+        - protocol: TCP
+          port: 6379
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gotenberg-from-paperless
+  namespace: paperless
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: gotenberg
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: paperless
+      ports:
+        - protocol: TCP
+          port: 3000
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tika-from-paperless
+  namespace: paperless
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tika
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: paperless
+      ports:
+        - protocol: TCP
+          port: 9998
+
+---
+# Die Datenbank: eingehend der Operator (5432 Rollen, 8000 Status) und die
+# gekennzeichneten Clients; ausgehend nur die API.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: paperless-db
+  namespace: paperless
+spec:
+  endpointSelector:
+    matchLabels:
+      cnpg.io/cluster: paperless-db
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: cnpg-system
+            app.kubernetes.io/name: cloudnative-pg
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+            - { port: "8000", protocol: TCP }
+    - fromEndpoints:
+        - matchLabels:
+            homelab.io/db-client: paperless-db
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - { port: "6443", protocol: TCP }
+
+---
+# Die Gegenrichtung für alle Clients: Paperless, Dump- und Restore-Job.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: paperless-db-client
+  namespace: paperless
+spec:
+  endpointSelector:
+    matchLabels:
+      homelab.io/db-client: paperless-db
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            cnpg.io/cluster: paperless-db
+      toPorts:
+        - ports:
+            - { port: "5432", protocol: TCP }

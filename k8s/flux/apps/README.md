@@ -12,5 +12,6 @@ darf scheitern.
 | [`navidrome/`](navidrome)      | Musik-Streaming unter `music.k8s.nico-steinmueller.de`         |
 | [`nextcloud/`](nextcloud)      | Dateien, Kalender, Kontakte unter `cloud.nico-steinmueller.de` |
 | [`ntfy/`](ntfy)                | Push-Benachrichtigungen unter `ntfy.nico-steinmueller.de`      |
+| [`paperless/`](paperless)      | Dokumente unter `paperless.k8s.nico-steinmueller.de`           |
 | [`Whoami.yaml`](Whoami.yaml)   | Testdienst aus dem lokalen Chart `k8s/whoami/chart`            |
 | [`Sources.yaml`](Sources.yaml) | HelmRepositories                                               |

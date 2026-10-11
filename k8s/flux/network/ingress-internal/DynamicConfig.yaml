@@ -51,6 +51,12 @@ data:
             - websecure
           service: keycloak
 
+        paperless:
+          rule: Host(`paperless.k8s.nico-steinmueller.de`)
+          entryPoints:
+            - websecure
+          service: paperless
+
         # Traefiks eigenes Dashboard. Erst Passwort, dann Umleitung
         dashboard:
           rule: Host(`traefik.k8s.nico-steinmueller.de`)
@@ -87,6 +93,10 @@ data:
           loadBalancer:
             servers:
               - url: http://keycloak.keycloak.svc.cluster.local:80
+        paperless:
+          loadBalancer:
+            servers:
+              - url: http://paperless.paperless.svc.cluster.local:80
 
   middlewares.yaml: |
     http:
