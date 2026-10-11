@@ -17,7 +17,9 @@ Dokumente unter `https://paperless.k8s.nico-steinmueller.de`
 Offizielles Image ohne root und mit schreibgeschütztem
 Dateisystem. Das Image erkennt das selbst (`USER_IS_NON_ROOT`) und lässt
 `USERMAP_*` und das Umschreiben der Rechte aus. s6-overlay braucht `/run`,
-OCR braucht `/tmp` - beides `emptyDir`.
+OCR braucht `/tmp` - beides `emptyDir`. Ein `emptyDir` gehört `root` mit
+`0777`. Das lehnt s6-overlay ohne root ab, außer
+`S6_YES_I_WANT_A_WORLD_WRITABLE_RUN_BECAUSE_KUBERNETES=1` ist gesetzt.
 
 | Variable                                       | Secret             | Quelle                      |
 |------------------------------------------------|--------------------|-----------------------------|

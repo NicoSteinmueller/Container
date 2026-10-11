@@ -61,6 +61,10 @@ spec:
               containerPort: 8000
           # https://docs.paperless-ngx.com/configuration/
           env:
+            # /run ist ein emptyDir (root:root, 0777) - ohne root kann
+            # s6-overlay das nicht auf uid 99 umstellen und bricht sonst ab.
+            - name: S6_YES_I_WANT_A_WORLD_WRITABLE_RUN_BECAUSE_KUBERNETES
+              value: "1"
             - name: PAPERLESS_TIME_ZONE
               value: "Europe/Berlin"
             - name: PAPERLESS_APP_TITLE
