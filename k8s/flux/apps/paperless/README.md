@@ -10,7 +10,7 @@ Dokumente unter `https://paperless.k8s.nico-steinmueller.de`
 | [`Valkey.yaml`](Valkey.yaml)                   | Celery-Broker                                               |
 | [`Gotenberg.yaml`](Gotenberg.yaml)             | Office-Dateien und E-Mails nach PDF                         |
 | [`Tika.yaml`](Tika.yaml)                       | Text aus Office-Dateien und E-Mails                         |
-| [`NetworkPolicies.yaml`](NetworkPolicies.yaml) | Eingang nur von `ingress-internal`, Ausgang nur Keycloak    |
+| [`NetworkPolicies.yaml`](NetworkPolicies.yaml) | Eingang von `ingress-internal`, Ausgang Keycloak und IMAP   |
 
 ## Aufbau
 

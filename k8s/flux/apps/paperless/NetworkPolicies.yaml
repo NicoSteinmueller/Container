@@ -22,8 +22,8 @@ spec:
           port: 8000
 
 ---
-# Ausgehend: Valkey, Gotenberg, Tika und Keycloak.
-# Kein Internet - E-Mail-Konten (IMAP) bräuchten hier einen toFQDNs-Block.
+# Ausgehend: Valkey, Gotenberg, Tika, Keycloak und IMAP bei GMX.
+# Sonst kein Internet - weitere E-Mail-Konten brauchen hier ihren Namen.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -66,6 +66,27 @@ spec:
       toPorts:
         - ports:
             - port: "8443"
+              protocol: TCP
+
+    # DNS für genau die Namen unten, zusätzlich zu `**.cluster.local`
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: imap.gmx.net
+
+    # E-Mail-Konten, nur IMAPS
+    - toFQDNs:
+        - matchName: imap.gmx.net
+      toPorts:
+        - ports:
+            - port: "993"
               protocol: TCP
 
 ---
