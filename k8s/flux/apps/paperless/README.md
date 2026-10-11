@@ -15,18 +15,7 @@ Dokumente unter `https://paperless.k8s.nico-steinmueller.de`
 ## Aufbau
 
 Offizielles Image ohne root und mit schreibgeschütztem
-Dateisystem. Das Image erkennt das selbst (`USER_IS_NON_ROOT`) und lässt
-`USERMAP_*` und das Umschreiben der Rechte aus. s6-overlay braucht `/run`,
-OCR braucht `/tmp` - beides `emptyDir`. Ein `emptyDir` gehört `root` mit
-`0777`. Das lehnt s6-overlay ohne root ab, außer
-`S6_YES_I_WANT_A_WORLD_WRITABLE_RUN_BECAUSE_KUBERNETES=1` ist gesetzt.
-
-| Variable                                       | Secret             | Quelle                      |
-|------------------------------------------------|--------------------|-----------------------------|
-| `PAPERLESS_SECRET_KEY`                         | `paperless`        | SOPS                        |
-| Client-Secret in `PAPERLESS_SOCIALACCOUNT_PROVIDERS` | `paperless`  | SOPS                        |
-| `PAPERLESS_IGNORE_DATES`                       | `paperless`        | SOPS                        |
-| `PAPERLESS_DBHOST`, `PAPERLESS_DBPASS`, …      | `paperless-db-app` | vom CNPG-Operator gewürfelt |
+Dateisystem.
 
 ## Speicher
 
@@ -42,10 +31,7 @@ OCR braucht `/tmp` - beides `emptyDir`. Ein `emptyDir` gehört `root` mit
 Start neu (`document_index reindex --if-needed`), den Klassifikator trainiert
 der Scheduler stündlich.
 
-Den Eingangsordner bindet auch Nextcloud ein (statisches PV
-`nextcloud-paperless-consume`). Auf NFS kommen keine inotify-Ereignisse für
-Dateien anderer Clients an, deshalb fragt der Consumer alle 10 s ab
-(`PAPERLESS_CONSUMER_POLLING_INTERVAL`).
+Den Eingangsordner bindet auch Nextcloud ein (statisches PV `nextcloud-paperless-consume`).
 
 ## manage.py
 
@@ -55,91 +41,10 @@ pm document_index reindex
 pm document_exporter /usr/src/paperless/export
 ```
 
-## Umzug aus Docker
-
-Die Befehle für `kubectl` laufen vom Wurzelverzeichnis dieses Repos.
-
-1. **Keycloak.** Im Client `paperless` (Realm `mein-realm`) die neue Adresse
-   ergänzen, die alte bleibt bis zum Abbau des Docker-Stacks:
-
-   | Feld                            | Wert                                                                         |
-   |---------------------------------|------------------------------------------------------------------------------|
-   | Valid redirect URIs             | `https://paperless.k8s.nico-steinmueller.de/accounts/oidc/keycloak/login/callback/` |
-   | Valid post logout redirect URIs | `https://paperless.k8s.nico-steinmueller.de`                                 |
-   | Web origins                     | `https://paperless.k8s.nico-steinmueller.de`                                 |
-
-2. **Secret** `homelab-secrets/cluster/paperless.sops.yaml` mit den Werten
-   aus dem Portainer-Stack füllen (`sops edit`), pushen.
-
-3. **Ausrollen** mit `replicas: 0` im [`Deployment.yaml`](Deployment.yaml).
-   Danach stehen Datenbank, PVCs, Valkey, Gotenberg und Tika:
-
-   ```bash
-   kubectl -n paperless get cluster,pvc,pod
-   ```
-
-4. **Version prüfen.** Das Image im Cluster darf nicht älter sein als das im
-   Docker-Stack - Paperless migriert nur vorwärts.
-
-5. **Anwendung auf dem Host stoppen**, die Datenbank nicht, dann Dump
-   schreiben:
-
-   ```bash
-   ssh root@192.168.178.3
-   docker stop paperless
-   out=/mnt/user/k8s/paperless/dumps/migration-paperless-$(date -u +%Y-%m-%dT%H%MZ).dump
-   docker exec paperless_postgres sh -c \
-     'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --compress=0 --no-owner --no-privileges' \
-     > "$out"
-   docker exec -i paperless_postgres pg_restore --list < "$out" > /dev/null && echo lesbar
-   ```
-
-6. **Dateien kopieren**, noch auf dem Host. `-a` behält `99:100`, und die
-   Pfade unter `media/` müssen gleich bleiben - sie stehen in der Datenbank.
-   Was im alten Eingangsordner liegt, kommt in den neuen.
-
-   ```bash
-   rsync -a --info=progress2 /mnt/user/data/paperless/media/  /mnt/user/k8s/paperless/media/
-   rsync -a --info=progress2 /mnt/user/data/paperless/export/ /mnt/user/k8s/paperless/export/
-   rsync -a /mnt/user/data/paperless/consume/ /mnt/user/k8s/paperless/consume/
-   ```
-
-7. **Zurückspielen:**
-
-   ```bash
-   DUMP=migration-paperless-<zeitstempel>.dump
-   sed -e 's/nextcloud/paperless/g' \
-       -e "s|/dumps/paperless-JJJJ-MM-TTTHHMMZ.dump|/dumps/${DUMP}|" \
-       k8s/templates/CnpgRestore.yaml | kubectl apply -f -
-   kubectl -n paperless wait --for=condition=complete --timeout=20m job/paperless-db-restore
-   kubectl -n paperless logs job/paperless-db-restore
-   kubectl -n paperless delete job paperless-db-restore
-   kubectl -n paperless exec paperless-db-1 -c postgres -- psql -d app -c 'ANALYZE;'
-   ```
-
-8. **Starten:** `replicas: 1` im [`Deployment.yaml`](Deployment.yaml), die
-   Zeile `UMZUG` dazu löschen, pushen. Der erste Start baut den Suchindex
-   über alle Dokumente neu, das dauert:
-
-   ```bash
-   kubectl -n paperless logs -f deploy/paperless   # [init-index] …
-   kubectl -n paperless rollout status deploy/paperless --timeout=60m
-   ```
-
-9. **Prüfen:** Anmeldung über Keycloak, Suche, ein Dokument über den
-   Eingangsordner in Nextcloud, ein Dump außer der Reihe (unten).
-
-10. **Docker-Stack** in Portainer stoppen, nicht löschen - er ist der
-    Rückweg. Erst wenn Paperless hier ein paar Tage steht und ein Dump samt
-    Kopia-Snapshot existiert: Stack, `paperless/`, `grafana/alloy/paperless.alloy`,
-    `/mnt/user/appdata/paperless`, `/mnt/user/data/paperless`, die alten
-    Keycloak-URIs und den Dump `migration-*` entfernen.
-
 ## Backup
 
-Der CronJob `paperless-db-dump` schreibt alle 12 h einen `pg_dump` nach
-`/mnt/user/k8s/paperless/dumps/`, hält 14 Stück vor und meldet sich bei
-Fehlern über [`DbBackupRules.yaml`](../../observability-rules/DbBackupRules.yaml).
+Der CronJob `paperless-db-dump` schreibt alle 12 h einen `pg_dump`,
+hält 14 Stück vor und meldet sich bei Fehlern über [`DbBackupRules.yaml`](../../observability-rules/DbBackupRules.yaml).
 Die Dokumente selbst liegen unter `media/`, beides sichert Kopia.
 
 Außer der Reihe, etwa vor einem Major-Update:
@@ -152,22 +57,52 @@ kubectl -n paperless delete job dump-manuell
 
 ## Wiederherstellen
 
-Wie beim Umzug ab Schritt 7, mit einem Dump aus `dumps/` statt `migration-…`.
-Vorher anhalten, sonst schreibt Paperless in die halb zurückgespielte
-Datenbank:
+Die Datenbank aus einem Dump unter `dumps/`. Die Befehle für `kubectl`
+laufen vom Wurzelverzeichnis dieses Repos, `pm` ist die Funktion von oben.
 
-```bash
-kubectl -n flux-system patch kustomization apps --type=merge -p '{"spec":{"suspend":true}}'
-kubectl -n paperless scale deploy/paperless --replicas=0
-```
+1. **Dump wählen und seine Version prüfen.** Paperless migriert nur
+   vorwärts: Ein älterer Dump ist in Ordnung, den zieht der Start nach.
 
-Danach wieder anlaufen lassen:
+2. **Anhalten**, sonst schreibt Paperless in die halb zurückgespielte
+   Datenbank:
 
-```bash
-kubectl -n flux-system patch kustomization apps --type=merge -p '{"spec":{"suspend":false}}'
-kubectl -n flux-system annotate --overwrite kustomization apps reconcile.fluxcd.io/requestedAt="$(date +%s)"
-kubectl -n paperless rollout status deploy/paperless --timeout=30m
-```
+   ```bash
+   kubectl -n flux-system patch kustomization apps --type=merge -p '{"spec":{"suspend":true}}'
+   kubectl -n paperless scale deploy/paperless --replicas=0
+   ```
 
-Dokumente, die nach dem Dump dazukamen, liegen danach ohne Eintrag unter
-`media/` - `pm document_sanity_checker` zeigt sie.
+3. **Schema leeren und zurückspielen.** `--clean` im Job räumt nur weg, was
+   im Dump steht. Tabellen aus neueren Migrationen blieben liegen, hängen per
+   Fremdschlüssel an den alten, und der Job bricht ab.
+
+   ```bash
+   kubectl -n paperless exec paperless-db-1 -c postgres -- psql -d app -c \
+     'DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION pg_database_owner;'
+
+   sed -e 's/nextcloud/paperless/g' \
+       -e "s|/dumps/paperless-JJJJ-MM-TTTHHMMZ.dump|/dumps/${DUMP}|" \
+       k8s/templates/CnpgRestore.yaml | kubectl apply -f -
+   kubectl -n paperless wait --for=condition=complete --timeout=20m job/paperless-db-restore
+   kubectl -n paperless logs job/paperless-db-restore
+   kubectl -n paperless delete job paperless-db-restore
+
+   # pg_restore legt keine Statistiken an
+   kubectl -n paperless exec paperless-db-1 -c postgres -- psql -d app -c 'ANALYZE;'
+   ```
+
+4. **Anlaufen lassen.** Der Start spielt fehlende Migrationen ein:
+
+   ```bash
+   kubectl -n flux-system patch kustomization apps --type=merge -p '{"spec":{"suspend":false}}'
+   kubectl -n flux-system annotate --overwrite kustomization apps reconcile.fluxcd.io/requestedAt="$(date +%s)"
+   kubectl -n paperless rollout status deploy/paperless --timeout=30m
+   ```
+
+5. **Abgleichen.** Der Suchindex unter `data/` kennt noch den Stand vor dem
+   Zurückspielen, `--if-needed` beim Start greift nicht. Dokumente, die nach
+   dem Dump dazukamen, liegen ohne Eintrag unter `media/`.
+
+   ```bash
+   pm document_index reindex
+   pm document_sanity_checker
+   ```
