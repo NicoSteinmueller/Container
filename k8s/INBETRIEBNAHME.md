@@ -17,7 +17,7 @@ LB-IPAM. Kein `hostPort`, kein `hostNetwork`.
 | `192.168.178.232` | `ingress-public` — ntfy, Keycloak, Immich, Nextcloud | Internet (Fritzbox-Freigabe auf das Gerät mit MAC `public_mac`) **und** LAN über Split-DNS |
 
 Beide LoadBalancer-Adressen müssen außerhalb des Fritzbox-DHCP-Bereichs liegen
-und dürfen nicht mit `lan_ip` aus [../vm/talos](../vm/talos) kollidieren.
+und dürfen nicht mit einer `lan_ip` aus `nodes` in [../vm/talos](../vm/talos) kollidieren.
 
 ## Voraussetzungen
 
@@ -25,7 +25,7 @@ und dürfen nicht mit `lan_ip` aus [../vm/talos](../vm/talos) kollidieren.
 |---|---|
 | VM-Manager aktiv (Settings → VM Manager → Enable VMs: Yes) | `ssh root@unraid virsh list --all` |
 | Anbindung ans LAN: Bridge `br0` **oder** macvtap auf `bond0`/`ethX` | `ssh root@unraid ip -br link` |
-| Platz für `vm_disk_gib` + `vm_data_disk_gib` | `ssh root@unraid df -h /mnt/nvme/domains` |
+| Platz für `disk_gib` + `data_disk_gib` je Node | `ssh root@unraid df -h /mnt/nvme/domains` |
 | RAM, siehe unten — Container zählen mit | `ssh root@unraid free -m` |
 
 Share `domains` darf nur auf einem Pool liegen, sonst kann der Mover die Disk aufs Array schieben.

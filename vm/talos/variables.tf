@@ -190,20 +190,6 @@ variable "lan_cidr" {
   }
 }
 
-variable "lan_ip" {
-  description = <<-EOT
-    Feste Adresse des Nodes, außerhalb des DHCP-Bereichs und kollisionsfrei.
-    Zugleich Kubernetes-API-Endpoint und talosctl-Ziel - sie steht deshalb auch
-    in kubeconfig und talosconfig.
-
-    Der Default liegt im libvirt-Netz "default", dort aber innerhalb des
-    DHCP-Bereichs (.2-.254): für einen Testlauf unkritisch, für Dauerbetrieb
-    den Bereich in der Netzdefinition verkleinern.
-  EOT
-  type        = string
-  default     = "192.168.122.230"
-}
-
 variable "lan_gateway" {
   description = "Default-Gateway. Lokal virbr0, sonst der Router."
   type        = string
@@ -233,32 +219,134 @@ variable "ntp_servers" {
   default     = ["pool.ntp.org"]
 }
 
-variable "node_mac" {
-  description = "MAC des Nodes, im QEMU-Bereich 52:54:00 und kollisionsfrei. Dieselbe MAC wählt in der Machine-Config das Interface aus."
-  type        = string
-  default     = "52:54:00:00:00:01"
-}
-
-variable "public_ip" {
+#
+# Nodes
+#
+variable "nodes" {
   description = <<-EOT
-    Adresse von ingress-public auf einem eigenen Bein mit eigener MAC
-    (public_mac). Muss gleich der Adresse im Pool `traefik-public` in
-    k8s/flux/network/lb-ipam/IPPool.yaml sein.
+    Die VMs des Clusters. Der Schlüssel ist der Kurzname: aus `cp1` wird der
+    Hostname `<cluster_name>-cp1`, unter dem der Node auch in Kubernetes steht.
+    Er geht in Domain-, Volume- und NVRAM-Namen ein - ihn zu ändern, baut den
+    Node neu.
 
-    Warum ein eigenes Bein: Die FRITZ!Box führt Geräte nach MAC und gibt keine
-    Ports frei an eine IP, die sich eine MAC mit einer anderen teilt. Über
-    L2-Announcement trüge die Adresse die MAC des Nodes.
+      role           Bisher nur "controlplane", und genau einmal. Worker
+                     brauchen eigene Patches (Firewall, Labels, kein
+                     Inline-Manifest), die es noch nicht gibt.
 
-    null: kein zweites Bein (lokaler Testlauf).
+      lan_ip         Feste Adresse, außerhalb des DHCP-Bereichs und
+                     kollisionsfrei. Bei der Control Plane zugleich
+                     Kubernetes-API-Endpoint und talosctl-Ziel - sie steht
+                     deshalb auch in kubeconfig und talosconfig.
+
+      mac            MAC des LAN-Beins, im QEMU-Bereich 52:54:00 und
+                     kollisionsfrei. Dieselbe MAC wählt in der Machine-Config
+                     das Interface aus.
+
+      public_ip      Adresse von ingress-public auf einem eigenen Bein mit
+      public_mac     eigener MAC. Muss gleich der Adresse im Pool
+                     `traefik-public` in k8s/flux/network/lb-ipam/IPPool.yaml
+                     sein. Warum ein eigenes Bein: Die FRITZ!Box führt Geräte
+                     nach MAC und gibt keine Ports frei an eine IP, die sich
+                     eine MAC mit einer anderen teilt. Über L2-Announcement
+                     trüge die Adresse die MAC des Nodes. Beide weglassen:
+                     kein zweites Bein.
+
+      nfs_address    Tunnel-Adresse des Nodes mit Präfix, z. B. 10.253.0.2/24 -
+                     auf sie gehört der Export. Pflicht, sobald nfs_tunnel
+                     gesetzt ist.
+
+      vcpu           Anzahl vCPUs.
+
+      memory_mib     RAM in MiB. 4096 trägt einen leeren Cluster mit Cilium
+                     und CoreDNS. Vor jeder Erhöhung auf dem Hypervisor
+                     gegenprüfen (`ssh root@<host> free -m`). Kein
+                     ForceNew-Feld: Ein Apply schreibt nur die
+                     Domain-Definition neu, wirksam wird der Wert beim
+                     nächsten Start der VM.
+
+      disk_gib       Größe der System-Disk in GiB.
+
+      data_disk_gib  Größe der zweiten Disk in GiB - der lokale Speicher, auf
+                     dem Datenbanken und alles andere liegen, das fsync und
+                     Locking braucht. Talos reicht sie als User-Volume unter
+                     /var/mnt/local-path durch, local-path-provisioner macht
+                     daraus die Default-StorageClass (siehe
+                     k8s/flux/storage/local-path/). Getrennt von der
+                     System-Disk nicht wegen Geschwindigkeit, sondern damit
+                     ein volles /var nicht die Datenbanken mitreißt (siehe
+                     libvirt_volume.data).
+
+    Beide Disk-Größen ohne Default und großzügig wählen: qcow2 ist dünn
+    alloziert, der Platz wird erst belegt, wenn er gebraucht wird. Eine
+    nachträglich geänderte Kapazität *ersetzt* dagegen das Volume - bei der
+    System-Disk den Node, bei der Daten-Disk deren Inhalt. Ein geänderter
+    Default träfe jeden Node, der sich auf ihn verlässt.
+
+    Der Default ist ein Node im libvirt-Netz "default" für den lokalen
+    Testlauf. Seine Adresse liegt dort innerhalb des DHCP-Bereichs (.2-.254):
+    für einen Testlauf unkritisch, für Dauerbetrieb den Bereich in der
+    Netzdefinition verkleinern.
   EOT
-  type        = string
-  default     = null
-}
+  type = map(object({
+    role          = optional(string, "controlplane")
+    lan_ip        = string
+    mac           = string
+    public_ip     = optional(string)
+    public_mac    = optional(string)
+    nfs_address   = optional(string)
+    vcpu          = optional(number, 4)
+    memory_mib    = optional(number, 4096)
+    disk_gib      = number
+    data_disk_gib = number
+  }))
+  default = {
+    cp1 = {
+      lan_ip        = "192.168.122.230"
+      mac           = "52:54:00:00:00:01"
+      disk_gib      = 200
+      data_disk_gib = 400
+    }
+  }
 
-variable "public_mac" {
-  description = "MAC des Beins für public_ip, im QEMU-Bereich 52:54:00 und kollisionsfrei. Wählt wie node_mac in der Machine-Config das Interface aus."
-  type        = string
-  default     = "52:54:00:00:00:02"
+  validation {
+    condition     = alltrue([for key in keys(var.nodes) : can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", key))])
+    error_message = "Die Schlüssel in nodes werden Teil des Hostnamens: Kleinbuchstaben, Ziffern und Bindestriche, z. B. cp1."
+  }
+
+  validation {
+    condition     = alltrue([for node in values(var.nodes) : node.role == "controlplane"])
+    error_message = "Bisher nur role = \"controlplane\": Für Worker fehlen noch eigene Patches (Firewall, Labels, kein Inline-Manifest)."
+  }
+
+  validation {
+    condition     = length([for node in values(var.nodes) : node if node.role == "controlplane"]) == 1
+    error_message = "Genau ein Node mit role = \"controlplane\". Mehrere bräuchten eine gemeinsame API-Adresse (VIP), die dieses Modul nicht anlegt."
+  }
+
+  validation {
+    condition     = length(distinct([for node in values(var.nodes) : node.lan_ip])) == length(var.nodes)
+    error_message = "Jeder Node braucht eine eigene lan_ip."
+  }
+
+  validation {
+    condition = (
+      length(distinct([for mac in concat([for node in values(var.nodes) : node.mac], compact([for node in values(var.nodes) : node.public_mac])) : lower(mac)])) ==
+      length(concat([for node in values(var.nodes) : node.mac], compact([for node in values(var.nodes) : node.public_mac])))
+    )
+    error_message = "Jede MAC in nodes - mac wie public_mac - darf nur einmal vorkommen."
+  }
+
+  validation {
+    condition     = alltrue([for node in values(var.nodes) : (node.public_ip == null) == (node.public_mac == null)])
+    error_message = "public_ip und public_mac gehören zusammen - entweder beide setzen oder beide weglassen."
+  }
+
+  validation {
+    condition = var.nfs_tunnel == null || alltrue([
+      for node in values(var.nodes) : can(regex("^[0-9.]+/[0-9]+$", node.nfs_address)) && can(cidrhost(node.nfs_address, 0))
+    ])
+    error_message = "Mit nfs_tunnel braucht jeder Node eine nfs_address mit Präfix, z. B. 10.253.0.2/24."
+  }
 }
 
 variable "maintenance_link" {
@@ -314,19 +402,18 @@ variable "nfs_tunnel" {
   description = <<-EOT
     WireGuard-Tunnel zum NFS-Server. NFS selbst kennt mit `sec=sys` keine
     Anmeldung, der Export vertraut der Quelladresse. Durch den Tunnel steht
-    der Export auf node_address, und ein Paket von dort nimmt der Host nur an,
-    wenn es mit dem Schlüssel des Nodes signiert ist.
+    der Export auf der nfs_address des Nodes (var.nodes), und ein Paket von
+    dort nimmt der Host nur an, wenn es mit dem Schlüssel des Nodes signiert
+    ist.
 
-    Das Schlüsselpaar des Nodes erzeugt dieses Modul (Output
+    Die Schlüsselpaare der Nodes erzeugt dieses Modul (Output `nodes`, Feld
     `nfs_tunnel_public_key`); der private Teil liegt nur im State. Die Werte
     des Hosts kommen aus dessen WireGuard-Konfiguration:
 
       host_public_key  öffentlicher Schlüssel des Tunnels auf dem Host
       host_endpoint    <LAN-Adresse>:<Port>, auf dem der Host lauscht
       host_address     Tunnel-Adresse des Hosts - `server` der StorageClass
-      node_address     Tunnel-Adresse des Nodes mit Präfix - auf sie gehört
-                       der Export
-      node_port        UDP-Port des Nodes, damit der Host auch von sich aus
+      node_port        UDP-Port der Nodes, damit der Host auch von sich aus
                        verbinden kann
 
     null: kein Tunnel, etwa für den lokalen Testlauf.
@@ -335,7 +422,6 @@ variable "nfs_tunnel" {
     host_public_key = string
     host_endpoint   = string
     host_address    = string
-    node_address    = string
     node_port       = optional(number, 51820)
   })
   default = null
@@ -351,12 +437,8 @@ variable "nfs_tunnel" {
   }
 
   validation {
-    condition = var.nfs_tunnel == null || (
-      can(cidrhost("${var.nfs_tunnel.host_address}/32", 0)) &&
-      can(cidrhost(var.nfs_tunnel.node_address, 0)) &&
-      length(split("/", var.nfs_tunnel.node_address)) == 2
-    )
-    error_message = "host_address ist eine Adresse ohne Präfix, node_address eine mit, z. B. 10.253.0.1 und 10.253.0.2/24."
+    condition     = var.nfs_tunnel == null || can(cidrhost("${var.nfs_tunnel.host_address}/32", 0))
+    error_message = "host_address ist eine Adresse ohne Präfix, z. B. 10.253.0.1."
   }
 }
 
@@ -376,57 +458,8 @@ variable "service_subnet" {
 }
 
 #
-# VM-Dimensionierung
+# VM
 #
-variable "vm_memory_mib" {
-  description = <<-EOT
-    RAM der VM in MiB. 4096 trägt einen leeren Cluster mit Cilium und CoreDNS.
-    Vor jeder Erhöhung auf dem Hypervisor gegenprüfen:
-
-      ssh root@<host> free -m
-
-    Kein ForceNew-Feld: Ein Apply schreibt nur die Domain-Definition neu,
-    wirksam wird der Wert beim nächsten Start der VM.
-  EOT
-  type        = number
-  default     = 4096
-}
-
-variable "vm_vcpu" {
-  description = "Anzahl vCPUs."
-  type        = number
-  default     = 4
-}
-
-variable "vm_disk_gib" {
-  description = "Größe der System-Disk in GiB. qcow2 ist dünn alloziert, der Platz wird also nicht sofort belegt. Großzügig wählen: Die Kapazität nachträglich zu ändern, ersetzt das Volume und damit den Cluster."
-  type        = number
-  default     = 200
-}
-
-variable "vm_data_disk_gib" {
-  description = <<-EOT
-    Groesse der zweiten Disk in GiB - der lokale Speicher des Clusters, auf dem
-    Datenbanken und alles andere liegen, das fsync und Locking braucht. Talos
-    reicht sie als User-Volume unter /var/mnt/local-path durch, local-path-
-    provisioner macht daraus die Default-StorageClass (siehe
-    k8s/flux/storage/local-path/).
-
-    Getrennt von der System-Disk, und zwar nicht wegen Geschwindigkeit -
-    physisch ist es dieselbe SSD des Hypervisors. Der Grund ist die Kopplung:
-    Auf /var teilen sich Datenbanken sonst die Partition mit dem
-    containerd-Image-Cache und den Logs. Laeuft sie voll, setzt das kubelet
-    DiskPressure, wirft Pods raus und raeumt Images weg - und die Datenbank
-    ist genau dann betroffen, wenn der Cluster ohnehin Aerger hat.
-
-    Grosszuegig waehlen: qcow2 ist duenn alloziert, der Platz wird also nicht
-    belegt, bevor er gebraucht wird. Die Kapazitaet nachtraeglich zu aendern,
-    ersetzt dagegen das Volume - und damit den Inhalt.
-  EOT
-  type        = number
-  default     = 400
-}
-
 variable "install_disk" {
   description = "Ziel-Device für die Talos-Installation innerhalb der VM."
   type        = string

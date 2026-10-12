@@ -31,9 +31,7 @@ lan_macvtap_dev = "<bond0|eth0>"
 # lan_bridge          = "br0"        # Host mit Bridging
 # lan_libvirt_network = "default"    # lokaler Testlauf
 
-# lan_ip außerhalb des DHCP-Bereichs; zugleich API-Endpoint und talosctl-Ziel.
 lan_cidr    = "192.168.1.0/24"
-lan_ip      = "192.168.1.230"
 lan_gateway = "192.168.1.1"
 
 # Zuerst der Router, nicht ein Resolver im Cluster: ein Baustein weniger, der
@@ -59,18 +57,36 @@ nfs_tunnel = {
   host_public_key = "<öffentlicher Schlüssel des Tunnels auf dem Host>"
   host_endpoint   = "192.168.1.3:51821"
   host_address    = "10.253.0.1"
-  node_address    = "10.253.0.2/24"
 }
 
-# --- Dimensionierung ---------------------------------------------------
+# --- Nodes -------------------------------------------------------------
 
-# 4 GB tragen den leeren Cluster. Vor jeder Erhöhung `free -m` auf dem Host:
-# maßgeblich ist `available`, nicht `free`
-vm_memory_mib = 4096
-vm_vcpu       = 4
-vm_disk_gib   = 100
+# Je Node ein Eintrag; der Schlüssel wird zum Hostnamen <cluster_name>-<schlüssel>.
+# Felder und Folgen stehen an `nodes` in variables.tf.
+nodes = {
+  cp1 = {
+    role = "controlplane"
 
-# --- MAC ---------------------------------------------------------------
+    # Außerhalb des DHCP-Bereichs; zugleich API-Endpoint und talosctl-Ziel.
+    lan_ip = "192.168.1.230"
 
-# Im QEMU-Bereich 52:54:00 und kollisionsfrei.
-node_mac = "52:54:00:00:00:01"
+    # Im QEMU-Bereich 52:54:00 und kollisionsfrei.
+    mac = "52:54:00:00:00:01"
+
+    # Zweites Bein für ingress-public - weglassen, wenn es keins gibt.
+    # public_ip  = "192.168.1.232"
+    # public_mac = "52:54:00:00:00:02"
+
+    # Tunnel-Adresse für nfs_tunnel, mit Präfix.
+    nfs_address = "10.253.0.2/24"
+
+    # 4 GB tragen den leeren Cluster. Vor jeder Erhöhung `free -m` auf dem
+    # Host: maßgeblich ist `available`, nicht `free`
+    vcpu       = 4
+    memory_mib = 4096
+
+    # Großzügig wählen - eine spätere Änderung ersetzt das Volume.
+    disk_gib      = 100
+    data_disk_gib = 400
+  }
+}

@@ -50,7 +50,8 @@ provisioning:
   # einmal hier zu stehen. Gegenprobe, was Talos sieht:
   #   talosctl -n <node-ip> get disks
   #
-  # Die Groesse steht stattdessen in vm_data_disk_gib, also am Volume selbst.
+  # Die Groesse steht stattdessen in data_disk_gib (var.nodes), also am
+  # Volume selbst.
   diskSelector:
     match: disk.transport == "virtio" && disk.dev_path != "${install_disk}"
 

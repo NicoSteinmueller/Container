@@ -1,18 +1,18 @@
 # Talos-Node
 
-Ein Talos-Node mit Kubernetes, feste Adresse im LAN, erreichbar von der
-Arbeitsstation.
+Talos-Nodes mit Kubernetes, feste Adressen im LAN, erreichbar von der
+Arbeitsstation. Welche Nodes es gibt, steht in `nodes` in den tfvars.
 
 Konkrete Werte — Host, Adressen, Interface, Pool — stehen in
 `$HOMELAB_VALUES/vm/talos/terraform.tfvars`; hier nur Platzhalter
 
 | | |
 |---|---|
-| VM | `<cluster_name>-cp1`, q35 mit UEFI, Dimensionierung aus den tfvars |
+| VM | je Eintrag in `nodes` eine: `<cluster_name>-<schlüssel>`, q35 mit UEFI, Dimensionierung aus den tfvars |
 | Disks | `vda` System (Talos), `vdb` Daten — lokaler Cluster-Speicher |
 | Adresse | `<node-ip>`, statisch — zugleich Kubernetes-API-Endpoint |
 | Netz | macvtap auf `lan_macvtap_dev` |
-| Zweites Bein | `public_ip` mit eigener MAC `public_mac` — nur ingress-public |
+| Zweites Bein | `public_ip` mit eigener MAC `public_mac` am Node — nur ingress-public |
 | Image | Image Factory, Talos + `qemu-guest-agent` |
 | CNI | Cilium, als Inline-Manifest in der Machine-Config — kein kube-proxy |
 | Speicher | `local-path` auf `vdb` als Default, NFS zum Unraid-Host daneben — durch WireGuard |
@@ -51,7 +51,7 @@ blockiert so lange. 10–20 Minuten, überwiegend ISO-Download und zwei Reboots:
 2. `helm template` rendert Cilium lokal — ohne Cluster-Zugriff
 3. libvirt lädt die ISO in den Pool, legt Disk und VM an
 4. VM bootet in den **Maintenance-Mode**, per `ip=`-Kernel-Parameter bereits
-   unter `lan_ip`
+   unter der `lan_ip` des Nodes
 5. Machine-Config rein → Talos installiert auf `install_disk`, rebootet
 6. `talos_machine_bootstrap` initialisiert etcd, Talos rollt das
    Cilium-Inline-Manifest aus
@@ -100,7 +100,7 @@ Zwei Dinge, die beim ersten Mal überraschen:
   virsh -c "qemu+ssh://root@<host>/system" start <cluster_name>-cp1
   ```
 
-- **`vm_data_disk_gib` nachträglich zu ändern, ersetzt das Volume.** Terraform
+- **`data_disk_gib` nachträglich zu ändern, ersetzt das Volume.** Terraform
   zerstört es und legt ein leeres an; der Inhalt ist weg. Deshalb großzügig
   wählen — qcow2 ist dünn alloziert, der Platz wird erst belegt, wenn er
   gebraucht wird.
@@ -113,7 +113,7 @@ Datenbanken als Dump und nicht als Dateikopie.
 ## Neuaufbau
 
 Zum Beispiel für einen Umzug auf eine andere Platte (`pool_path`) oder eine
-neue Größe von `vm_data_disk_gib`.
+neue Größe von `data_disk_gib`.
 
 Alles im Cluster steht in Git, bis auf Daten auf `local-path`. Vorher
 prüfen, dass jede Datenbank einen frischen Dump auf NFS hat; der Rest
@@ -439,7 +439,7 @@ in dieser Reihenfolge — **erst der Node, dann `tf apply`**:
 cd vm/talos
 talosctl etcd snapshot db.snapshot
 talosctl -n <node-ip> upgrade --drain=false \
-  --image "factory.talos.dev/metal-installer/$(../../tools/tf output -raw schematic_id):<talos_version>"
+  --image "factory.talos.dev/metal-installer/$(../../tools/tf output -json nodes | jq -r .cp1.schematic_id):<talos_version>"
 talosctl -n <node-ip> upgrade-k8s --to <kubernetes_version>
 ../../tools/tf apply
 ```
@@ -447,7 +447,7 @@ talosctl -n <node-ip> upgrade-k8s --to <kubernetes_version>
 Warum diese Reihenfolge: Der Apply schreibt eine Machine-Config, die die neue
 Version voraussetzt. Ein Node auf der alten lehnt sie ab — so geschehen bei
 1.13 → 1.14 (`DiscoveryServiceConfig not registered`). Aus demselben Grund
-kommt das Image nicht aus `tf output installer_image`: Der Output steht bis zum
+kommt das Image nicht aus `installer_image` in `tf output nodes`: Der Output steht bis zum
 Apply noch auf der alten Version.
 
 - **`--drain=false`:** Bei einem Node haben die Pods nirgends hin. Der Drain
@@ -516,9 +516,9 @@ der Export steht auf der Tunnel-Adresse des Nodes.
    existiert. Harmlos - ein zweiter Lauf geht durch.
 
    ```bash
-   tf apply -target='wireguard_asymmetric_key.nfs_tunnel[0]'
+   tf apply -target='wireguard_asymmetric_key.nfs_tunnel["cp1"]'
    tf apply
-   tf output -raw nfs_tunnel_public_key
+   tf output -json nodes | jq -r .cp1.nfs_tunnel_public_key
    ```
 
 4. **Peer in Unraid** im Tunnel aus Schritt 1: Typ *Server to server access*,

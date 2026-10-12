@@ -1,11 +1,11 @@
 # LAN-Adressen des Clusters
 #
-# Außerhalb des DHCP-Bereichs und ohne Kollision mit `lan_ip`:
+# Außerhalb des DHCP-Bereichs und ohne Kollision mit einer `lan_ip` der Nodes:
 #
 #   192.168.178.230  Node selbst
 #   192.168.178.231  ingress-internal - nur LAN
 #   192.168.178.232  ingress-public   - Internet, eigenes Bein mit eigener
-#                                       MAC (public_ip in vm/talos)
+#                                       MAC (public_ip in nodes, vm/talos)
 #
 ---
 apiVersion: cilium.io/v2

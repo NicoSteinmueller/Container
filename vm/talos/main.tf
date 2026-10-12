@@ -1,5 +1,6 @@
 #
-# Ein Talos-Node mit Kubernetes, feste Adresse im LAN.
+# Talos-Nodes mit Kubernetes, feste Adressen im LAN. Welche Nodes es gibt,
+# steht in var.nodes; alles, was je Node existiert, läuft per for_each darüber.
 #
 terraform {
   #
@@ -58,43 +59,61 @@ provider "talos" {}
 provider "helm" {}
 
 locals {
-  node_name        = "${var.cluster_name}-cp1"
-  cluster_endpoint = "https://${var.lan_ip}:6443"
+  #
+  # var.nodes, ergänzt um den Hostnamen. Der Schlüssel der Map ist der
+  # Kurzname (cp1), der Hostname hängt den Clusternamen davor.
+  #
+  nodes = {
+    for key, node in var.nodes : key => merge(node, {
+      name = "${var.cluster_name}-${key}"
+    })
+  }
+
+  #
+  # Der eine Control-Plane-Node - variables.tf erzwingt genau einen. An ihm
+  # hängen API-Endpoint, Bootstrap, kubeconfig und der Cilium-Sync.
+  #
+  controlplane = one([for node in values(local.nodes) : node if node.role == "controlplane"])
+
+  cluster_endpoint = "https://${local.controlplane.lan_ip}:6443"
   lan_prefix       = tonumber(split("/", var.lan_cidr)[1])
   pool_name        = var.manage_pool ? libvirt_pool.domains[0].name : var.libvirt_pool
 
   #
   # Firmware von libvirt wählen lassen oder feste Pfade vorgeben (efi_loader).
+  # Je Node, weil der Variablenspeicher den Hostnamen im Pfad trägt.
   #
-  firmware = var.efi_loader == "" ? {
-    firmware = "efi"
+  firmware = {
+    for key, node in local.nodes : key => var.efi_loader == "" ? {
+      firmware = "efi"
 
-    firmware_info = {
-      features = [
-        # Secure Boot aus: sonst wählt libvirt das OVMF mit den
-        # Microsoft-Keys, gegen das die Talos-ISO nicht signiert ist -
-        #   Access Denied -- rejected probably by Secure Boot
-        { name = "enrolled-keys", enabled = "no" },
-        { name = "secure-boot", enabled = "no" },
-      ]
-    }
+      firmware_info = {
+        features = [
+          # Secure Boot aus: sonst wählt libvirt das OVMF mit den
+          # Microsoft-Keys, gegen das die Talos-ISO nicht signiert ist -
+          #   Access Denied -- rejected probably by Secure Boot
+          { name = "enrolled-keys", enabled = "no" },
+          { name = "secure-boot", enabled = "no" },
+        ]
+      }
 
-    loader          = null
-    loader_type     = null
-    loader_readonly = null
-    nv_ram          = null
-    } : {
-    firmware      = null
-    firmware_info = null
+      loader          = null
+      loader_type     = null
+      loader_readonly = null
+      nv_ram          = null
+      } : {
+      firmware      = null
+      firmware_info = null
 
-    loader          = var.efi_loader
-    loader_type     = "pflash"
-    loader_readonly = "yes"
+      loader          = var.efi_loader
+      loader_type     = "pflash"
+      loader_readonly = "yes"
 
-    # Je VM ein eigener Variablenspeicher, angelegt aus der Vorlage.
-    nv_ram = {
-      nv_ram   = "${var.nvram_dir}/${local.node_name}_VARS.fd"
-      template = var.efi_vars_template
+      # Je VM ein eigener Variablenspeicher, angelegt aus der Vorlage.
+      nv_ram = {
+        nv_ram   = "${var.nvram_dir}/${node.name}_VARS.fd"
+        template = var.efi_vars_template
+      }
     }
   }
 
@@ -116,20 +135,22 @@ locals {
   local_path_volume = "local-path"
 
   #
-  # Der Tunnel ist optional (nfs_tunnel = null im lokalen Testlauf). Eine
-  # Liste statt eines leeren Patches, den der Provider ablehnen würde.
+  # Der Tunnel ist optional (nfs_tunnel = null im lokalen Testlauf). Je Node
+  # eine Liste statt eines leeren Patches, den der Provider ablehnen würde.
   #
-  nfs_tunnel_patches = var.nfs_tunnel == null ? [] : [
-    templatefile("${path.module}/patches/nfs-tunnel.yaml.tftpl", {
-      private_key     = wireguard_asymmetric_key.nfs_tunnel[0].private_key
-      node_port       = var.nfs_tunnel.node_port
-      node_address    = var.nfs_tunnel.node_address
-      host_public_key = var.nfs_tunnel.host_public_key
-      host_endpoint   = var.nfs_tunnel.host_endpoint
-      host_address    = var.nfs_tunnel.host_address
-      host_ip         = split(":", var.nfs_tunnel.host_endpoint)[0]
-    })
-  ]
+  nfs_tunnel_patches = {
+    for key, node in local.nodes : key => var.nfs_tunnel == null ? [] : [
+      templatefile("${path.module}/patches/nfs-tunnel.yaml.tftpl", {
+        private_key     = wireguard_asymmetric_key.nfs_tunnel[key].private_key
+        node_port       = var.nfs_tunnel.node_port
+        node_address    = node.nfs_address
+        host_public_key = var.nfs_tunnel.host_public_key
+        host_endpoint   = var.nfs_tunnel.host_endpoint
+        host_address    = var.nfs_tunnel.host_address
+        host_ip         = split(":", var.nfs_tunnel.host_endpoint)[0]
+      })
+    ]
+  }
 
   cilium_values = templatefile("${path.module}/values/cilium.yaml.tftpl", {
     hubble_relay_enabled = var.hubble_relay_enabled
@@ -145,7 +166,11 @@ locals {
 # Was ins Image gehört. Die ID landet im State und gilt für Boot-ISO *und*
 # Installer - sonst gehen die Extensions beim Upgrade verloren.
 #
-resource "talos_image_factory_schematic" "this" {
+# Je Node eine eigene Schematic, weil die Adresse im Kernel-Parameter steht.
+#
+resource "talos_image_factory_schematic" "node" {
+  for_each = local.nodes
+
   schematic = yamlencode({
     customization = {
       systemExtensions = {
@@ -155,7 +180,7 @@ resource "talos_image_factory_schematic" "this" {
       #
       # Statische Adresse schon im Maintenance-Mode, sonst Henne-Ei: Der Node
       # bekäme von der ISO nur eine DHCP-Adresse, während der Config-Apply
-      # unten auf var.lan_ip zielt - die er erst durch diese Config bekommt.
+      # unten auf seine lan_ip zielt - die er erst durch diese Config bekommt.
       #
       # dracut-Format:
       #   ip=<addr>:<server>:<gateway>:<maske>:<hostname>:<device>:<autoconf>
@@ -164,15 +189,17 @@ resource "talos_image_factory_schematic" "this" {
       # gesetzt und jede Config, die selbst einen setzt, wird abgelehnt.
       #
       extraKernelArgs = [
-        "ip=${var.lan_ip}::${var.lan_gateway}:${cidrnetmask(var.lan_cidr)}::${var.maintenance_link}:off",
+        "ip=${each.value.lan_ip}::${var.lan_gateway}:${cidrnetmask(var.lan_cidr)}::${var.maintenance_link}:off",
       ]
     }
   })
 }
 
-data "talos_image_factory_urls" "this" {
+data "talos_image_factory_urls" "node" {
+  for_each = local.nodes
+
   talos_version = var.talos_version
-  schematic_id  = talos_image_factory_schematic.this.id
+  schematic_id  = talos_image_factory_schematic.node[each.key].id
   platform      = "metal"
   architecture  = "amd64"
 }
@@ -247,7 +274,9 @@ resource "libvirt_pool" "domains" {
 # bleibt gleich - und die VM läuft weiter auf dem alten, gelöschten Inode.
 #
 resource "libvirt_volume" "talos_iso" {
-  name = "${var.cluster_name}-${var.talos_version}-${substr(talos_image_factory_schematic.this.id, 0, 12)}.iso"
+  for_each = local.nodes
+
+  name = "${var.cluster_name}-${var.talos_version}-${substr(talos_image_factory_schematic.node[each.key].id, 0, 12)}.iso"
   pool = local.pool_name
 
   target = {
@@ -258,13 +287,13 @@ resource "libvirt_volume" "talos_iso" {
 
   create = {
     content = {
-      url = data.talos_image_factory_urls.this.urls.iso
+      url = data.talos_image_factory_urls.node[each.key].urls.iso
     }
   }
 
   #
   # Eine neue talos_version ändert Name und URL, darf die ISO aber nicht
-  # ersetzen: Über replace_triggered_by in libvirt_domain.cp1 hinge daran die
+  # ersetzen: Über replace_triggered_by in libvirt_domain.node hinge daran die
   # VM, und ein Talos-Update baute sie neu, statt über `talosctl upgrade` zu
   # laufen. Gebraucht wird die ISO nur bis zur Installation, danach bootet die
   # VM von Disk - welche Version sie trägt, ist dann gleich.
@@ -275,7 +304,7 @@ resource "libvirt_volume" "talos_iso" {
   #
   lifecycle {
     ignore_changes       = [name, create]
-    replace_triggered_by = [talos_image_factory_schematic.this.id]
+    replace_triggered_by = [talos_image_factory_schematic.node[each.key].id]
   }
 }
 
@@ -284,9 +313,11 @@ resource "libvirt_volume" "talos_iso" {
 # und rebootet von Disk.
 #
 resource "libvirt_volume" "system" {
-  name     = "${local.node_name}.qcow2"
+  for_each = local.nodes
+
+  name     = "${each.value.name}.qcow2"
   pool     = local.pool_name
-  capacity = var.vm_disk_gib * 1024 * 1024 * 1024
+  capacity = each.value.disk_gib * 1024 * 1024 * 1024
 
   target = {
     format = {
@@ -311,14 +342,16 @@ resource "libvirt_volume" "system" {
 #
 #   - `capacity` zu aendern ersetzt das Volume. Terraform zerstoert es und legt
 #     ein leeres an; der Inhalt ist weg. Deshalb grosszuegig waehlen, qcow2 ist
-#     duenn alloziert (siehe vm_data_disk_gib).
+#     duenn alloziert (siehe data_disk_gib in var.nodes).
 #   - `tofu destroy` nimmt diese Disk mit. Sie ist kein Backup-Ziel und ersetzt
 #     keines - ein Sicherungsweg aus dem Cluster heraus steht noch aus.
 #
 resource "libvirt_volume" "data" {
-  name     = "${local.node_name}-data.qcow2"
+  for_each = local.nodes
+
+  name     = "${each.value.name}-data.qcow2"
   pool     = local.pool_name
-  capacity = var.vm_data_disk_gib * 1024 * 1024 * 1024
+  capacity = each.value.data_disk_gib * 1024 * 1024 * 1024
 
   target = {
     format = {
@@ -331,12 +364,14 @@ resource "libvirt_volume" "data" {
 # VM
 # =====================================================================
 
-resource "libvirt_domain" "cp1" {
-  name        = local.node_name
+resource "libvirt_domain" "node" {
+  for_each = local.nodes
+
+  name        = each.value.name
   type        = "kvm"
-  memory      = var.vm_memory_mib
+  memory      = each.value.memory_mib
   memory_unit = "MiB"
-  vcpu        = var.vm_vcpu
+  vcpu        = each.value.vcpu
 
   # Muss nach einem Host-Reboot von selbst wiederkommen.
   autostart = true
@@ -369,15 +404,15 @@ resource "libvirt_domain" "cp1" {
       { dev = "hd" },
       { dev = "cdrom" },
     ]
-  }, local.firmware)
+  }, local.firmware[each.key])
 
   devices = {
     disks = [
       {
         source = {
           volume = {
-            pool   = libvirt_volume.system.pool
-            volume = libvirt_volume.system.name
+            pool   = libvirt_volume.system[each.key].pool
+            volume = libvirt_volume.system[each.key].name
           }
         }
         target = {
@@ -400,8 +435,8 @@ resource "libvirt_domain" "cp1" {
       {
         source = {
           volume = {
-            pool   = libvirt_volume.data.pool
-            volume = libvirt_volume.data.name
+            pool   = libvirt_volume.data[each.key].pool
+            volume = libvirt_volume.data[each.key].name
           }
         }
         target = {
@@ -419,8 +454,8 @@ resource "libvirt_domain" "cp1" {
         device = "cdrom"
         source = {
           volume = {
-            pool   = libvirt_volume.talos_iso.pool
-            volume = libvirt_volume.talos_iso.name
+            pool   = libvirt_volume.talos_iso[each.key].pool
+            volume = libvirt_volume.talos_iso[each.key].name
           }
         }
         target = {
@@ -438,13 +473,13 @@ resource "libvirt_domain" "cp1" {
     #
     interfaces = concat([
       {
-        mac    = { address = var.node_mac }
+        mac    = { address = each.value.mac }
         model  = { type = "virtio" }
         source = local.lan_source
       },
-      ], var.public_ip == null ? [] : [
+      ], each.value.public_ip == null ? [] : [
       {
-        mac    = { address = var.public_mac }
+        mac    = { address = each.value.public_mac }
         model  = { type = "virtio" }
         source = local.lan_source
       },
@@ -452,12 +487,12 @@ resource "libvirt_domain" "cp1" {
 
     # Talos loggt Boot und Installation, neben talosctl der einzige Weg,
     # einem fehlgeschlagenen Boot zuzusehen:
-    #   virsh -c qemu+ssh://root@<host>/system console <cluster>-cp1
+    #   virsh -c qemu+ssh://root@<host>/system console <cluster>-<node>
     #
     # Bewusst leer: libvirt legt einen Chardev ohne Typangabe als `pty` an
     #
     # Gegenprobe, dass es wirklich pty ist:
-    #   virsh -c qemu+ssh://root@<host>/system dumpxml <cluster>-cp1 | grep -A2 '<serial'
+    #   virsh -c qemu+ssh://root@<host>/system dumpxml <cluster>-<node> | grep -A2 '<serial'
     serials = [
       {}
     ]
@@ -501,7 +536,7 @@ resource "libvirt_domain" "cp1" {
   # hier geht es um eine geänderte Schematic, bevor der Cluster steht.
   #
   lifecycle {
-    replace_triggered_by = [libvirt_volume.talos_iso]
+    replace_triggered_by = [libvirt_volume.talos_iso[each.key]]
   }
 }
 
@@ -515,7 +550,7 @@ resource "libvirt_domain" "cp1" {
 # Machine-Config.
 #
 resource "wireguard_asymmetric_key" "nfs_tunnel" {
-  count = var.nfs_tunnel == null ? 0 : 1
+  for_each = var.nfs_tunnel == null ? {} : local.nodes
 }
 
 # =====================================================================
@@ -541,16 +576,23 @@ resource "talos_machine_secrets" "this" {
   }
 }
 
-data "talos_machine_configuration" "controlplane" {
+#
+# Die Patches setzen eine Control Plane voraus (etcd, Inline-Manifest,
+# Labels). Dass kein Worker hier ankommt, stellt die Validierung von
+# var.nodes sicher.
+#
+data "talos_machine_configuration" "node" {
+  for_each = local.nodes
+
   cluster_name       = var.cluster_name
   cluster_endpoint   = local.cluster_endpoint
-  machine_type       = "controlplane"
+  machine_type       = each.value.role
   machine_secrets    = talos_machine_secrets.this.machine_secrets
   talos_version      = var.machine_config_contract
   kubernetes_version = var.kubernetes_version
 
   #
-  # flatten, weil local.nfs_tunnel_patches eine Liste ist - leer ohne Tunnel.
+  # flatten, weil die Tunnel-Patches je Node eine Liste sind - leer ohne Tunnel.
   #
   config_patches = flatten([
     # Was Talos selbst erzeugt und hier nicht passt. Muss vor node.yaml.tftpl
@@ -562,7 +604,7 @@ data "talos_machine_configuration" "controlplane" {
       apiVersion = "v1alpha1"
       kind       = "UnattendedInstallConfig"
       installer = {
-        image = data.talos_image_factory_urls.this.urls.installer
+        image = data.talos_image_factory_urls.node[each.key].urls.installer
       }
       provisioning = {
         diskSelector = {
@@ -573,16 +615,16 @@ data "talos_machine_configuration" "controlplane" {
     }),
 
     templatefile("${path.module}/patches/node.yaml.tftpl", {
-      node_name   = local.node_name
-      node_mac    = var.node_mac
-      lan_ip      = var.lan_ip
+      node_name   = each.value.name
+      node_mac    = each.value.mac
+      lan_ip      = each.value.lan_ip
       lan_cidr    = var.lan_cidr
       lan_prefix  = local.lan_prefix
       lan_gateway = var.lan_gateway
       dns_servers = var.dns_servers
       ntp_servers = var.ntp_servers
-      public_ip   = var.public_ip
-      public_mac  = var.public_mac
+      public_ip   = each.value.public_ip
+      public_mac  = each.value.public_mac
     }),
 
     #
@@ -599,7 +641,7 @@ data "talos_machine_configuration" "controlplane" {
     templatefile("${path.module}/patches/cluster.yaml.tftpl", {
       pod_subnet     = var.pod_subnet
       service_subnet = var.service_subnet
-      lan_ip         = var.lan_ip
+      lan_ip         = each.value.lan_ip
     }),
 
     #
@@ -622,7 +664,7 @@ data "talos_machine_configuration" "controlplane" {
     }),
 
     # WireGuard zum NFS-Server
-    local.nfs_tunnel_patches,
+    local.nfs_tunnel_patches[each.key],
 
     # Cilium. Muss der letzte Patch sein - nicht technisch, sondern damit die
     # lesbaren Patches oben nicht hinter dem gerenderten Chart verschwinden.
@@ -639,32 +681,34 @@ data "talos_machine_configuration" "controlplane" {
 # Config an den Node im Maintenance-Mode; Talos installiert sich daraufhin auf
 # die Disk und rebootet.
 #
-resource "talos_machine_configuration_apply" "controlplane" {
+resource "talos_machine_configuration_apply" "node" {
+  for_each = local.nodes
+
   client_configuration        = talos_machine_secrets.this.client_configuration
-  machine_configuration_input = data.talos_machine_configuration.controlplane.machine_configuration
-  node                        = var.lan_ip
-  endpoint                    = var.lan_ip
+  machine_configuration_input = data.talos_machine_configuration.node[each.key].machine_configuration
+  node                        = each.value.lan_ip
+  endpoint                    = each.value.lan_ip
 
   timeouts = {
     create = "15m"
   }
 
-  depends_on = [libvirt_domain.cp1]
+  depends_on = [libvirt_domain.node]
 }
 
 #
-# Initialisiert etcd. Genau einmal pro Cluster.
+# Initialisiert etcd. Genau einmal pro Cluster, auf der Control Plane.
 #
 resource "talos_machine_bootstrap" "this" {
   client_configuration = talos_machine_secrets.this.client_configuration
-  node                 = var.lan_ip
-  endpoint             = var.lan_ip
+  node                 = local.controlplane.lan_ip
+  endpoint             = local.controlplane.lan_ip
 
   timeouts = {
     create = "15m"
   }
 
-  depends_on = [talos_machine_configuration_apply.controlplane]
+  depends_on = [talos_machine_configuration_apply.node]
 }
 
 #
@@ -675,8 +719,8 @@ data "talos_cluster_health" "this" {
   count = var.wait_for_health ? 1 : 0
 
   client_configuration = talos_machine_secrets.this.client_configuration
-  control_plane_nodes  = [var.lan_ip]
-  endpoints            = [var.lan_ip]
+  control_plane_nodes  = [local.controlplane.lan_ip]
+  endpoints            = [local.controlplane.lan_ip]
 
   timeouts = {
     read = "20m"
@@ -688,14 +732,14 @@ data "talos_cluster_health" "this" {
 data "talos_client_configuration" "this" {
   cluster_name         = var.cluster_name
   client_configuration = talos_machine_secrets.this.client_configuration
-  endpoints            = [var.lan_ip]
-  nodes                = [var.lan_ip]
+  endpoints            = [local.controlplane.lan_ip]
+  nodes                = [local.controlplane.lan_ip]
 }
 
 resource "talos_cluster_kubeconfig" "this" {
   client_configuration = talos_machine_secrets.this.client_configuration
-  node                 = var.lan_ip
-  endpoint             = var.lan_ip
+  node                 = local.controlplane.lan_ip
+  endpoint             = local.controlplane.lan_ip
 
   depends_on = [talos_machine_bootstrap.this]
 }
@@ -749,7 +793,7 @@ resource "terraform_data" "cilium_manifest_sync" {
   provisioner "local-exec" {
     command = join(" ", [
       "talosctl --talosconfig ${local_sensitive_file.talosconfig.filename}",
-      "-n ${var.lan_ip}",
+      "-n ${local.controlplane.lan_ip}",
       "upgrade-k8s --to ${var.kubernetes_version}",
     ])
   }
