@@ -89,4 +89,21 @@ nodes = {
     disk_gib      = 100
     data_disk_gib = 400
   }
+
+  # Worker mit durchgereichter GPU - siehe "Worker mit GPU" im README.
+  # gpu1 = {
+  #   role           = "worker"
+  #   lan_ip         = "192.168.1.233"
+  #   mac            = "52:54:00:00:00:03"
+  #   nfs_address    = "10.253.0.3/24"
+  #   vcpu           = 8
+  #   memory_mib     = 16384
+  #   disk_gib       = 100
+  #   data_disk_gib  = 300
+  #   extensions     = ["siderolabs/amdgpu"]
+  #   kernel_modules = ["amdgpu"]
+  #   pci_devices    = ["0000:09:00.0", "0000:09:00.1"]
+  #   labels         = { "homelab/gpu" = "amd" }
+  #   taints         = { "homelab/gpu" = "amd:NoSchedule" }
+  # }
 }

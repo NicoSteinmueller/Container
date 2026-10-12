@@ -229,9 +229,10 @@ variable "nodes" {
     Er geht in Domain-, Volume- und NVRAM-Namen ein - ihn zu ändern, baut den
     Node neu.
 
-      role           Bisher nur "controlplane", und genau einmal. Worker
-                     brauchen eigene Patches (Firewall, Labels, kein
-                     Inline-Manifest), die es noch nicht gibt.
+      role           "controlplane" genau einmal, sonst "worker". Die Control
+                     Plane trägt etcd, das Cilium-Inline-Manifest und keinen
+                     Taint - auf ihr läuft alles, was keinen eigenen Node
+                     verlangt.
 
       lan_ip         Feste Adresse, außerhalb des DHCP-Bereichs und
                      kollisionsfrei. Bei der Control Plane zugleich
@@ -276,6 +277,32 @@ variable "nodes" {
                      ein volles /var nicht die Datenbanken mitreißt (siehe
                      libvirt_volume.data).
 
+      extensions     Offizielle System-Extensions zusätzlich zu
+                     system_extensions, nur für diesen Node - etwa
+                     "siderolabs/amdgpu" auf dem Node mit der GPU. Sie gehen
+                     in seine Schematic ein; eine Änderung heißt neue ISO und
+                     `talosctl upgrade` mit dem neuen Installer-Image.
+
+      kernel_modules Kernelmodule, die Talos beim Start lädt - die einer
+                     Extension lädt es nicht von selbst ("amdgpu").
+
+      pci_devices    Host-PCI-Geräte, die libvirt an die VM durchreicht, als
+                     "0000:09:00.0". Auf dem Host vorher an vfio-pci binden
+                     (Unraid: Tools -> System Devices). Bei passthrough sperrt
+                     QEMU den gesamten RAM der VM im Host - memory_mib ist
+                     dann fest belegt, nicht nur reserviert.
+
+      trim           Gelöschten Platz an den Host zurückgeben. qcow2 wächst
+                     sonst nur.
+                     Setzt `discard = "unmap"` an beiden Disks und ein
+                     tägliches fstrim in Talos. An einer laufenden
+                     VM wirkt der Disk-Teil erst nach Stopp und Start.
+
+      labels         Kubernetes-Labels des Nodes, nur für Worker.
+      taints         Taints, nur für Worker, als key = "value:Effect", z. B.
+                     "homelab/gpu" = "amd:NoSchedule". Was dort laufen soll,
+                     braucht dann eine Toleration - DaemonSets eingeschlossen.
+
     Beide Disk-Größen ohne Default und großzügig wählen: qcow2 ist dünn
     alloziert, der Platz wird erst belegt, wenn er gebraucht wird. Eine
     nachträglich geänderte Kapazität *ersetzt* dagegen das Volume - bei der
@@ -288,16 +315,22 @@ variable "nodes" {
     Netzdefinition verkleinern.
   EOT
   type = map(object({
-    role          = optional(string, "controlplane")
-    lan_ip        = string
-    mac           = string
-    public_ip     = optional(string)
-    public_mac    = optional(string)
-    nfs_address   = optional(string)
-    vcpu          = optional(number, 4)
-    memory_mib    = optional(number, 4096)
-    disk_gib      = number
-    data_disk_gib = number
+    role           = optional(string, "controlplane")
+    lan_ip         = string
+    mac            = string
+    public_ip      = optional(string)
+    public_mac     = optional(string)
+    nfs_address    = optional(string)
+    vcpu           = optional(number, 4)
+    memory_mib     = optional(number, 4096)
+    disk_gib       = number
+    data_disk_gib  = number
+    extensions     = optional(list(string), [])
+    kernel_modules = optional(list(string), [])
+    pci_devices    = optional(list(string), [])
+    trim           = optional(bool, false)
+    labels         = optional(map(string), {})
+    taints         = optional(map(string), {})
   }))
   default = {
     cp1 = {
@@ -314,8 +347,34 @@ variable "nodes" {
   }
 
   validation {
-    condition     = alltrue([for node in values(var.nodes) : node.role == "controlplane"])
-    error_message = "Bisher nur role = \"controlplane\": Für Worker fehlen noch eigene Patches (Firewall, Labels, kein Inline-Manifest)."
+    condition     = alltrue([for node in values(var.nodes) : contains(["controlplane", "worker"], node.role)])
+    error_message = "role ist \"controlplane\" oder \"worker\"."
+  }
+
+  validation {
+    condition = alltrue([
+      for node in values(var.nodes) : node.role == "worker" || (length(node.labels) == 0 && length(node.taints) == 0)
+    ])
+    error_message = "labels und taints nur an Workern: Die Control Plane trägt die festen Labels aus patches/node.yaml.tftpl und bewusst keinen Taint."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for node in values(var.nodes) : [for effect in values(node.taints) : can(regex("^([^:]*:)?(NoSchedule|PreferNoSchedule|NoExecute)$", effect))]
+    ]))
+    error_message = "Ein Taint ist \"value:Effect\" oder nur \"Effect\", Effect eins von NoSchedule, PreferNoSchedule, NoExecute."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for node in values(var.nodes) : [for dev in node.pci_devices : can(regex("^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\\.[0-7]$", dev))]
+    ]))
+    error_message = "pci_devices im Format von lspci -D, z. B. \"0000:09:00.0\" (Kleinbuchstaben)."
+  }
+
+  validation {
+    condition     = length(distinct(flatten([for node in values(var.nodes) : node.pci_devices]))) == length(flatten([for node in values(var.nodes) : node.pci_devices]))
+    error_message = "Ein PCI-Gerät lässt sich nur an eine VM durchreichen."
   }
 
   validation {

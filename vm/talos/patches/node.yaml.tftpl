@@ -40,6 +40,18 @@ machine:
     net.ipv4.conf.all.arp_ignore: "1"
     net.ipv4.conf.all.arp_announce: "2"
 %{ endif ~}
+%{ if length(kernel_modules) > 0 ~}
+
+  #
+  # Eine Extension bringt Module mit, lädt sie aber nicht - das steht hier.
+  # Gegenprobe: talosctl -n <node-ip> read /proc/modules
+  #
+  kernel:
+    modules:
+%{ for module in kernel_modules ~}
+      - name: ${module}
+%{ endfor ~}
+%{ endif ~}
 ---
 apiVersion: v1alpha1
 kind: HostnameConfig
@@ -127,7 +139,7 @@ ntp:
 ---
 #
 # Ersetzt das von Talos erzeugte Dokument (entfernt in defaults.yaml). Die
-# beiden Labels sind dieselben, die Talos setzt.
+# beiden Labels der Control Plane sind dieselben, die Talos setzt.
 #
 apiVersion: v1alpha1
 kind: KubeNodeConfig
@@ -141,11 +153,38 @@ kind: KubeNodeConfig
 nodeIP:
   validSubnets:
     - ${lan_ip}/32
+%{ if role == "controlplane" ~}
 labels:
   node-role.kubernetes.io/control-plane: ""
   node.kubernetes.io/exclude-from-external-load-balancers: ""
 #
-# Ein-Node-Cluster: ohne `taints`. Talos setzt sonst den NoSchedule-Taint auf
-# die Control Plane, und kein Workload hätte einen Node. Mit Workern gehört er
-# wieder her.
+# Ohne `taints`, auch neben Workern. Talos setzt sonst den NoSchedule-Taint
+# auf die Control Plane - hier aber ist sie der Node für alles: Die PVs auf
+# local-path liegen auf ihrer Daten-Disk, und die Worker sind Spezialisten
+# (GPU) mit eigenem Taint, kein Ausweichplatz.
 #
+%{ else ~}
+#
+# Worker: Labels und Taints aus var.nodes.
+#
+# Kein `node-role.kubernetes.io/worker`, so verlockend es für die Spalte
+# ROLES wäre: Auf einem Worker setzt Talos Labels mit den Rechten des
+# Kubelets, und die NodeRestriction-Admission verbietet einem Kubelet genau
+# dieses Präfix. Talos wendet die Labels als Ganzes an - mit dem einen
+# verbotenen fehlen dann alle, auch die aus var.nodes. Im Controller-Log:
+#   is not allowed to modify labels: node-role.kubernetes.io/worker
+# (Die Control Plane darf es, dort arbeitet Talos mit Admin-Rechten.)
+#
+%{ if length(labels) > 0 ~}
+labels:
+%{ for key, value in labels ~}
+  ${jsonencode(key)}: ${jsonencode(value)}
+%{ endfor ~}
+%{ endif ~}
+%{ if length(taints) > 0 ~}
+taints:
+%{ for key, value in taints ~}
+  ${jsonencode(key)}: ${jsonencode(value)}
+%{ endfor ~}
+%{ endif ~}
+%{ endif ~}

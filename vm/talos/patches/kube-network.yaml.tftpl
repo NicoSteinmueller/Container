@@ -1,0 +1,10 @@
+#
+# Pod- und Service-Netz des Clusters. Jeder Node bekommt dasselbe Dokument,
+# Control Plane wie Worker.
+#
+apiVersion: v1alpha1
+kind: KubeNetworkConfig
+podSubnets:
+  - ${pod_subnet}
+serviceSubnets:
+  - ${service_subnet}

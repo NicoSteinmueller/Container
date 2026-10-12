@@ -181,7 +181,7 @@ resource "talos_image_factory_schematic" "node" {
   schematic = yamlencode({
     customization = {
       systemExtensions = {
-        officialExtensions = var.system_extensions
+        officialExtensions = concat(var.system_extensions, each.value.extensions)
       }
 
       #
@@ -433,10 +433,14 @@ resource "libvirt_domain" "node" {
         # `none` gibt den Cache dem Gast allein (O_DIRECT)
         # `native` nutzt Linux-AIO und setzt O_DIRECT voraus
         #
+        # `discard` reicht das TRIM des Gasts an die qcow2-Datei durch - nur
+        # mit `trim` am Node (var.nodes), sonst null und damit wie bisher.
+        #
         driver = {
-          type  = "qcow2"
-          cache = "none"
-          io    = "native"
+          type    = "qcow2"
+          cache   = "none"
+          io      = "native"
+          discard = each.value.trim ? "unmap" : null
         }
       },
       {
@@ -452,9 +456,10 @@ resource "libvirt_domain" "node" {
         }
         # Gleiche Begruendung wie bei vda: der Gast soll den Cache allein haben.
         driver = {
-          type  = "qcow2"
-          cache = "none"
-          io    = "native"
+          type    = "qcow2"
+          cache   = "none"
+          io      = "native"
+          discard = each.value.trim ? "unmap" : null
         }
       },
       {
@@ -491,6 +496,33 @@ resource "libvirt_domain" "node" {
         source = local.lan_source
       },
     ])
+
+    #
+    # PCI-Passthrough, etwa der GPU. "0000:09:00.0" zerlegt in Domain, Bus,
+    # Slot und Funktion - hexadezimal wie bei lspci, der Provider will Zahlen.
+    #
+    # managed: libvirt löst das Gerät beim Start vom Host-Treiber und gibt es
+    # beim Stopp zurück. Auf diesem Host hängt es ohnehin dauerhaft an
+    # vfio-pci (Unraid, System Devices) - libvirt findet es dort schon vor.
+    #
+    # null statt einer leeren Liste: Sonst sähe der Provider an Nodes ohne
+    # Passthrough eine Änderung, die keine ist.
+    #
+    hostdevs = length(each.value.pci_devices) == 0 ? null : [
+      for dev in each.value.pci_devices : {
+        managed = true
+        subsys_pci = {
+          source = {
+            address = {
+              domain   = parseint(split(":", dev)[0], 16)
+              bus      = parseint(split(":", dev)[1], 16)
+              slot     = parseint(split(".", split(":", dev)[2])[0], 16)
+              function = parseint(split(".", dev)[1], 16)
+            }
+          }
+        }
+      }
+    ]
 
     # Talos loggt Boot und Installation, neben talosctl der einzige Weg,
     # einem fehlgeschlagenen Boot zuzusehen:
@@ -584,9 +616,10 @@ resource "talos_machine_secrets" "this" {
 }
 
 #
-# Die Patches setzen eine Control Plane voraus (etcd, Inline-Manifest,
-# Labels). Dass kein Worker hier ankommt, stellt die Validierung von
-# var.nodes sicher.
+# Control Plane und Worker teilen die meisten Patches. Nur auf die Control
+# Plane gehören etcd, kube-proxy (cluster.yaml.tftpl) und das Cilium-Manifest -
+# Talos lehnt die ersten beiden auf einem Worker ab, das Manifest wendet nur
+# die Control Plane an.
 #
 data "talos_machine_configuration" "node" {
   for_each = local.nodes
@@ -606,6 +639,20 @@ data "talos_machine_configuration" "node" {
     # und cluster.yaml.tftpl kommen, die zwei der Dokumente neu anlegen.
     file("${path.module}/patches/defaults.yaml"),
 
+    #
+    # fstrim, das defaults.yaml eben entfernt hat - für Nodes mit `trim`.
+    # Täglich statt der Talos-Voreinstellung (wöchentlich):
+    # Ohne `discard` an der Disk (libvirt_domain.node) bliebe das TRIM
+    # in der VM hängen.
+    #
+    each.value.trim ? [
+      yamlencode({
+        apiVersion = "v1alpha1"
+        kind       = "FilesystemTrimConfig"
+        interval   = "24h"
+      }),
+    ] : [],
+
     # Installationsziel und Installer-Image mit denselben Extensions wie die ISO.
     yamlencode({
       apiVersion = "v1alpha1"
@@ -622,16 +669,20 @@ data "talos_machine_configuration" "node" {
     }),
 
     templatefile("${path.module}/patches/node.yaml.tftpl", {
-      node_name   = each.value.name
-      node_mac    = each.value.mac
-      lan_ip      = each.value.lan_ip
-      lan_cidr    = var.lan_cidr
-      lan_prefix  = local.lan_prefix
-      lan_gateway = var.lan_gateway
-      dns_servers = var.dns_servers
-      ntp_servers = var.ntp_servers
-      public_ip   = each.value.public_ip
-      public_mac  = each.value.public_mac
+      node_name      = each.value.name
+      role           = each.value.role
+      node_mac       = each.value.mac
+      lan_ip         = each.value.lan_ip
+      lan_cidr       = var.lan_cidr
+      lan_prefix     = local.lan_prefix
+      lan_gateway    = var.lan_gateway
+      dns_servers    = var.dns_servers
+      ntp_servers    = var.ntp_servers
+      public_ip      = each.value.public_ip
+      public_mac     = each.value.public_mac
+      kernel_modules = each.value.kernel_modules
+      labels         = each.value.labels
+      taints         = each.value.taints
     }),
 
     #
@@ -645,10 +696,15 @@ data "talos_machine_configuration" "node" {
       install_disk = var.install_disk
     }),
 
-    templatefile("${path.module}/patches/cluster.yaml.tftpl", {
+    each.value.role == "controlplane" ? [
+      templatefile("${path.module}/patches/cluster.yaml.tftpl", {
+        lan_ip = each.value.lan_ip
+      }),
+    ] : [],
+
+    templatefile("${path.module}/patches/kube-network.yaml.tftpl", {
       pod_subnet     = var.pod_subnet
       service_subnet = var.service_subnet
-      lan_ip         = each.value.lan_ip
     }),
 
     #
@@ -676,12 +732,16 @@ data "talos_machine_configuration" "node" {
 
     # Cilium. Muss der letzte Patch sein - nicht technisch, sondern damit die
     # lesbaren Patches oben nicht hinter dem gerenderten Chart verschwinden.
-    yamlencode({
-      apiVersion = "v1alpha1"
-      kind       = "KubeInlineManifestConfig"
-      name       = "cilium"
-      manifest   = data.helm_template.cilium.manifest
-    }),
+    # Nur Control Plane: Auf einem Worker trüge jedes Chart-Update eine
+    # Config-Änderung an einen Node, der das Manifest nie anwendet.
+    each.value.role == "controlplane" ? [
+      yamlencode({
+        apiVersion = "v1alpha1"
+        kind       = "KubeInlineManifestConfig"
+        name       = "cilium"
+        manifest   = data.helm_template.cilium.manifest
+      }),
+    ] : [],
   ])
 }
 
@@ -720,21 +780,31 @@ resource "talos_machine_bootstrap" "this" {
 }
 
 #
-# Blockiert, bis Control Plane und Node gesund sind. Der `count` ist der Notausgang
+# Blockiert, bis Control Plane und Nodes gesund sind. Der `count` ist der Notausgang
 # für destroy- und Reparaturläufe, siehe wait_for_health.
+#
+# Hängt auch an den Config-Applies, nicht nur am Bootstrap: Eine Data Source,
+# deren Abhängigkeiten nichts mehr zu tun haben, liest tofu schon beim Plan.
+# Mit einem neuen Worker in var.nodes wartete der Plan dann auf einen Node,
+# den erst der Apply anlegt - 20 Minuten bis zum Timeout. So rückt der Check
+# hinter jeden ausstehenden Config-Apply, und dort gehört er hin.
 #
 data "talos_cluster_health" "this" {
   count = var.wait_for_health ? 1 : 0
 
   client_configuration = talos_machine_secrets.this.client_configuration
   control_plane_nodes  = [local.controlplane.lan_ip]
+  worker_nodes         = [for node in values(local.nodes) : node.lan_ip if node.role == "worker"]
   endpoints            = [local.controlplane.lan_ip]
 
   timeouts = {
     read = "20m"
   }
 
-  depends_on = [talos_machine_bootstrap.this]
+  depends_on = [
+    talos_machine_bootstrap.this,
+    talos_machine_configuration_apply.node,
+  ]
 }
 
 data "talos_client_configuration" "this" {

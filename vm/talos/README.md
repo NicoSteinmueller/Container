@@ -1,7 +1,8 @@
 # Talos-Node
 
 Talos-Nodes mit Kubernetes, feste Adressen im LAN, erreichbar von der
-Arbeitsstation. Welche Nodes es gibt, steht in `nodes` in den tfvars.
+Arbeitsstation. Welche Nodes es gibt, steht in `nodes` in den tfvars; zum
+GPU-Worker siehe [Worker mit GPU](#worker-mit-gpu).
 
 Konkrete Werte — Host, Adressen, Interface, Pool — stehen in
 `$HOMELAB_VALUES/vm/talos/terraform.tfvars`; hier nur Platzhalter
@@ -13,7 +14,7 @@ Konkrete Werte — Host, Adressen, Interface, Pool — stehen in
 | Adresse | `<node-ip>`, statisch — zugleich Kubernetes-API-Endpoint |
 | Netz | macvtap auf `lan_macvtap_dev` |
 | Zweites Bein | `public_ip` mit eigener MAC `public_mac` am Node — nur ingress-public |
-| Image | Image Factory, Talos + `qemu-guest-agent` |
+| Image | Image Factory, Talos + `qemu-guest-agent`, je Node eine Schematic (`gpu1` zusätzlich `amdgpu`) |
 | CNI | Cilium, als Inline-Manifest in der Machine-Config — kein kube-proxy |
 | Speicher | `local-path` auf `vdb` als Default, NFS zum Unraid-Host daneben — durch WireGuard |
 
@@ -435,6 +436,79 @@ virsh -c qemu+ssh://root@<host>/system console <cluster_name>-cp1
 
 Ohne `-var` läuft der Health-Check in 20 min Timeout, wenn VM aus ist.
 
+## Worker mit GPU
+
+`gpu1` ist ein Worker neben der Control Plane, mit der Grafikkarte
+per PCI-Passthrough. Er trägt nur, was die GPU braucht: Taint
+`homelab/gpu=amd:NoSchedule`, Label `homelab/gpu=amd`. Alles andere läuft
+weiter auf `cp1` — dort liegen auch die PVs auf `local-path`.
+
+|             | Control Plane `cp1` | Worker `gpu1`                                                    |
+|-------------|---------------------|------------------------------------------------------------------|
+| Patches     | alle                | ohne etcd, kube-proxy (`cluster.yaml.tftpl`) und Cilium-Manifest |
+| Schematic   | `qemu-guest-agent`  | zusätzlich `amdgpu`, Kernelmodul `amdgpu`                        |
+| Taint       | keiner              | `homelab/gpu=amd:NoSchedule`                                     |
+| Passthrough | –                   | `0000:09:00.0` (GPU), `0000:09:00.1` (HDMI-Audio)                |
+| TRIM        | aus                 | `trim`: `discard = "unmap"` an beiden Disks, fstrim täglich      |
+
+Mit TRIM gibt die VM gelöschten Platz an den NVMe-Pool zurück; ohne wächst
+die qcow2-Datei bei jedem Modellwechsel weiter, bis sie ihre Kapazität
+erreicht. Gegenprobe nach dem ersten Trim-Lauf:
+
+```bash
+ssh root@<host> du -h /mnt/nvme/domains/talos-gpu1-data.qcow2   # belegt, nicht nominell
+```
+
+Was ein Taint mit sich bringt: Jedes DaemonSet, das auch auf `gpu1` laufen
+soll, braucht eine Toleration. Cilium, csi-nfs und node-exporter tolerieren
+alles; `alloy` (Logs) und `crowdsec-agent` nicht.
+
+### Voraussetzung auf dem Host
+
+GPU und HDMI-Audio an `vfio-pci` gebunden (*Tools → System Devices*, IOMMU-Gruppen
+18 und 19, danach Reboot). Gegenprobe:
+
+```bash
+ssh root@<host> lspci -nnk -s 09:00 | grep 'driver in use'   # zweimal vfio-pci
+```
+
+### Aufbau
+
+Wie beim NFS-Tunnel zuerst nur der Schlüssel, sonst bricht der Talos-Provider
+mit `Provider produced inconsistent final plan` ab:
+
+```bash
+cd vm/talos
+tf apply -target='wireguard_asymmetric_key.nfs_tunnel["gpu1"]'
+tf apply
+```
+
+Der zweite Lauf lädt die ISO mit der gpu1-Schematic, legt Disks und VM an,
+erweitert die Firewall von `cp1` um die neue Adresse und wartet im
+Health-Check, bis `gpu1` im Cluster ist.
+
+Danach für `gpu1` die Schritte 4 bis 6 aus
+[NFS über WireGuard](#nfs-über-wireguard): Peer im Unraid-Tunnel anlegen
+(Schlüssel aus `tf output -json nodes | jq -r .gpu1.nfs_tunnel_public_key`)
+und `10.253.0.3` in die Export-Regel des Shares `k8s` aufnehmen. Ohne den
+Export bleiben NFS-Volumes von Pods auf `gpu1` beim Mount hängen.
+
+### Prüfen
+
+```bash
+kubectl get nodes -o wide                                    # talos-gpu1 Ready (ROLES bleibt <none>)
+kubectl get node talos-gpu1 -L homelab/gpu                   # Label amd
+talosctl -n <gpu1-ip> read /proc/modules | grep amdgpu
+talosctl -n <gpu1-ip> ls /dev/dri                            # card*, renderD128
+talosctl -n <gpu1-ip> ls /dev/kfd                            # für ROCm
+talosctl -n <gpu1-ip> dmesg | grep -i amdgpu | tail
+```
+
+Hängt der erste `apply` beim Config-Apply von `gpu1`: Die VM ist im
+Maintenance-Mode nicht unter ihrer Adresse erreichbar. Meist heißt das, der
+Kernel hat das LAN-Bein anders benannt als `maintenance_link` — nachsehen
+mit `virsh … console talos-gpu1`.
+
 ## Updates
 
 Renovate hebt `talos_version` und `kubernetes_version` in
@@ -445,9 +519,17 @@ in dieser Reihenfolge — **erst der Node, dann `tf apply`**:
 # talosctl auf den neuen Pin bringen (ansible/tools)
 cd vm/talos
 talosctl etcd snapshot db.snapshot
-talosctl -n <node-ip> upgrade --drain=false \
-  --image "factory.talos.dev/metal-installer/$(../../tools/tf output -json nodes | jq -r .cp1.schematic_id):<talos_version>"
-talosctl -n <node-ip> upgrade-k8s --to <kubernetes_version>
+
+# Jeder Node mit *seiner* Schematic - die des Workers trägt amdgpu, die der
+# Control Plane nicht. Control Plane zuerst.
+for node in cp1 gpu1; do
+  ip=$(../../tools/tf output -json nodes | jq -r ".$node.ip")
+  schematic=$(../../tools/tf output -json nodes | jq -r ".$node.schematic_id")
+  talosctl -n "$ip" upgrade --drain=false \
+    --image "factory.talos.dev/metal-installer/$schematic:<talos_version>"
+done
+
+talosctl -n <cp1-ip> upgrade-k8s --to <kubernetes_version>
 ../../tools/tf apply
 ```
 
@@ -504,51 +586,65 @@ Bewusst nicht vorgesehen: **Die Platten der VM werden nicht verschlüsselt.**
 ## NFS über WireGuard
 
 NFS mit `sec=sys` kennt keine Anmeldung: Der Export vertraut der
-Quelladresse. Deshalb läuft NFS durch einen WireGuard-Tunnel, und 
-der Export steht auf der Tunnel-Adresse des Nodes.
+Quelladresse. Deshalb läuft NFS durch einen WireGuard-Tunnel, und
+der Export steht auf den Tunnel-Adressen der Nodes.
 
-| | Unraid | Node |
-|---|---|---|
-| Tunnel-Adresse | `10.253.0.1` — `server` der StorageClass | `10.253.0.2/24` — Ziel der Export-Regel |
-| UDP-Port | wie Unraid ihn vorgibt | Port `51820` |
-| Schlüssel | erzeugt Unraid | erzeugt dieses Modul, privat nur im State |
+Ein Tunnel in Unraid, darin ein Peer je Node. Jeder Node hat eigenen
+Schlüssel und eigene Adresse (`nfs_address` in `nodes`):
 
 ### Einrichten
 
+Schritte 1 und 2 einmal, 3 bis 6 je Node — `<node>` ist der Schlüssel in
+`nodes`, also `cp1` oder `gpu1`.
+
 1. **eigener Tunnel in Unraid:** *Settings → VPN Manager → Add Tunnel*
-2. **tfvars:** den Block `nfs_tunnel` befüllen
+2. **tfvars:** den Block `nfs_tunnel` befüllen, je Node `nfs_address`
 3. **Node:** zuerst nur den Schlüssel, dann alles. In einem einzigen Lauf
    bricht der Talos-Provider mit `Provider produced inconsistent final plan`
    ab: Er rechnet den Hash der Machine-Config voraus, bevor der Schlüssel
    existiert. Harmlos - ein zweiter Lauf geht durch.
 
    ```bash
-   tf apply -target='wireguard_asymmetric_key.nfs_tunnel["cp1"]'
+   tf apply -target='wireguard_asymmetric_key.nfs_tunnel["<node>"]'
    tf apply
-   tf output -json nodes | jq -r .cp1.nfs_tunnel_public_key
+   tf output -json nodes | jq -r '.<node>.nfs_tunnel_public_key'
    ```
 
 4. **Peer in Unraid** im Tunnel aus Schritt 1: Typ *Server to server access*,
-   Peer-Adresse, Endpoint `192.168.178.230:51820`, als
-   öffentlichen Schlüssel den aus Schritt 3 — keinen erzeugen lassen, das
-   Feld für den privaten Schlüssel bleibt leer. Tunnel aktivieren,
-   *Autostart* an.
+   Peer-Adresse aus `nfs_address` (ohne Präfix), Endpoint
+   `<lan_ip>:51820`, als öffentlichen Schlüssel den aus Schritt 3 — keinen
+   erzeugen lassen, das Feld für den privaten Schlüssel bleibt leer. Tunnel
+   aktivieren, *Autostart* an.
 5. **Prüfen:**
 
    ```bash
+   ssh root@<host> wg show wg0          # je Node ein Peer mit frischem "latest handshake"
    kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg status | grep KubeProxyReplacement
    ```
 
    Steht in der letzten Zeile auch `wg-nfs`, hängt Cilium seine
-   BPF-Programme mit daran.
+   BPF-Programme mit daran. `ds/cilium` trifft einen beliebigen Agent — für
+   einen bestimmten Node den Pod auf diesem nehmen
+   (`kubectl -n kube-system get pods -l k8s-app=cilium -o wide`).
 
-6. **Export:** *Shares → k8s → NFS Security* die Regel
-   `10.253.0.2(sec=sys,rw,no_root_squash)`
+6. **Export:** *Shares → k8s → NFS Security* — eine Regel je Node,
+   durch Leerzeichen getrennt:
 
+   ```
+   10.253.0.2(sec=sys,rw,no_root_squash) 10.253.0.3(sec=sys,rw,no_root_squash)
+   ```
 
+   Bewusst einzelne Adressen statt `10.253.0.0/24`: `no_root_squash` nur für
+   genau benannte Quellen. Das Netz wäre nur so lange gleichwertig, wie in
+   diesem Tunnel ausschließlich Cluster-Nodes stehen. Gegenprobe:
 
-Ein neues Schlüsselpaar (`tf apply -replace='wireguard_asymmetric_key.nfs_tunnel[0]'`)
-heißt: Peer in Unraid nachziehen.
+   ```bash
+   ssh root@<host> grep k8s /etc/exports
+   ```
+
+Ein neues Schlüsselpaar für einen Node
+(`tf apply -replace='wireguard_asymmetric_key.nfs_tunnel["<node>"]'`)
+heißt: dessen Peer in Unraid nachziehen.
 
 ## macvtap: wer wen erreicht
 

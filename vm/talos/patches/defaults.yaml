@@ -50,7 +50,9 @@ $patch: delete
 # Verhalten ändern - einschalten ist jeweils eine eigene Entscheidung:
 #
 #   FilesystemTrimConfig    wöchentliches fstrim; auf den qcow2-Disks gäbe das
-#                           Platz im Pool zurück
+#                           Platz im Pool zurück. Je Node wieder einschalten
+#                           mit `trim` in var.nodes (main.tf legt es dann neu
+#                           an, zusammen mit discard an den Disks)
 #   workloadIsolation       Container-Plane in einem eigenen Namespace -
 #                           ungetestet mit Cilium und hostPath
 #   EPHEMERAL secure        nosuid,nodev auf /var, braucht einen Reboot
