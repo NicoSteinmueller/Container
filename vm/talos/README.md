@@ -163,6 +163,12 @@ Gemessen von einer Adresse aus `admin_sources`, während die Regeln standen:
 | 4244 | geblockt | Hubble-API |
 | 9962–9965 | geblockt aus dem LAN | Cilium-Metriken; offen nur fürs Pod-Netz (Regel `cilium-metrics`) |
 
+Zwischen den Nodes — Quelle sind deren `lan_ip`s aus `nodes`, nicht das LAN:
+50000/50001 (apid-Weiterleitung, trustd beim Join), 6443 (Kubelet und Cilium
+über KubePrism), 10250 (kube-apiserver → Kubelet) und 8472/udp
+(Cilium-VXLAN). Bei einem einzigen Node ohne Wirkung, weil Verkehr an die
+eigene Adresse über loopback läuft.
+
 ### Regeln ändern: erst `try`, dann `apply`
 
 **Ein falscher Regelsatz sperrt dich aus der Talos-API aus.** Der Provider
@@ -174,7 +180,8 @@ cd vm/talos
 export TALOSCONFIG=$PWD/talosconfig
 
 # Regeln so rendern, wie tofu sie schreiben würde
-tofu console <<<'templatefile("${path.module}/patches/firewall.yaml.tftpl", { admin_sources = var.admin_sources, pod_subnet = var.pod_subnet, lan_cidr = var.lan_cidr })'
+../../tools/tf console <<<'templatefile("${path.module}/patches/firewall.yaml.tftpl", { admin_sources = var.admin_sources, node_sources = local.node_sources, pod_subnet = var.pod_subnet, lan_cidr = var.lan_cidr })' \
+  | sed -e '1s/^<<EOT$//' -e '$s/^EOT$//' > firewall.yaml
 
 talosctl -n <lan_ip> patch machineconfig --dry-run  -p @firewall.yaml
 talosctl -n <lan_ip> patch machineconfig --mode=try --timeout=150s -p @firewall.yaml

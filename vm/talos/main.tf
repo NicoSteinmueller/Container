@@ -75,6 +75,13 @@ locals {
   #
   controlplane = one([for node in values(local.nodes) : node if node.role == "controlplane"])
 
+  #
+  # Die LAN-Adressen aller Nodes - Quelle für den Verkehr der Nodes
+  # untereinander in patches/firewall.yaml.tftpl. Sortiert, damit ein neuer
+  # Node die Reihenfolge der übrigen nicht verschiebt.
+  #
+  node_sources = sort([for node in values(local.nodes) : "${node.lan_ip}/32"])
+
   cluster_endpoint = "https://${local.controlplane.lan_ip}:6443"
   lan_prefix       = tonumber(split("/", var.lan_cidr)[1])
   pool_name        = var.manage_pool ? libvirt_pool.domains[0].name : var.libvirt_pool
@@ -659,6 +666,7 @@ data "talos_machine_configuration" "node" {
     #
     templatefile("${path.module}/patches/firewall.yaml.tftpl", {
       admin_sources = var.admin_sources
+      node_sources  = local.node_sources
       pod_subnet    = var.pod_subnet
       lan_cidr      = var.lan_cidr
     }),

@@ -13,8 +13,18 @@
 #
 # Was damit ohne eigene Regel zufällt - und das ist der eigentliche Gewinn:
 # etcd auf 2379/2380 lauscht heute auf allen Adressen und ist aus dem ganzen
-# LAN erreichbar. Ein Node, ein etcd, kein Peer von außen: Die Voreinstellung
-# `block` genügt, es braucht keine Regel dagegen.
+# LAN erreichbar. Eine Control Plane, ein etcd, kein Peer von außen: Die
+# Voreinstellung `block` genügt, es braucht keine Regel dagegen. Erst eine
+# zweite Control Plane bräuchte 2380 - und die lässt var.nodes nicht zu.
+#
+# Verkehr der Nodes untereinander kommt aus `node_sources`, den LAN-Adressen
+# aus var.nodes als /32 - nicht aus dem ganzen LAN. Solange es nur einen Node
+# gibt, sind diese Einträge ohne Wirkung: Pakete an die eigene Adresse laufen
+# über loopback, und das lässt Talos ohnehin durch.
+#
+# Alle Nodes bekommen denselben Regelsatz. Was davon nur auf der Control Plane
+# lauscht (kube-apiserver, trustd), ist auf einem Worker eine Regel für einen
+# Port, an dem niemand antwortet - harmlos.
 #
 apiVersion: v1alpha1
 kind: NetworkDefaultActionConfig
@@ -25,9 +35,13 @@ ingress: block
 # Die Talos-API. Ohne diese Regel ist der Node nur noch über die serielle
 # Konsole zu erreichen.
 #
-# trustd (50001) steht mit drin, obwohl es bei einem Node niemand anspricht -
-# es verteilt Zertifikate an beitretende Nodes. Der Tag, an dem ein zweiter
-# dazukommt, ist kein guter Tag, um diese Datei zu suchen.
+# Die Nodes brauchen beide Ports untereinander:
+#
+#   50000  apid. `talosctl -e <cp> -n <worker>` spricht die Control Plane an,
+#          und deren apid reicht die Anfrage an den apid des Workers weiter -
+#          das Paket dort kommt also von der Control Plane, nicht vom Admin.
+#   50001  trustd auf der Control Plane. Ein beitretender Node holt sich dort
+#          sein Zertifikat; ohne die Regel bleibt er beim Join hängen.
 #
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
@@ -38,7 +52,7 @@ portSelector:
     - 50001
   protocol: tcp
 ingress:
-%{ for src in admin_sources ~}
+%{ for src in distinct(concat(admin_sources, node_sources)) ~}
   - subnet: ${src}
 %{ endfor ~}
 
@@ -51,6 +65,10 @@ ingress:
 # auf 6443 weiter - das Paket kommt also aus dem Pod-Netz an einem
 # Host-Prozess an und fällt damit unter diese Regel.
 #
+# `node_sources` für die übrigen Nodes: Kubelet und Cilium-Agent dort sprechen
+# die API über KubePrism (127.0.0.1:7445) an, und KubePrism reicht das an
+# 6443 der Control Plane weiter - mit der LAN-Adresse des Nodes als Absender.
+#
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: kube-apiserver
@@ -59,7 +77,7 @@ portSelector:
     - 6443
   protocol: tcp
 ingress:
-%{ for src in admin_sources ~}
+%{ for src in distinct(concat(admin_sources, node_sources)) ~}
   - subnet: ${src}
 %{ endfor ~}
   - subnet: ${pod_subnet}
@@ -73,6 +91,10 @@ ingress:
 # alles, was auf Metriken wartet - Headlamp zeigt dann leere Graphen statt
 # einer Fehlermeldung.
 #
+# `node_sources`, weil der kube-apiserver selbst das Kubelet jedes Nodes
+# anspricht - für `kubectl logs`, `exec` und `port-forward`. Er läuft im
+# Host-Netz der Control Plane, das Paket kommt also von deren LAN-Adresse.
+#
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
 name: kubelet
@@ -82,7 +104,7 @@ portSelector:
   protocol: tcp
 ingress:
   - subnet: ${pod_subnet}
-%{ for src in admin_sources ~}
+%{ for src in distinct(concat(admin_sources, node_sources)) ~}
   - subnet: ${src}
 %{ endfor ~}
 
@@ -156,6 +178,36 @@ portSelector:
 ingress:
   - subnet: ${lan_cidr}
   - subnet: ${pod_subnet}
+
+---
+#
+# Cilium-Overlay zwischen den Nodes.
+#
+# Cilium läuft im Tunnel-Modus mit VXLAN (Voreinstellung, values/cilium.yaml.tftpl
+# setzt routingMode nicht). Ein Pod auf einem anderen Node ist nur über
+# UDP 8472 zwischen den LAN-Adressen erreichbar - das Paket landet beim
+# vxlan-Device im Kernel, ist für diese Kette also Host-Verkehr.
+#
+# Ohne die Regel bleibt ein zweiter Node Ready, und trotzdem geht nichts über
+# Nodes hinweg: DNS zu CoreDNS auf dem anderen Node läuft in Timeouts,
+# Services mit Endpoints dort antworten nicht. Cilium-Health zeigt es als
+# "endpoint unreachable", während der Node selbst erreichbar bleibt.
+#
+# Gegenprobe der Annahme:
+#   kubectl -n kube-system get cm cilium-config \
+#     -o jsonpath='{.data.routing-mode} {.data.tunnel-protocol}'
+#
+apiVersion: v1alpha1
+kind: NetworkRuleConfig
+name: cilium-vxlan
+portSelector:
+  ports:
+    - 8472
+  protocol: udp
+ingress:
+%{ for src in node_sources ~}
+  - subnet: ${src}
+%{ endfor ~}
 
 ---
 #
