@@ -123,8 +123,14 @@ ingress:
 # Egress-Regel in k8s/flux/observability/monitoring/NetworkPolicies.yaml ist
 # die *andere* Haelfte davon - beide sind noetig.
 #
-# Nur `pod_subnet`: Von aussen gibt es keinen Grund, die Node-Metriken zu
-# lesen. Wer sie sehen will, nimmt Grafana.
+# `pod_subnet` fuer den Node, auf dem Prometheus laeuft. `node_sources` fuer
+# alle anderen: Ziel ist die LAN-Adresse eines fremden Nodes, das geht nicht
+# durch den VXLAN-Tunnel, sondern maskiert ins LAN - das Paket kommt mit der
+# Adresse des Nodes von Prometheus an, nicht mit der des Pods. Hubble zeigt
+# dann `to-network FORWARDED`.
+#
+# Aus dem uebrigen LAN bleibt der Port zu: Wer die Metriken sehen will, nimmt
+# Grafana.
 #
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
@@ -135,13 +141,16 @@ portSelector:
   protocol: tcp
 ingress:
   - subnet: ${pod_subnet}
+%{ for src in node_sources ~}
+  - subnet: ${src}
+%{ endfor ~}
 
 ---
 #
 # Cilium-Metriken fuer Prometheus: Agent 9962, Operator 9963, Envoy 9964,
 # Hubble 9965 (values/cilium.yaml.tftpl, `prometheus`). Alle vier laufen im
-# Host-Netz, der Scrape kommt aus dem Pod-Netz - gleiches Muster und gleicher
-# Grund wie node-exporter oben. Aus dem LAN bleiben sie zu.
+# Host-Netz - gleiches Muster und gleicher Grund wie node-exporter oben,
+# auch fuer `node_sources`. Aus dem uebrigen LAN bleiben sie zu.
 #
 apiVersion: v1alpha1
 kind: NetworkRuleConfig
@@ -155,6 +164,9 @@ portSelector:
   protocol: tcp
 ingress:
   - subnet: ${pod_subnet}
+%{ for src in node_sources ~}
+  - subnet: ${src}
+%{ endfor ~}
 
 ---
 #
