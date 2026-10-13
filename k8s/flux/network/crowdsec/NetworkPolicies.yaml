@@ -51,7 +51,8 @@ spec:
 ---
 # Je Rolle nur die Namen, die sie braucht, und nur dorthin eine Verbindung.
 #
-#   hub-data.crowdsec.net  Hub-Index und -Inhalte
+#   cdn-hub.crowdsec.net   Hub-Index und -Inhalte (neue Adresse)
+#   hub-data.crowdsec.net  Hub-Index und -Inhalte (alte Adresse)
 #   version.crowdsec.net   `cscli hub update` wählt damit den Hub-Zweig
 #   api.crowdsec.net       Central API (Anmeldung, Community-Blocklist, Metriken)
 apiVersion: cilium.io/v2
@@ -63,6 +64,7 @@ spec:
   endpointSelector: {}
   egress:
     - toFQDNs:
+        - matchName: cdn-hub.crowdsec.net
         - matchName: hub-data.crowdsec.net
         - matchName: version.crowdsec.net
       toPorts:
@@ -104,6 +106,7 @@ spec:
               protocol: ANY
           rules:
             dns:
+              - matchName: cdn-hub.crowdsec.net
               - matchName: hub-data.crowdsec.net
               - matchName: version.crowdsec.net
               - matchPattern: "*.*.*.*.in-addr.arpa"
@@ -137,6 +140,7 @@ spec:
               protocol: ANY
           rules:
             dns:
+              - matchName: cdn-hub.crowdsec.net
               - matchName: hub-data.crowdsec.net
               - matchName: version.crowdsec.net
               - matchName: api.crowdsec.net
@@ -175,5 +179,6 @@ spec:
               protocol: ANY
           rules:
             dns:
+              - matchName: cdn-hub.crowdsec.net
               - matchName: hub-data.crowdsec.net
               - matchName: version.crowdsec.net
