@@ -1,0 +1,207 @@
+# Open WebUI unter open-webui.k8s.nico-steinmueller.de
+#
+# Oberfläche für die Modelle in llama-swap, Anmeldung nur über Keycloak. Läuft
+# auf cp1 - die GPU braucht nur llama-swap.
+#
+# Ohne root, mit schreibgeschütztem Dateisystem und ohne Internet.
+# Zwei Umwege dafür:
+#
+#   DATA_DIR=/data    Das Image bringt Embedding-, Whisper- und Tiktoken-
+#                     Modelle unter /app/backend/data/cache mit. Ein PVC dort
+#                     verdeckte sie, und Open WebUI lüde sie aus dem Internet
+#                     nach. Daten deshalb auf /data, die Modelle bleiben im
+#                     Image lesbar.
+#   STATIC_DIR        Beim Start kopiert Open WebUI Logo, Favicon und Manifest
+#                     in dieses Verzeichnis - im Image read-only.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: open-webui
+  namespace: llm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: open-webui
+  namespace: llm
+spec:
+  selector:
+    app.kubernetes.io/name: open-webui
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-webui
+  namespace: llm
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  # SQLite auf local-path, Migrationen beim Start
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: open-webui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: open-webui
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      # Keycloak über ingress-public
+      hostAliases:
+        - ip: 192.168.178.232
+          hostnames:
+            - keycloak.nico-steinmueller.de
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: open-webui
+          image: ghcr.io/open-webui/open-webui:v0.12.0@sha256:1565038903151ced924b5a3226f73f40f16963df4b910441f6391f10144afdaa
+          ports:
+            - name: http
+              containerPort: 8080
+          # https://docs.openwebui.com/reference/env-configuration
+          env:
+            - name: TZ
+              value: "Europe/Berlin"
+            - name: DATA_DIR
+              value: /data
+            - name: STATIC_DIR
+              value: /static
+            - name: WEBUI_URL
+              value: "https://open-webui.k8s.nico-steinmueller.de"
+            - name: CORS_ALLOW_ORIGIN
+              value: "https://open-webui.k8s.nico-steinmueller.de"
+            # Sonst schreibt start.sh einen zufälligen Schlüssel nach
+            # /app/backend - read-only, und nach jedem Neustart wären alle
+            # Sitzungen ungültig.
+            - name: WEBUI_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: open-webui
+                  key: secret-key
+
+            # Kein Internet: keine Update-Prüfung, keine Modell-Downloads.
+            # Die Modelle aus dem Image reichen für RAG und Sprache.
+            - name: OFFLINE_MODE
+              value: "true"
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: ENABLE_COMMUNITY_SHARING
+              value: "false"
+            - name: ENABLE_VERSION_UPDATE_CHECK
+              value: "false"
+
+            # Modelle nur aus llama-swap. Der Key ist Pflicht, llama-swap
+            # prüft ihn nicht.
+            - name: ENABLE_OLLAMA_API
+              value: "false"
+            - name: OPENAI_API_BASE_URL
+              value: "http://llama-swap.llm.svc.cluster.local:8080/v1"
+            - name: OPENAI_API_KEY
+              value: "none"
+
+            # Anmeldung nur über Keycloak
+            # https://docs.openwebui.com/features/access-security/auth/sso/keycloak
+            - name: WEBUI_AUTH
+              value: "true"
+            - name: ENABLE_LOGIN_FORM
+              value: "false"
+            - name: ENABLE_OAUTH_PERSISTENT_CONFIG
+              value: "false"
+            - name: ENABLE_OAUTH_SIGNUP
+              value: "true"
+            - name: OAUTH_PROVIDER_NAME
+              value: "Keycloak"
+            - name: OAUTH_CLIENT_ID
+              value: "open-webui"
+            - name: OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: open-webui
+                  key: oidc-client-secret
+            - name: OPENID_PROVIDER_URL
+              value: "https://keycloak.nico-steinmueller.de/realms/mein-realm/.well-known/openid-configuration"
+            - name: OPENID_REDIRECT_URI
+              value: "https://open-webui.k8s.nico-steinmueller.de/oauth/oidc/callback"
+            # Realm-Rollen: `user` darf rein, `admin` wird Admin
+            - name: ENABLE_OAUTH_ROLE_MANAGEMENT
+              value: "true"
+            - name: OAUTH_ROLES_CLAIM
+              value: "realm_access.roles"
+            - name: OAUTH_ALLOWED_ROLES
+              value: "user"
+            - name: OAUTH_ADMIN_ROLES
+              value: "admin"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          # Datenbank-Migrationen und das Laden der Embedding-Modelle
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 768Mi
+            # Embedding- und Whisper-Modell laufen auf der CPU im Prozess
+            limits:
+              memory: 3Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: static
+              mountPath: /static
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: open-webui
+        - name: static
+          emptyDir:
+            sizeLimit: 64Mi
+        # Uploads werden hier zwischengespeichert
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi

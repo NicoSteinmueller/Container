@@ -1,0 +1,130 @@
+# Netzwerkregeln im Namespace `llm`
+---
+# Open WebUI: eingehend nur der interne Controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: open-webui-from-ingress-internal
+  namespace: llm
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: open-webui
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik-internal
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# Open WebUI: ausgehend llama-swap und Keycloak. Sonst kein Internet - die
+# Modelle für RAG und Sprache bringt das Image mit (OFFLINE_MODE).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: open-webui-egress
+  namespace: llm
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: open-webui
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: llama-swap
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
+    # Keycloak über ingress-public
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: traefik-public
+            app.kubernetes.io/name: traefik
+      toPorts:
+        - ports:
+            - port: "8443"
+              protocol: TCP
+
+---
+# llama-swap: eingehend nur Open WebUI
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llama-swap-from-open-webui
+  namespace: llm
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: llama-swap
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: open-webui
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# llama-swap: ausgehend nur Hugging Face, für `-hf` - dieselben Namen wie bei
+# Immich (apps/immich/NetworkPolicies.yaml):
+#
+#   huggingface.co           Modell-Index, leitet die Dateien weiter
+#   cdn-lfs*.hf.co           Dateien aus Git LFS
+#   *.xethub.hf.co           Dateien aus dem Xet-Speicher
+#   **.cdn.hf.co             Xet-Dateien über das CDN (us.aws.cdn.hf.co),
+#                            `**`, weil `*` nur ein Label abdeckt
+#
+# Fehlt ein Name, meldet ihn der Alarm `DnsAbfrageBlockiert`.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: llama-swap-egress
+  namespace: llm
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: llama-swap
+  egress:
+    # DNS für genau die Namen unten, zusätzlich zu `**.cluster.local`
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchName: huggingface.co
+              - matchName: cdn-lfs.hf.co
+              - matchName: cdn-lfs-us-1.hf.co
+              - matchName: cdn-lfs-eu-1.hf.co
+              - matchName: cas-bridge.xethub.hf.co
+              - matchName: cas-server.xethub.hf.co
+              - matchName: transfer.xethub.hf.co
+              - matchPattern: "**.cdn.hf.co"
+
+    - toFQDNs:
+        - matchName: huggingface.co
+        - matchName: cdn-lfs.hf.co
+        - matchName: cdn-lfs-us-1.hf.co
+        - matchName: cdn-lfs-eu-1.hf.co
+        - matchName: cas-bridge.xethub.hf.co
+        - matchName: cas-server.xethub.hf.co
+        - matchName: transfer.xethub.hf.co
+        - matchPattern: "**.cdn.hf.co"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

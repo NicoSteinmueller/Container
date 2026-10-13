@@ -57,6 +57,12 @@ data:
             - websecure
           service: paperless
 
+        open-webui:
+          rule: Host(`open-webui.k8s.nico-steinmueller.de`)
+          entryPoints:
+            - websecure
+          service: open-webui
+
         # Traefiks eigenes Dashboard. Erst Passwort, dann Umleitung
         dashboard:
           rule: Host(`traefik.k8s.nico-steinmueller.de`)
@@ -97,6 +103,10 @@ data:
           loadBalancer:
             servers:
               - url: http://paperless.paperless.svc.cluster.local:80
+        open-webui:
+          loadBalancer:
+            servers:
+              - url: http://open-webui.llm.svc.cluster.local:80
 
   middlewares.yaml: |
     http:

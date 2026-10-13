@@ -9,6 +9,7 @@ darf scheitern.
 | [`immich/`](immich)            | Fotos und Videos unter `immich.nico-steinmueller.de`           |
 | [`it-tools/`](it-tools)        | Entwickler-Werkzeuge unter `it-tools.k8s.nico-steinmueller.de` |
 | [`keycloak/`](keycloak)        | Single Sign-On unter `keycloak.nico-steinmueller.de`           |
+| [`llm/`](llm)                  | Sprachmodelle auf `gpu1`, Open WebUI unter `open-webui.k8s.nico-steinmueller.de` |
 | [`navidrome/`](navidrome)      | Musik-Streaming unter `music.k8s.nico-steinmueller.de`         |
 | [`nextcloud/`](nextcloud)      | Dateien, Kalender, Kontakte unter `cloud.nico-steinmueller.de` |
 | [`ntfy/`](ntfy)                | Push-Benachrichtigungen unter `ntfy.nico-steinmueller.de`      |

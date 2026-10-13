@@ -28,6 +28,17 @@ metadata:
   labels:
     pod-security.kubernetes.io/enforce: privileged
 ---
+# `privileged` wegen hostPath: Das Device-Plugin liest /dev und legt seinen
+# Socket im Verzeichnis des Kubelets an. Läuft nur auf den GPU-Nodes.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: generic-device-plugin
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/audit: baseline
+---
 # `privileged` wegen zweier DaemonSets: node-exporter
 # (hostNetwork, hostPID, /proc, /sys) und Alloy (/var/log).
 apiVersion: v1

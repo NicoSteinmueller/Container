@@ -36,6 +36,7 @@ spec:
         - crowdsec
         - immich
         - keycloak
+        - llm
         - monitoring
         - navidrome
         - nextcloud

@@ -1,0 +1,197 @@
+# llama-swap - Sprachmodelle auf gpu1, OpenAI-kompatibel unter
+# http://llama-swap.llm.svc.cluster.local:8080/v1
+#
+# llama-swap startet je Modell einen llama-server (Vulkan) und wechselt beim
+# ersten Request auf ein anderes Modell: altes beenden, neues laden.
+#
+# Welche Modelle es gibt, steht unten in der ConfigMap.
+# Die GGUF-Dateien lädt llama-server beim ersten Start selbst von
+# Hugging Face (`-hf`) in den Cache auf `models`.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llama-swap
+  namespace: llm
+data:
+  config.yaml: |
+    # Erster Start eines Modells heißt Download (20-25 GB). Die Frist läuft
+    # neu an, solange llama-server Fortschritt meldet - großzügig trotzdem.
+    healthCheckTimeout: 1800
+    logLevel: info
+    # Nicht benutzt, sonst wird jede Anfrage im Speicher mitgeschnitten.
+    captureBuffer: 0
+
+    macros:
+      # -ngl 999       alle Layer auf die GPU
+      # -fa on         Flash-Attention, Voraussetzung für den quantisierten
+      #                KV-Cache
+      # q8_0           halbiert den KV-Cache bei kaum messbarem Verlust
+      # --no-webui     die Oberfläche ist Open WebUI
+      server: >-
+        llama-server
+        --host 127.0.0.1 --port ${PORT}
+        -ngl 999 -fa on --jinja
+        --cache-type-k q8_0 --cache-type-v q8_0
+        --no-webui
+
+    models:
+      # Hybrid: 16 von 64 Layern mit voller Attention, der KV-Cache ist
+      # entsprechend klein (~34 KB/Token in q8_0). Gewichte 23,5 GB, mit
+      # 64k Kontext und Vision rund 28 GB.
+      qwen3.8-27b:
+        name: Qwen3.8 27B
+        cmd: ${server} -hf unsloth/Qwen3.8-27B-GGUF:UD-Q6_K_XL --ctx-size 65536
+        # Nach 30 min ohne Anfrage entladen
+        ttl: 1800
+
+      # 50 von 60 Layern Sliding-Window (1024), aber 16 KV-Köpfe in den
+      # übrigen - ~85 KB/Token. Gewichte 20,1 GB, mit 32k rund 26 GB.
+      gemma-4-31b:
+        name: Gemma 4 31B
+        cmd: ${server} -hf unsloth/gemma-4-31B-it-GGUF:Q5_K_M --ctx-size 32768
+        ttl: 1800
+
+    # Lädt das Standardmodell beim Start - und damit beim ersten Start
+    # dessen Download, statt den ersten Chat warten zu lassen.
+    hooks:
+      on_startup:
+        preload:
+          - qwen3.8-27b
+
+---
+# GGUF-Cache. Auf gpu1, weil die Modelle dort von der Daten-Disk in den VRAM
+# geladen werden;
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: models
+  namespace: llm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 500Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llama-swap
+  namespace: llm
+spec:
+  selector:
+    app.kubernetes.io/name: llama-swap
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama-swap
+  namespace: llm
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  # GPU und PVC auf genau einem Node - der alte Pod muss weg sein, bevor der
+  # neue sie bekommt.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: llama-swap
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: llama-swap
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector:
+        homelab/gpu: amd
+      tolerations:
+        - key: homelab/gpu
+          operator: Exists
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: llama-swap
+          # Tag: llama-swap-Version und der llama.cpp-Build darin
+          image: ghcr.io/mostlygeek/llama-swap:v264-vulkan-b11561-non-root@sha256:302a2f7382640608d0f98c60e6ef16c27f2a49745f9cec7a6cc678264b8c90af
+          # Ohne -watch-config: Eine geänderte ConfigMap kommt über Reloader
+          # als Neustart, ein Volume aus einer ConfigMap tauscht Symlinks,
+          # die der Watcher nicht sicher sieht.
+          command:
+            - /app/llama-swap
+            - -config
+            - /config/config.yaml
+            - -listen
+            - :8080
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: TZ
+              value: "Europe/Berlin"
+            # Download-Ziel von `-hf`
+            - name: LLAMA_CACHE
+              value: /models/gguf
+            # Shader-Cache von Mesa - sonst kompiliert jeder Start neu
+            - name: XDG_CACHE_HOME
+              value: /models/cache
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+              homelab.io/gpu: 1
+            # Die Gewichte liegen im VRAM; im RAM steht der Page-Cache der
+            # GGUF-Datei während des Ladens. gpu1 hat 16 GB.
+            limits:
+              memory: 12Gi
+              homelab.io/gpu: 1
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: models
+              mountPath: /models
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: llama-swap
+        - name: models
+          persistentVolumeClaim:
+            claimName: models
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi

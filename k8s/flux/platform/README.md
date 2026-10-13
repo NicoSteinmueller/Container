@@ -7,6 +7,7 @@ Controller, auf denen die Dienste aufsetzen.
 | [`cert-manager/`](cert-manager) | interne CA für clusterinterne Zertifikate |
 | [`cloudnative-pg/`](cloudnative-pg) | Postgres-Operator |
 | [`reloader/`](reloader) | startet neu, was ein geändertes Secret benutzt |
+| [`generic-device-plugin/`](generic-device-plugin) | GPU als Ressource `homelab.io/gpu` auf `gpu1` |
 | [`Sources.yaml`](Sources.yaml) | HelmRepositories `jetstack`, `cloudnative-pg`, `stakater` |
 
 `wait: true` ([`../sync/Platform.yaml`](../sync/Platform.yaml)), weil

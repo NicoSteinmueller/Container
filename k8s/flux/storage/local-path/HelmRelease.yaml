@@ -62,6 +62,17 @@ spec:
     helperImage:
       repository: docker.io/library/busybox
       tag: "1.38.0"
+    # Der Helper-Pod legt das Verzeichnis eines Volumes auf dessen Node an
+    # (und räumt es ab). Ohne die Toleration bliebe jeder PVC eines Pods auf
+    # worker node Pending: Das Chart setzt nur `disk-pressure`, und sobald dort
+    # etwas steht, fügt der Provisioner sein eigenes `operator: Exists` nicht
+    # mehr hinzu.
+    configmap:
+      helperPod:
+        tolerations:
+          - key: homelab/gpu
+            operator: Exists
+            effect: NoSchedule
 
     resources:
       requests:

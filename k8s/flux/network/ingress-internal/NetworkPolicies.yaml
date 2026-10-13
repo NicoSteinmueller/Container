@@ -88,6 +88,15 @@ spec:
             - port: "8000"
               protocol: TCP
 
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: llm
+            app.kubernetes.io/name: open-webui
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
+
     # DNS für genau die Namen unten, zusätzlich zu `**.cluster.local`
     - toEndpoints:
         - matchLabels:
