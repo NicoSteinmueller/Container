@@ -47,6 +47,16 @@ data:
         cmd: ${server} -hf unsloth/Qwen3.8-27B-GGUF:UD-Q6_K_XL --ctx-size 65536
         # Nach 30 min ohne Anfrage entladen
         ttl: 1800
+        filters:
+          setParamsByID:
+            # Für Dokumente (Paperless, paperless-gpt) - derselbe
+            # llama-server, kein Wechsel.
+            # 0.6/0.95/20 empfiehlt Qwen für den Denkmodus.
+            "qwen3.8-27b:docs":
+              temperature: 0.6
+              top_p: 0.95
+              top_k: 20
+              max_tokens: 8192
 
       # 50 von 60 Layern Sliding-Window (1024), aber 16 KV-Köpfe in den
       # übrigen - ~85 KB/Token. Gewichte 20,1 GB, mit 32k rund 26 GB.

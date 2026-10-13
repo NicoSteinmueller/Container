@@ -33,6 +33,12 @@ Beide ohne root und mit schreibgeschütztem Dateisystem.
 | `qwen3.8-27b` | `unsloth/Qwen3.8-27B-GGUF:UD-Q6_K_XL` + Vision | 64k     | ~28 GB |
 | `gemma-4-31b` | `unsloth/gemma-4-31B-it-GGUF:Q5_K_M` + Vision  | 32k     | ~26 GB |
 
+`qwen3.8-27b:docs` ist ein Alias auf denselben llama-server (kein Wechsel)
+für Paperless und paperless-gpt: llama-swap erzwingt dort Temperatur 0.6 und
+`max_tokens` 8192 (`filters.setParamsByID`). paperless-gpt schickt sonst
+Temperatur 0 ohne Grenze, und Qwen denkt in einer Schleife bis zum vollen
+Kontext.
+
 Ein neues Modell ist ein Eintrag in der ConfigMap in
 [`LlamaSwap.yaml`](LlamaSwap.yaml); Reloader startet den Pod danach neu, und
 der Sidecar `model-sync` holt die Datei. Bis sie vollständig ist, scheitert
