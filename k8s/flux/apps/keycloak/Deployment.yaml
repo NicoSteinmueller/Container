@@ -53,7 +53,7 @@ spec:
       # überhaupt zu starten -, dann der Build mit den Optionen unten.
       initContainers:
         - name: quarkus-kopie
-          image: quay.io/keycloak/keycloak:26.8.0@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741
+          image: quay.io/keycloak/keycloak:26.8.1@sha256:79c623a22abacf3fe6c00a5fb30f5b7843d717b234033b80995891c06116d244
           command: [/bin/bash, -c]
           args:
             - cp -R /opt/keycloak/lib/quarkus/. /quarkus/
@@ -74,7 +74,7 @@ spec:
               mountPath: /quarkus
 
         - name: build
-          image: quay.io/keycloak/keycloak:26.8.0@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741
+          image: quay.io/keycloak/keycloak:26.8.1@sha256:79c623a22abacf3fe6c00a5fb30f5b7843d717b234033b80995891c06116d244
           args:
             - build
           env:
@@ -101,7 +101,7 @@ spec:
 
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:26.8.0@sha256:27b3230fbabb8c9ff3c66c864cf09dcd8a41aca82e5100679d109ef0eeb05741
+          image: quay.io/keycloak/keycloak:26.8.1@sha256:79c623a22abacf3fe6c00a5fb30f5b7843d717b234033b80995891c06116d244
           args:
             - start
             - --optimized
