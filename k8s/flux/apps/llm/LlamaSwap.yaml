@@ -4,9 +4,11 @@
 # llama-swap startet je Modell einen llama-server (Vulkan) und wechselt beim
 # ersten Request auf ein anderes Modell: altes beenden, neues laden.
 #
-# Welche Modelle es gibt, steht unten in der ConfigMap.
-# Die GGUF-Dateien lädt llama-server beim ersten Start selbst von
-# Hugging Face (`-hf`) in den Cache auf `models`.
+# Welche Modelle es gibt, steht unten in der ConfigMap. Die Dateien holt
+# nicht llama-server, sondern der Sidecar `model-sync` (ModelSync.yaml): aus
+# dem Backup auf NFS oder von Hugging Face. llama-server läuft `--offline`
+# und nimmt nur, was vollständig im Cache liegt - ein Modell, das noch lädt,
+# scheitert sofort statt eine Chat-Anfrage warten zu lassen.
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -15,9 +17,9 @@ metadata:
   namespace: llm
 data:
   config.yaml: |
-    # Erster Start eines Modells heißt Download (20-25 GB). Die Frist läuft
-    # neu an, solange llama-server Fortschritt meldet - großzügig trotzdem.
-    healthCheckTimeout: 1800
+    # Nur noch das Laden in den VRAM - der Download liegt bei model-sync.
+    # 25 GB von der NVMe plus Shader-Kompilierung beim ersten Mal.
+    healthCheckTimeout: 600
     logLevel: info
     # Nicht benutzt, sonst wird jede Anfrage im Speicher mitgeschnitten.
     captureBuffer: 0
@@ -28,12 +30,13 @@ data:
       #                KV-Cache
       # q8_0           halbiert den KV-Cache bei kaum messbarem Verlust
       # --no-webui     die Oberfläche ist Open WebUI
+      # --offline      nur aus dem Cache, nie selbst herunterladen
       server: >-
         llama-server
         --host 127.0.0.1 --port ${PORT}
         -ngl 999 -fa on --jinja
         --cache-type-k q8_0 --cache-type-v q8_0
-        --no-webui
+        --no-webui --offline
 
     models:
       # Hybrid: 16 von 64 Layern mit voller Attention, der KV-Cache ist
@@ -52,8 +55,8 @@ data:
         cmd: ${server} -hf unsloth/gemma-4-31B-it-GGUF:Q5_K_M --ctx-size 32768
         ttl: 1800
 
-    # Lädt das Standardmodell beim Start - und damit beim ersten Start
-    # dessen Download, statt den ersten Chat warten zu lassen.
+    # Lädt das Standardmodell beim Start in den VRAM. Liegt es noch nicht
+    # im Cache (Neuaufbau), scheitert das und der erste Chat lädt es.
     hooks:
       on_startup:
         preload:
@@ -61,7 +64,7 @@ data:
 
 ---
 # GGUF-Cache. Auf gpu1, weil die Modelle dort von der Daten-Disk in den VRAM
-# geladen werden;
+# geladen werden; die Kopie auf NFS ist `models-backup` (ModelSync.yaml).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -185,10 +188,55 @@ spec:
               mountPath: /models
             - name: tmp
               mountPath: /tmp
+
+        # Hält den Cache vollständig und spiegelt ihn nach NFS - siehe
+        # ModelSync.yaml. Gleiches Image: `llama download` schreibt genau das
+        # Cache-Layout, das llama-server liest.
+        - name: model-sync
+          image: ghcr.io/mostlygeek/llama-swap:v264-vulkan-b11561-non-root@sha256:302a2f7382640608d0f98c60e6ef16c27f2a49745f9cec7a6cc678264b8c90af
+          command:
+            - python3
+            - /scripts/model-sync.py
+          env:
+            - name: LLAMA_CACHE
+              value: /models/gguf
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            # Kopien laufen durch den Page-Cache; der zählt mit, ist aber
+            # freigebbar.
+            limits:
+              memory: 2Gi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: models
+              mountPath: /models
+            - name: models-backup
+              mountPath: /backup
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: config
           configMap:
             name: llama-swap
+        - name: scripts
+          configMap:
+            name: model-sync
+        - name: models-backup
+          persistentVolumeClaim:
+            claimName: models-backup
         - name: models
           persistentVolumeClaim:
             claimName: models
