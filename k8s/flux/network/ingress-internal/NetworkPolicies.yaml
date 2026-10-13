@@ -29,6 +29,15 @@ spec:
     # fehlt einer, steht die Route und erreicht das Backend nicht.
     - toEndpoints:
         - matchLabels:
+            io.kubernetes.pod.namespace: homepage
+            app.kubernetes.io/name: homepage
+      toPorts:
+        - ports:
+            - port: "3000"
+              protocol: TCP
+
+    - toEndpoints:
+        - matchLabels:
             io.kubernetes.pod.namespace: headlamp
       toPorts:
         - ports:

@@ -17,6 +17,31 @@ spec:
         - podSelector: {}
 
 ---
+# Homepage liest die GPU-Werte (apps/homepage/Config.yaml)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-homepage-to-prometheus
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: homepage
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homepage
+      ports:
+        - protocol: TCP
+          port: 9090
+
+---
 # Im LAN erreichbar ist nur Grafana.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -77,9 +102,11 @@ spec:
             - port: "6443"
               protocol: TCP
 
-    # Hostprozesse, die auf dem Node lauschen.
+    # Hostprozesse auf den Nodes. `host` ist nur der Node, auf dem Prometheus
+    # läuft; die anderen sind für Cilium `remote-node`.
     - toEntities:
         - host
+        - remote-node
       toPorts:
         - ports:
             # Kubelet

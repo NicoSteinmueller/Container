@@ -13,7 +13,7 @@ LB-IPAM. Kein `hostPort`, kein `hostNetwork`.
 | Adresse | Wer lauscht | Erreichbar von |
 |---|---|---|
 | `192.168.178.230` | Node selbst: Talos-API, Kubelet, kube-apiserver | nur `admin_sources`, siehe Schritt 3 |
-| `192.168.178.231` | `ingress-internal` — Headlamp, it-tools, Navidrome, whoami, Paperless | nur LAN |
+| `192.168.178.231` | `ingress-internal` — Startseite, Headlamp, it-tools, Navidrome, whoami, Paperless | nur LAN |
 | `192.168.178.232` | `ingress-public` — ntfy, Keycloak, Immich, Nextcloud | Internet (Fritzbox-Freigabe auf das Gerät mit MAC `public_mac`) **und** LAN über Split-DNS |
 
 Beide LoadBalancer-Adressen müssen außerhalb des Fritzbox-DHCP-Bereichs liegen

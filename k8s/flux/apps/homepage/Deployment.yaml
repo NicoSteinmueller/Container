@@ -1,0 +1,133 @@
+# Startseite unter k8s.nico-steinmueller.de
+#
+# kein Chart: Homepage mit der Dienstliste aus Config.yaml. Den Status je
+# Dienst liest es read-only aus der Kubernetes-API (RBAC.yaml), nicht von den
+# Diensten selbst - ausgehend darf der Pod nur zur API.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homepage
+  namespace: homepage
+spec:
+  selector:
+    app.kubernetes.io/name: homepage
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homepage
+  namespace: homepage
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homepage
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homepage
+    spec:
+      serviceAccountName: homepage
+      securityContext:
+        # gehört dem Image unter /app
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: homepage
+          image: ghcr.io/gethomepage/homepage:v2.5.0@sha256:57c4a0531937889c0b968b120fe9c2560bbe036b5c9e18c49a9e2479de9975d1
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: TZ
+              value: "Europe/Berlin"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            # Prüft den Host-Header. Die Pod-IP für die Probes des Kubelets.
+            - name: HOMEPAGE_ALLOWED_HOSTS
+              value: "k8s.nico-steinmueller.de,$(POD_IP):3000"
+            # sonst zusätzlich in config/logs/
+            - name: LOG_TARGETS
+              value: "stdout"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /api/healthcheck
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/healthcheck
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 128Mi
+            limits:
+              memory: 384Mi
+          # /app/config beschreibbar, weil Homepage fehlende Dateien aus
+          # seinem Skelett dorthin kopiert und sonst abbricht. Die eigenen
+          # Dateien einzeln per subPath - Änderungen kommen über den Neustart,
+          # den Reloader auslöst.
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+            - name: config-files
+              mountPath: /app/config/kubernetes.yaml
+              subPath: kubernetes.yaml
+            - name: config-files
+              mountPath: /app/config/settings.yaml
+              subPath: settings.yaml
+            - name: config-files
+              mountPath: /app/config/services.yaml
+              subPath: services.yaml
+            - name: config-files
+              mountPath: /app/config/widgets.yaml
+              subPath: widgets.yaml
+            - name: config-files
+              mountPath: /app/config/bookmarks.yaml
+              subPath: bookmarks.yaml
+            - name: config-files
+              mountPath: /app/config/custom.css
+              subPath: custom.css
+            - name: config-files
+              mountPath: /app/config/custom.js
+              subPath: custom.js
+            # Next.js legt hier seinen Cache ab
+            - name: next-cache
+              mountPath: /app/.next/cache
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config-files
+          configMap:
+            name: homepage-config
+        - name: config
+          emptyDir:
+            sizeLimit: 1Mi
+        - name: next-cache
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi

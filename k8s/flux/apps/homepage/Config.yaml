@@ -1,0 +1,190 @@
+# homepage - Dienstliste und Einstellungen
+#
+# Ein neuer Dienst bekommt hier einen Eintrag, zusätzlich zu den drei
+# Handgriffen in network/ingress-internal/README.md.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homepage-config
+  namespace: homepage
+data:
+  # Nur Pod-Status und Auslastung. Ohne `ingress: false` listete Homepage
+  # alle Ingress-Objekte im Cluster - es gibt keine (core/NoIngressObjects.yaml).
+  kubernetes.yaml: |
+    mode: cluster
+    ingress: false
+    traefik: false
+    gateway: false
+
+  settings.yaml: |
+    title: Homelab
+    language: de
+    theme: dark
+    color: slate
+    headerStyle: clean
+    target: _blank
+    showStats: true
+    hideVersion: true
+    # fragte bei GitHub nach, der Pod darf nicht nach außen
+    disableUpdateCheck: true
+    disableIndexing: true
+    layout:
+      Anwendungen:
+        style: row
+        columns: 4
+      Öffentlich:
+        style: row
+        columns: 4
+      Verwaltung:
+        style: row
+        columns: 4
+
+  # `app` sucht Pods mit app.kubernetes.io/name=<app>. Wo ein Dienst aus
+  # mehreren Pods besteht (Datenbank, Valkey …), zählt der ganze Namespace
+  # ohne die Pods der Dump-Jobs.
+  services.yaml: |
+    - Anwendungen:
+        - Paperless:
+            href: https://paperless.k8s.nico-steinmueller.de
+            description: Dokumente
+            icon: paperless-ngx.png
+            namespace: paperless
+            app: paperless
+            podSelector: "!batch.kubernetes.io/job-name"
+        - Navidrome:
+            href: https://music.k8s.nico-steinmueller.de
+            description: Musik-Streaming
+            icon: navidrome.png
+            namespace: navidrome
+            app: navidrome
+        - Open WebUI:
+            href: https://open-webui.k8s.nico-steinmueller.de
+            description: Sprachmodelle auf gpu1
+            icon: open-webui.png
+            namespace: llm
+            app: open-webui
+            podSelector: "!batch.kubernetes.io/job-name"
+        - IT-Tools:
+            href: https://it-tools.k8s.nico-steinmueller.de
+            description: Entwickler-Werkzeuge
+            icon: it-tools.png
+            namespace: it-tools
+            app: it-tools
+
+    - Öffentlich:
+        - Nextcloud:
+            href: https://cloud.nico-steinmueller.de
+            description: Dateien, Kalender, Kontakte
+            icon: nextcloud.png
+            namespace: nextcloud
+            app: nextcloud
+            podSelector: "!batch.kubernetes.io/job-name"
+        - Immich:
+            href: https://immich.nico-steinmueller.de
+            description: Fotos und Videos
+            icon: immich.png
+            namespace: immich
+            app: immich-server
+            podSelector: "!batch.kubernetes.io/job-name"
+        - ntfy:
+            href: https://ntfy.nico-steinmueller.de
+            description: Push-Benachrichtigungen
+            icon: ntfy.png
+            namespace: ntfy
+            app: ntfy
+
+    - Verwaltung:
+        # Werte von node-exporter auf gpu1: drm für Last und VRAM, hwmon
+        # (Chip `amdgpu`) für Temperatur und Leistung.
+        - GPU:
+            href: https://grafana.k8s.nico-steinmueller.de
+            description: Radeon auf gpu1
+            icon: mdi-expansion-card
+            widget:
+              type: prometheusmetric
+              url: http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090
+              refreshInterval: 15000
+              metrics:
+                - label: Last
+                  query: max(node_drm_gpu_busy_percent)
+                  format:
+                    type: percent
+                - label: VRAM
+                  query: sum(node_drm_memory_vram_used_bytes)
+                  format:
+                    type: bbytes
+                - label: Temperatur
+                  query: >-
+                    max(node_hwmon_temp_celsius
+                    * on(chip, instance) group_left(chip_name)
+                    node_hwmon_chip_names{chip_name="amdgpu"})
+                  format:
+                    type: number
+                    suffix: " °C"
+                    options:
+                      maximumFractionDigits: 0
+                - label: Leistung
+                  query: >-
+                    sum(node_hwmon_power_average_watt
+                    * on(chip, instance) group_left(chip_name)
+                    node_hwmon_chip_names{chip_name="amdgpu"})
+                  format:
+                    type: number
+                    suffix: " W"
+                    options:
+                      maximumFractionDigits: 0
+        - Headlamp:
+            href: https://dashboard.k8s.nico-steinmueller.de
+            description: Cluster-Dashboard
+            icon: headlamp.png
+            namespace: headlamp
+            app: headlamp
+        - Grafana:
+            href: https://grafana.k8s.nico-steinmueller.de
+            description: Metriken und Logs
+            icon: grafana.png
+            namespace: monitoring
+            app: grafana
+        - Keycloak:
+            href: https://keycloak.k8s.nico-steinmueller.de/admin/
+            description: Single Sign-On, Admin-Konsole
+            icon: keycloak.png
+            namespace: keycloak
+            app: keycloak
+            podSelector: "!batch.kubernetes.io/job-name"
+        - Traefik:
+            href: https://traefik.k8s.nico-steinmueller.de
+            description: ingress-internal
+            icon: traefik.png
+            namespace: traefik-internal
+            app: traefik
+        - whoami:
+            href: https://whoami.k8s.nico-steinmueller.de
+            description: Testdienst
+            icon: mdi-account-question
+            namespace: whoami
+            app: whoami
+
+  widgets.yaml: |
+    - kubernetes:
+        cluster:
+          show: true
+          cpu: true
+          memory: true
+          showLabel: true
+          label: Cluster
+        nodes:
+          show: true
+          cpu: true
+          memory: true
+          showLabel: true
+    - datetime:
+        text_size: md
+        format:
+          dateStyle: long
+          timeStyle: short
+
+  bookmarks.yaml: ""
+  custom.css: ""
+  custom.js: ""

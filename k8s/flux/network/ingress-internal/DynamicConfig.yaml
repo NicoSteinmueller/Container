@@ -14,6 +14,13 @@ data:
   routes.yaml: |
     http:
       routers:
+        # Startseite mit allen Diensten
+        homepage:
+          rule: Host(`k8s.nico-steinmueller.de`)
+          entryPoints:
+            - websecure
+          service: homepage
+
         headlamp:
           rule: Host(`dashboard.k8s.nico-steinmueller.de`)
           entryPoints:
@@ -75,6 +82,10 @@ data:
 
       # Über den Service-Namen statt über Endpoints
       services:
+        homepage:
+          loadBalancer:
+            servers:
+              - url: http://homepage.homepage.svc.cluster.local:80
         headlamp:
           loadBalancer:
             servers:

@@ -8,3 +8,6 @@ Traefik fürs Heimnetz auf `192.168.178.231`. Von außen nur aus dem LAN
 - Router und Service in `routes.yaml` (`http://<svc>.<ns>.svc.cluster.local`)
 - ein `toEndpoints`-Block in `traefik-internal-egress` (`NetworkPolicies.yaml`)
 - im Ziel-Namespace eine Policy, die `traefik-internal` hereinlässt
+
+Auf der Startseite erscheint er erst mit einem Eintrag in
+[`apps/homepage/Config.yaml`](../../apps/homepage/Config.yaml).
