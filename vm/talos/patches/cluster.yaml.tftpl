@@ -20,3 +20,43 @@ enabled: false
 # Kein Flannel und keine Discovery: beides sind Dokumente, die Talos selbst
 # anlegt, und sie zu entfernen steht in defaults.yaml.
 #
+---
+#
+# Anmeldung am kube-apiserver mit Keycloak-Tokens, für Headlamp
+# (k8s/flux/apps/headlamp). Die Rechte vergibt RBAC über die Realm-Rollen,
+# siehe dort RBAC.yaml.
+#
+# Ersetzt `configuration` als Ganzes, ein Merge findet darin nicht statt.
+# Deshalb steht `anonymous` hier noch einmal so, wie Talos es vorgibt - ohne
+# den Block wäre anonymer Zugriff nicht mehr auf die Health-Pfade begrenzt.
+#
+# Der Node löst den Namen auf ingress-public auf, und dessen
+# 8443 nimmt Verkehr von überall an. Fehlt Keycloak beim Start, nimmt der
+# apiserver die Tokens erst an, sobald er die Schlüssel holen konnte.
+#
+apiVersion: v1alpha1
+kind: KubeAuthenticationConfig
+configuration:
+  anonymous:
+    enabled: true
+    conditions:
+      - path: /livez
+      - path: /readyz
+      - path: /healthz
+  jwt:
+    - issuer:
+        url: https://keycloak.nico-steinmueller.de/realms/mein-realm
+        # Client-ID von Headlamp, Keycloak trägt sie in `aud` des ID-Tokens
+        audiences:
+          - headlamp
+      claimMappings:
+        username:
+          claim: preferred_username
+          prefix: "oidc:"
+        # Realm-Rollen als Gruppen, wie bei Open WebUI: `user` liest,
+        # `admin` schreibt. Ein Ausdruck verträgt kein `prefix`, deshalb
+        # steht es darin. Ohne Rollen angemeldet, aber ohne Rechte.
+        groups:
+          expression: >-
+            has(claims.realm_access) && has(claims.realm_access.roles)
+            ? claims.realm_access.roles.map(r, 'oidc:' + r) : []

@@ -25,9 +25,9 @@ spec:
     remediation:
       retries: 3
   values:
-    # Headlamp spricht mit der API als Identität des eingegebenen Tokens:
+    # Headlamp spricht mit der API als Identität des Anmeldenden: Keycloak
+    # (Gruppen in RBAC.yaml) oder ein eingegebenes Token:
     #
-    #   Lesen:  kubectl -n headlamp create token headlamp --duration=8h
     #   Ändern: kubectl -n headlamp create token headlamp-admin --duration=1h
     config:
       inCluster: true
@@ -36,11 +36,32 @@ spec:
       unsafeUseServiceAccountToken: false
       sessionTTL: 28800
 
+      # Anmeldung über Keycloak. Headlamp reicht das ID-Token an die API
+      # weiter, die ihm über KubeAuthenticationConfig in
+      # vm/talos/patches/cluster.yaml.tftpl traut.
       oidc:
-        # Das Chart legt sonst ein leeres Secret "oidc" an.
-        # TODO: OIDC-Login mit Keycloak einrichten
         secret:
           create: false
+        # Nur OIDC_CLIENT_SECRET, aus homelab-secrets. Der Rest steht unter env.
+        externalSecret:
+          enabled: true
+          name: headlamp-oidc
+
+    env:
+      - name: OIDC_CLIENT_ID
+        value: headlamp
+      - name: OIDC_ISSUER_URL
+        value: https://keycloak.nico-steinmueller.de/realms/mein-realm
+      - name: OIDC_CALLBACK_URL
+        value: https://dashboard.k8s.nico-steinmueller.de/oidc-callback
+      - name: OIDC_USE_PKCE
+        value: "true"
+
+    # Keycloak über ingress-public
+    hostAliases:
+      - ip: 192.168.178.232
+        hostnames:
+          - keycloak.nico-steinmueller.de
 
     # ServiceAccount und Rechte aus RBAC.yaml
     serviceAccount:

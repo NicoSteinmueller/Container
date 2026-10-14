@@ -20,7 +20,7 @@ spec:
           port: 4466
 
 ---
-# Ausgehend nur die API
+# Ausgehend nur die API und Keycloak
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -34,4 +34,14 @@ spec:
       toPorts:
         - ports:
             - port: "6443"
+              protocol: TCP
+
+    # Keycloak über ingress-public
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: traefik-public
+            app.kubernetes.io/name: traefik
+      toPorts:
+        - ports:
+            - port: "8443"
               protocol: TCP

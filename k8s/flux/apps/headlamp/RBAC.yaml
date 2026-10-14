@@ -1,6 +1,8 @@
 # headlamp - ServiceAccounts und RBAC
 #
 #   headlamp        - Lese-Tokens. Kein Schreiben, keine Secrets.
+#   oidc:user       - Realm-Rolle `user` in Keycloak, dieselben Leserechte.
+#   oidc:admin      - Realm-Rolle `admin`, cluster-admin.
 #   headlamp-admin  - Wer ändern will, erzeugt sich eines für eine Stunde.
 ---
 # Spricht als dieser ServiceAccount mit der API
@@ -25,6 +27,9 @@ subjects:
   - kind: ServiceAccount
     name: headlamp
     namespace: headlamp
+  - kind: Group
+    name: oidc:user
+    apiGroup: rbac.authorization.k8s.io
 
 ---
 # Zweite Hälfte: Nodes, PersistentVolumes, StorageClasses, CRDs.
@@ -84,6 +89,9 @@ subjects:
   - kind: ServiceAccount
     name: headlamp
     namespace: headlamp
+  - kind: Group
+    name: oidc:user
+    apiGroup: rbac.authorization.k8s.io
 
 ---
 # Schreibzugriff auf Abruf: kein Pod, kein Token.
@@ -107,3 +115,6 @@ subjects:
   - kind: ServiceAccount
     name: headlamp-admin
     namespace: headlamp
+  - kind: Group
+    name: oidc:admin
+    apiGroup: rbac.authorization.k8s.io
