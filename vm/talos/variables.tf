@@ -49,7 +49,7 @@ variable "cilium_version" {
     `helm upgrade`.
   EOT
   type        = string
-  default     = "1.20.2"
+  default     = "1.20.3"
 }
 
 variable "hubble_relay_enabled" {
