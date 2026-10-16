@@ -67,17 +67,28 @@ data:
               chat_template_kwargs:
                 enable_thinking: false
 
-      # Dasselbe Modell in 4 Bit (17,6 GB) plus MTP-Kopf (1,4 GB): Der Kopf
-      # schlägt je Schritt bis zu 3 Tokens vor, das Modell prüft sie in einem
+      # Dasselbe Modell in 4 Bit (16,5 GB) plus MTP-Kopf (1,4 GB): Der Kopf
+      # schlägt je Schritt bis zu 2 Tokens vor, das Modell prüft sie in einem
       # Durchlauf - schneller ohne Verlust gegenüber Q4. Der Kopf liegt bei
       # Unsloth unter MTP/, das findet llama.cpp nicht von selbst - daher
-      # -hfd/-md. Mit 64k und Vision rund 23 GB.
+      # -hfd/-md. Mit 64k und Vision rund 21 GB.
+      #
+      # Abgestimmt auf die R9700 (bench-qwen.sh):
+      # - 2 statt 3 Vorschläge: Bei Fließtext nahm Qwen von 3 nur ~45 % an
+      # - --parallel 1: ein Slot, MTP mit mehreren ist langsamer;
+      #   gleichzeitige Anfragen warten
+      # - KV-Cache q4_0 (hängt die q8_0 aus dem Makro ab - das letzte gilt)
+      # - RADV_DEBUG=nocompute: Vulkan nur über die Grafik-Queue, auf RDNA4
+      #   schneller
       qwen3.8-27b-q4-mtp:
         name: Qwen3.8 27B Q4 + MTP
         cmd: >-
-          ${server} -hf unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL --ctx-size 65536
-          --spec-type draft-mtp --spec-draft-n-max 3
+          ${server} -hf unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M --ctx-size 65536
+          --cache-type-k q4_0 --cache-type-v q4_0 --parallel 1
+          --spec-type draft-mtp --spec-draft-n-max 2
           -hfd unsloth/Qwen3.8-27B-GGUF -md MTP/mtp-Qwen3.8-27B-Q4_0.gguf
+        env:
+          - RADV_DEBUG=nocompute
         ttl: 1800
 
       # 50 von 60 Layern Sliding-Window (1024), aber 16 KV-Köpfe in den
