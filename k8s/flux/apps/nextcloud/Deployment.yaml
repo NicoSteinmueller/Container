@@ -64,7 +64,7 @@ spec:
 
       containers:
         - name: nextcloud
-          image: docker.io/library/nextcloud:35.0.2-fpm@sha256:46e2206c19c17e9154e23b4af7e17e471843467075e50300b2b08870b1705864
+          image: docker.io/library/nextcloud:35.0.2-fpm@sha256:4448306f97d54585e56b1854ec144d89aa82a388e9eb44e655ce9ddced6b9690
           ports:
             - name: fpm
               containerPort: 9000
@@ -222,7 +222,7 @@ spec:
               mountPath: /tmp
 
         - name: cron
-          image: docker.io/library/nextcloud:35.0.2-fpm@sha256:46e2206c19c17e9154e23b4af7e17e471843467075e50300b2b08870b1705864
+          image: docker.io/library/nextcloud:35.0.2-fpm@sha256:4448306f97d54585e56b1854ec144d89aa82a388e9eb44e655ce9ddced6b9690
           # Am Entrypoint vorbei - der kopierte sonst ein zweites Mal Code.
           # crond aus dem Image (/cron.sh) braucht root, daher die Schleife.
           command: [/bin/sh, -c]
