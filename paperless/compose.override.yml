@@ -16,6 +16,28 @@ services:
 
       PAPERLESS_IGNORE_DATES: 01.01.1970,01.01.2000
 
+      # KI über llama-swap im Cluster. Braucht den Port-Forward auf dem Host:
+      #   kubectl -n llm port-forward svc/llama-swap \
+      #     --address 127.0.0.1,172.17.0.1 11435:8080
+      PAPERLESS_AI_ENABLED: true
+      PAPERLESS_AI_LLM_BACKEND: openai-like
+      PAPERLESS_AI_LLM_ENDPOINT: http://host.docker.internal:11435/v1
+      # Alias aus der llama-swap-Config: Temperatur 0.6, max_tokens 8192
+      PAPERLESS_AI_LLM_MODEL: qwen3.8-27b:docs
+      PAPERLESS_AI_LLM_CONTEXT_SIZE: 32768
+      # Der erste Request lädt das Modell erst in den VRAM
+      PAPERLESS_AI_LLM_REQUEST_TIMEOUT: 600
+      # Ohne Denkphase - für Titel und Tags reicht das und spart Minuten.
+      # In `extra_body`, das OpenAI-SDK lehnt unbekannte Argumente sonst ab.
+      PAPERLESS_AI_LLM_EXTRA_PARAMS: '{"extra_body": {"chat_template_kwargs": {"enable_thinking": false}}}'
+      PAPERLESS_AI_LLM_OUTPUT_LANGUAGE: German
+      # llama-swap hat kein Embedding-Modell. Lokal im Container, landet in
+      # data/paperless/hf_cache; mehrsprachig wegen deutscher Dokumente.
+      PAPERLESS_AI_LLM_EMBEDDING_BACKEND: huggingface
+      PAPERLESS_AI_LLM_EMBEDDING_MODEL: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+
+    extra_hosts:
+      - host.docker.internal:host-gateway
     ports:
       - name: http
         target: 8000

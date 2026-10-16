@@ -1,58 +1,63 @@
-# Lokaler LLM-Stack fuer Paperless-GPT ausserhalb des Server-Netzwerks.
-# Ziel: Ollama + paperless-gpt auf dem PC, Verbindung zu Remote-Paperless per HTTPS.
+# paperless-gpt zum lokalen Testen, als Zusatz zum Dev-Stack:
+#
+#   docker compose -f compose.yml -f compose.override.yml \
+#     -f docker-compose.gpt.local.yml up -d
+#
+# Sprachmodell ist llama-swap im Cluster, über denselben Port-Forward wie die
+# KI von Paperless (siehe compose.override.yml). Den API-Token liest Compose
+# aus `.env` neben dieser Datei (gitignored): PAPERLESS_GPT_API_TOKEN=…
+#
+# Oberfläche: http://127.0.0.1:8081
 services:
-  ollama:
-    container_name: ollama
-    image: ollama/ollama:0.40.5@sha256:5d3a2f25f9825628daba94dc0b1d421c7d57d6c03ae5faa9ba050e058bab8241
-    pull_policy: always
-    gpus: all
-    ports:
-      - "11434:11434"
-    volumes:
-      - ./ollama:/root/.ollama
-
   paperless-gpt:
     container_name: paperless_gpt
     # Use one of these image sources:
     image: icereed/paperless-gpt:v0.31.0@sha256:d668941a829552cc0eddbc7c22506b3480dfbf61bd0d6eae881ad9fcfe2de70c # Docker Hub
-    # image: ghcr.io/icereed/paperless-gpt:latest  # GitHub Container Registry
+    depends_on:
+      paperless:
+        condition: service_healthy
     environment:
-      # Direkte interne Verbindung zur passenden Paperless-Instanz via Netzwerk-Alias.
-      PAPERLESS_BASE_URL: https://paperless-nico.nico-steinmueller.de
-      PAPERLESS_PUBLIC_URL: https://paperless-nico.nico-steinmueller.de
-      PAPERLESS_API_TOKEN: #TODO Required
+      # Im selben Compose-Projekt, also direkt über den Service-Namen
+      PAPERLESS_BASE_URL: http://paperless:8000
+      PAPERLESS_PUBLIC_URL: http://127.0.0.1:8080
+      PAPERLESS_API_TOKEN: ${PAPERLESS_GPT_API_TOKEN:?in paperless/.env setzen}
 
       MANUAL_TAG: "paperless-gpt" # Optional, default: paperless-gpt
       AUTO_TAG: "paperless-gpt-auto" # Optional, default: paperless-gpt-auto
       AUTO_GENERATE_TITLE: "true" # Optional, default: true
       AUTO_GENERATE_TAGS: "true" # Optional, default: true
+      # Nur vorhandene Tags - neue legt das Modell sonst für jedes Produkt
+      # und jeden Shop an. Bereichs-Tags in Paperless selbst anlegen.
+      CREATE_NEW_TAGS: "false" # Optional, default: false
       AUTO_GENERATE_CORRESPONDENTS: "true" # Optional, default: true
       #      CORRESPONDENT_BLACK_LIST: # Optional, comma-separated list of blacklisted correspondents for auto-generation
-      AUTO_GENERATE_DOCUMENT_TYPE: "true" # Optional, default: truels -la "/run/user/$(id -u)/gvfs"ls -la "/run/user/$(id -u)/gvfs"
+      AUTO_GENERATE_DOCUMENT_TYPE: "true" # Optional, default: true
       AUTO_GENERATE_CREATED_DATE: "true" # Optional, default: true
       AUTO_OCR_TAG: "paperless-gpt-ocr-auto" # Optional, default: paperless-gpt-ocr-auto
       PDF_OCR_TAGGING: "true" # Optional, add tag to processed documents
       PDF_OCR_COMPLETE_TAG: "paperless-gpt-ocr-complete" # Optional, tag name
 
-      # LLM Configuration - Ollama (Local)
-      LLM_PROVIDER: "ollama"
-      LLM_MODEL: "qwen3.5:9b"
-      OLLAMA_HOST: http://ollama:11434
-      OLLAMA_CONTEXT_LENGTH: "8192" # Sets Ollama NumCtx (context window)
+      # LLM - llama-swap ist OpenAI-kompatibel. Dasselbe Modell wie bei der
+      # KI von Paperless, sonst wechselt llama-swap bei jedem Aufruf (~1 min).
+      LLM_PROVIDER: "openai"
+      # Alias mit Temperatur 0.6 und max_tokens 8192, gesetzt in llama-swap.
+      # paperless-gpt schickt sonst temperature 0 ohne Grenze, und Qwen
+      # denkt endlos. LLM_TEMPERATURE/LLM_MAX_TOKENS wirken nur mit Ollama.
+      LLM_MODEL: "qwen3.8-27b:docs-nothink"
+      OPENAI_BASE_URL: http://host.docker.internal:11435/v1
+      # llama-swap prüft keinen Schlüssel, der Client will aber einen
+      OPENAI_API_KEY: "unused"
       TOKEN_LIMIT: 0 # Recommended for smaller models, 0 for no limit
       LLM_LANGUAGE: "German" # Optional, default: English
       LLM_REQUESTS_PER_MINUTE: "120" # Optional, Max requests per minute to LLM provider, default: 120
 
-      # OCR Configuration - LLM-based OCR
+      # OCR über das Vision-Modell - qwen3.8-27b kann Bilder
       OCR_PROVIDER: "llm" # Default OCR provider
       OCR_PROCESS_MODE: "image" # Optional, default: image, other options: pdf, whole_pdf
-      VISION_LLM_PROVIDER: "ollama" # openai, ollama, mistral, or anthropic
-      VISION_LLM_MODEL: "qwen3.5:4b" # minicpm-v (ollama) or gpt-4o (openai) or claude-sonnet-4-5 (anthropic/claude)
+      VISION_LLM_PROVIDER: "openai"
+      VISION_LLM_MODEL: "qwen3.8-27b:docs-nothink"
 
-      VISION_LLM_MAX_TOKENS: "10240"
-      VISION_LLM_TEMPERATURE: "0.1"
-
-      OCR_LIMIT_PAGES: "0" # TODO: Optional, default: 5. Set to 0 for no limit.minicpm-v
+      OCR_LIMIT_PAGES: "0" # Optional, default: 5. Set to 0 for no limit.
       # OCR Processing Mode
       PDF_SKIP_EXISTING_OCR: "false" # Optional, skip OCR for PDFs with existing OCR
 
@@ -62,9 +67,13 @@ services:
 
       TZ: Europe/Berlin
       LOG_LEVEL: "info" # Optional: debug, warn, error
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
       - ./gpt:/app/prompts
+      # Einstellungen aus der Oberfläche, Undo-Verlauf und OCR-Log
+      - ./data/gpt/config:/app/config
+      - ./data/gpt/db:/app/db
+    # 8080 hat Paperless
     ports:
-      - "8080:8080"
-
-
+      - "127.0.0.1:8081:8080"
