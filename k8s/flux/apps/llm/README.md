@@ -28,10 +28,19 @@ Beide ohne root und mit schreibgeschütztem Dateisystem.
 
 ## Modelle
 
-| ID            | Datei                                         | Kontext | VRAM   |
-|---------------|-----------------------------------------------|---------|--------|
-| `qwen3.8-27b` | `unsloth/Qwen3.8-27B-GGUF:UD-Q6_K_XL` + Vision | 64k     | ~28 GB |
-| `gemma-4-31b` | `unsloth/gemma-4-31B-it-GGUF:Q5_K_M` + Vision  | 32k     | ~26 GB |
+| ID                   | Datei                                                 | Kontext | VRAM   |
+|----------------------|-------------------------------------------------------|---------|--------|
+| `qwen3.8-27b`        | `unsloth/Qwen3.8-27B-GGUF:UD-Q6_K_XL` + Vision        | 64k     | ~28 GB |
+| `qwen3.8-27b-q4-mtp` | `unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL` + Vision + MTP  | 64k     | ~23 GB |
+| `gemma-4-31b`        | `unsloth/gemma-4-31B-it-GGUF:Q5_K_M` + Vision         | 32k     | ~26 GB |
+
+`qwen3.8-27b-q4-mtp` ist dasselbe Modell in 4 Bit mit MTP-Kopf
+(Multi-Token-Prediction): Der Kopf schlägt bis zu 3 Tokens vor, Qwen prüft sie
+in einem Durchlauf. Das Ergebnis ist dasselbe wie ohne MTP, nur schneller.
+Unsloth legt den Kopf unter `MTP/` ab, llama.cpp sucht ihn aber nur neben
+dem Modell - deshalb steht er als `-hfd <repo> -md <datei>` in der Config,
+und `model-sync` holt ihn von dort mit. Ob er greift, zeigt das Log von
+llama-server (`draft acceptance`).
 
 `qwen3.8-27b:docs` ist ein Alias auf denselben llama-server (kein Wechsel)
 für Paperless und paperless-gpt: llama-swap erzwingt dort Temperatur 0.6 und
@@ -51,8 +60,8 @@ unter 32 GB bleiben.
 
 ## Download und Backup
 
-`model-sync` liest die `-hf`-Argumente aus der Config und arbeitet sie in
-deren Reihenfolge ab:
+`model-sync` liest die `-hf`-Argumente (und Drafts als `-hfd`/`-md`) aus der
+Config und arbeitet sie in deren Reihenfolge ab:
 
 1. lokal vollständig → weiter mit 4
 2. auf `models-backup` (NFS) → von dort kopieren

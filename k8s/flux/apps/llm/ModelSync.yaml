@@ -18,8 +18,9 @@ data:
     """
     Hält den GGUF-Cache von llama-swap vollständig - lokal und als Kopie auf NFS.
 
-    Die Modelle sind die `-hf <repo>:<quant>` in der Config von llama-swap. Je
-    Modell, in der Reihenfolge der Config:
+    Die Modelle sind die `-hf <repo>:<quant>` in der Config von llama-swap, dazu
+    Drafts wie der MTP-Kopf als `-hfd <repo> -md <datei>`. Je Modell, in der
+    Reihenfolge der Config:
 
       1. lokal vollständig?      weiter mit 4
       2. auf dem Backup?         von dort kopieren (LAN statt Internet)
@@ -56,23 +57,30 @@ data:
 
 
     def models():
+        """Je Modell die Argumente für `llama download`."""
         with open(CONFIG) as f:
             text = f.read()
         seen = []
-        for ref in re.findall(r"-hf\s+(\S+)", text):
-            if ref not in seen:
-                seen.append(ref)
+        for ref, repo, file in re.findall(r"-hf\s+(\S+)|-hfd\s+(\S+)\s+-md\s+(\S+)", text):
+            args = ["-hf", ref] if ref else ["-hf", repo, "-hff", file]
+            if args not in seen:
+                seen.append(args)
         return seen
 
 
-    def repo_dir(ref):
-        repo = ref.split(":", 1)[0]
+    def label(args):
+        # <repo>:<quant> bzw. <repo>:<datei>
+        return ":".join(args[1::2])
+
+
+    def repo_dir(args):
+        repo = args[1].split(":", 1)[0]
         return "models--" + repo.replace("/", "--")
 
 
-    def complete(ref):
+    def complete(args):
         r = subprocess.run(
-            [LLAMA, "download", "--offline", "-hf", ref],
+            [LLAMA, "download", "--offline", *args],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             env={**os.environ, "LLAMA_CACHE": CACHE},
@@ -129,39 +137,40 @@ data:
         return copied
 
 
-    def download(ref):
+    def download(args):
         delay = 30
         while True:
-            r = subprocess.run([LLAMA, "download", "-hf", ref], env={**os.environ, "LLAMA_CACHE": CACHE})
-            if r.returncode == 0 and complete(ref):
+            r = subprocess.run([LLAMA, "download", *args], env={**os.environ, "LLAMA_CACHE": CACHE})
+            if r.returncode == 0 and complete(args):
                 return
-            log(f"{ref}: Download fehlgeschlagen, neuer Versuch in {delay} s")
+            log(f"{label(args)}: Download fehlgeschlagen, neuer Versuch in {delay} s")
             time.sleep(delay)
             delay = min(delay * 2, 1800)
 
 
     def main():
-        refs = models()
-        log(f"{len(refs)} Modelle in {CONFIG}: {', '.join(refs)}")
+        all_args = models()
+        log(f"{len(all_args)} Modelle in {CONFIG}: {', '.join(map(label, all_args))}")
         os.makedirs(CACHE, exist_ok=True)
         have_backup = os.path.isdir(BACKUP)
         if not have_backup:
             log(f"kein Backup unter {BACKUP} - nur Download")
 
-        for ref in refs:
-            name = repo_dir(ref)
+        for args in all_args:
+            ref = label(args)
+            name = repo_dir(args)
             local = os.path.join(CACHE, name)
             backup = os.path.join(BACKUP, name)
 
-            if complete(ref):
+            if complete(args):
                 log(f"{ref}: lokal vollständig")
             else:
                 if have_backup and os.path.isdir(backup):
                     log(f"{ref}: aus dem Backup")
                     copy_tree(backup, local)
-                if not complete(ref):
+                if not complete(args):
                     log(f"{ref}: Download von Hugging Face")
-                    download(ref)
+                    download(args)
                 log(f"{ref}: lokal vollständig")
 
             if have_backup:

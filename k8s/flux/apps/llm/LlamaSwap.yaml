@@ -67,6 +67,19 @@ data:
               chat_template_kwargs:
                 enable_thinking: false
 
+      # Dasselbe Modell in 4 Bit (17,6 GB) plus MTP-Kopf (1,4 GB): Der Kopf
+      # schlägt je Schritt bis zu 3 Tokens vor, das Modell prüft sie in einem
+      # Durchlauf - schneller ohne Verlust gegenüber Q4. Der Kopf liegt bei
+      # Unsloth unter MTP/, das findet llama.cpp nicht von selbst - daher
+      # -hfd/-md. Mit 64k und Vision rund 23 GB.
+      qwen3.8-27b-q4-mtp:
+        name: Qwen3.8 27B Q4 + MTP
+        cmd: >-
+          ${server} -hf unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL --ctx-size 65536
+          --spec-type draft-mtp --spec-draft-n-max 3
+          -hfd unsloth/Qwen3.8-27B-GGUF -md MTP/mtp-Qwen3.8-27B-Q4_0.gguf
+        ttl: 1800
+
       # 50 von 60 Layern Sliding-Window (1024), aber 16 KV-Köpfe in den
       # übrigen - ~85 KB/Token. Gewichte 20,1 GB, mit 32k rund 26 GB.
       gemma-4-31b:
