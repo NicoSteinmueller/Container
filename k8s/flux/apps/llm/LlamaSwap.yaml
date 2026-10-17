@@ -88,6 +88,19 @@ data:
           -hfd unsloth/Qwen3.8-27B-GGUF -md MTP/mtp-Qwen3.8-27B-Q4_0.gguf
         ttl: 1800
 
+      # Zum Testen (bench-qwen.sh): DFlash2 statt MTP - ein eigenes kleines
+      # Modell (Q8_0, 2,1 GB), das bis zu 7 Tokens auf einmal vorschlägt;
+      # laut Berichten bei Code stärker, bei Fließtext schwächer als MTP.
+      # Vom offiziellen z-lab: GGUFs ohne `dflash.rope.dimension_sections`
+      # (incoai vor 29.08.) brechen Vision. Mit 64k und Vision rund 25 GB.
+      qwen3.8-27b-q4-dflash:
+        name: Qwen3.8 27B Q4 + DFlash2 (Test)
+        cmd: >-
+          ${server} -hf unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M --ctx-size 65536
+          --spec-type draft-dflash --spec-draft-n-max 7
+          -hfd z-lab/Qwen3.8-27B-DFlash2-GGUF -md Qwen3.8-27B-DFlash2-Q8_0.gguf
+        ttl: 1800
+
       # 50 von 60 Layern Sliding-Window (1024), aber 16 KV-Köpfe in den
       # übrigen - ~160 KB/Token. Gewichte 20,1 GB, mit 32k rund 28,5 GB.
       gemma-4-31b:
