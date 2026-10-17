@@ -26,22 +26,23 @@ data:
 
     macros:
       # -ngl 999       alle Layer auf die GPU
-      # -fa on         Flash-Attention, Voraussetzung für den quantisierten
-      #                KV-Cache
-      # q8_0           halbiert den KV-Cache bei kaum messbarem Verlust
+      # -fa on         Flash-Attention, bei langem Kontext ~8 % schneller
       # --no-webui     die Oberfläche ist Open WebUI
       # --offline      nur aus dem Cache, nie selbst herunterladen
+      #
+      # KV-Cache bleibt f16: q8_0 halbiert ihn zwar, kostet auf Vulkan/RADV
+      # aber ein Drittel beim Generieren (Qwen Q6: 14,4 statt 22,0 t/s),
+      # q4_0 noch mehr.
       server: >-
         llama-server
         --host 127.0.0.1 --port ${PORT}
         -ngl 999 -fa on --jinja
-        --cache-type-k q8_0 --cache-type-v q8_0
         --no-webui --offline
 
     models:
       # Hybrid: 16 von 64 Layern mit voller Attention, der KV-Cache ist
-      # entsprechend klein (~34 KB/Token in q8_0). Gewichte 23,5 GB, mit
-      # 64k Kontext und Vision rund 28 GB.
+      # entsprechend klein (~64 KB/Token). Gewichte 23,5 GB, mit 64k Kontext
+      # und Vision rund 30 GB - mehr Kontext nur mit quantisiertem Cache.
       qwen3.8-27b:
         name: Qwen3.8 27B
         cmd: ${server} -hf unsloth/Qwen3.8-27B-GGUF:UD-Q6_K_XL --ctx-size 65536
@@ -71,28 +72,24 @@ data:
       # schlägt je Schritt bis zu 2 Tokens vor, das Modell prüft sie in einem
       # Durchlauf - schneller ohne Verlust gegenüber Q4. Der Kopf liegt bei
       # Unsloth unter MTP/, das findet llama.cpp nicht von selbst - daher
-      # -hfd/-md. Mit 64k und Vision rund 21 GB.
+      # -hfd/-md. Mit 64k und Vision rund 24 GB.
       #
-      # Abgestimmt auf die R9700 (bench-qwen.sh):
-      # - 2 statt 3 Vorschläge: Bei Fließtext nahm Qwen von 3 nur ~45 % an
-      # - --parallel 1: ein Slot, MTP mit mehreren ist langsamer;
-      #   gleichzeitige Anfragen warten
-      # - KV-Cache q4_0 (hängt die q8_0 aus dem Makro ab - das letzte gilt)
-      # - RADV_DEBUG=nocompute: Vulkan nur über die Grafik-Queue, auf RDNA4
-      #   schneller
+      # Gemessen mit bench-qwen.sh (KV-Cache noch q8_0), gesamt 26,3 t/s
+      # gegenüber 14,6 mit Q6:
+      # - 2 statt 3 Vorschläge: Bei Fließtext nimmt Qwen von 3 nur ~45 %
+      #   an, von 2 ~58 % (+7-14 %); Paperless-JSON dafür -11 %
+      # - Nicht übernommen: KV-Cache q4_0 (-23 % in llama bench),
+      #   --parallel 1 und RADV_DEBUG=nocompute (kein messbarer Effekt)
       qwen3.8-27b-q4-mtp:
         name: Qwen3.8 27B Q4 + MTP
         cmd: >-
           ${server} -hf unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M --ctx-size 65536
-          --cache-type-k q4_0 --cache-type-v q4_0 --parallel 1
           --spec-type draft-mtp --spec-draft-n-max 2
           -hfd unsloth/Qwen3.8-27B-GGUF -md MTP/mtp-Qwen3.8-27B-Q4_0.gguf
-        env:
-          - RADV_DEBUG=nocompute
         ttl: 1800
 
       # 50 von 60 Layern Sliding-Window (1024), aber 16 KV-Köpfe in den
-      # übrigen - ~85 KB/Token. Gewichte 20,1 GB, mit 32k rund 26 GB.
+      # übrigen - ~160 KB/Token. Gewichte 20,1 GB, mit 32k rund 28,5 GB.
       gemma-4-31b:
         name: Gemma 4 31B
         cmd: ${server} -hf unsloth/gemma-4-31B-it-GGUF:Q5_K_M --ctx-size 32768
